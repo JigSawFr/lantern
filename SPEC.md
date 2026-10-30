@@ -1513,7 +1513,7 @@ A conformance suite (`conformance/`) runs against a server's URL, with a
 token or without, and checks every requirement of this text it can see
 from outside; each check names the ids it covers. The rules it cannot see
 (a client's, or a server's inside) are listed by id on the site's
-traceability page, <https://lantern.boreale.dev/requirements/>. With a
+[traceability page](https://lantern.boreale.dev/requirements/). With a
 token, it writes only what it then deletes: save backups, a cheat set, a
 request, the devices it pairs and the invitations it makes (with
 `--admin-writes`, an account of its own, frozen). A reference server
@@ -1540,8 +1540,8 @@ every scope, and anonymously on a public server). Every level needs
 **The name.** Only an implementation that passes the suite at a level may
 call itself "Lantern compatible" and show the badge, with that level and
 the version of the text: "Lantern compatible 0.4 · Core +titles". The
-badges and the registry of implementations are on the site,
-<https://lantern.boreale.dev/conformance/>; an implementation joins the
+badges and the registry of implementations are
+[on the site](https://lantern.boreale.dev/conformance/); an implementation joins the
 registry by a pull request with its report.
 
 **Test vectors** (`vectors/`), for the libraries of clients and servers:
