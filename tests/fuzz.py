@@ -18,7 +18,8 @@ Targets: request documents (JSON input, its bounds), manifests (a zip's),
 signature headers (RFC 9421), Content-Digest, Range, Accept-Language and
 Accept-Encoding, LAN discovery datagrams (a server's and a peer's), grants,
 sync's times and merge rule, Lantern-Save-Encryption and an encrypted
-backup's header, and multicast DNS queries. Lantern has no multipart body:
+backup's header, multicast DNS queries, canonical JSON (the server's), chunk
+indexes as a client reads them, and lantern-cdc-1's cuts. Lantern has no multipart body:
 nothing of the kind to fuzz.
 """
 import argparse
@@ -37,7 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from server import ed25519, mdns, nro, peer, signatures
+from server import cdc, ed25519, mdns, nro, peer, signatures
 from server import lantern_server as ls
 
 ls.log = lambda msg: None
@@ -259,6 +260,8 @@ def t_sync(rng):
             "updated": kept or "2026-10-30T09:12:03.250Z"}
     if rng.random() < 0.3:
         sent = {"deleted": True, "updated": sent["updated"]}
+    if any(ls.i_json_problem(x.get("value")) for x in (have, sent)):
+        return      # what the server refuses as it reads a request (SPEC.md § 2.3) never reaches the merge
     assert ls.sync_wins(sent, have) in (True, False)
 
 
@@ -297,9 +300,55 @@ def t_peer_datagram(rng):
     assert reply is None or (len(reply) <= ls.DATAGRAM_LIMIT and json.loads(reply)["lantern"] == "peer")
 
 
+def t_canonical(rng):
+    """Canonical JSON (SPEC.md § 2.3): a value or a refusal; read back, the same value, and canonical again."""
+    try:
+        value = json.loads(mutate(rng, rng.choice(DOCS + [b'{"a":1.0,"b":[0.5,1e21,-0.0,"\\u00e9"]}'])))
+    except (ValueError, RecursionError):
+        return
+    try:
+        out = cdc.canonical(value)
+    except (ValueError, TypeError, RecursionError):
+        return
+    again = json.loads(out)
+    assert cdc.canonical(again) == out
+
+
+INDEX = {}
+
+
+def t_chunk_index(rng):
+    """A chunk index as a client reads it (SPEC.md § 22.3): usable, and then sound, or Unusable; never else."""
+    sys.path.insert(0, str(ROOT / "conformance"))
+    import lantern_client as client
+    if not INDEX:
+        data = bytes(range(256)) * 400
+        INDEX["data"], (INDEX["doc"], INDEX["raw"]) = data, cdc.index(data, 65536)
+    raw = mutate(rng, INDEX["raw"]) if rng.random() < 0.9 else INDEX["raw"]
+    ref = {"url": "x", "size": len(raw), "sha256": client.hashlib.sha256(raw).hexdigest()}
+    try:
+        doc = client.read_chunk_index(raw, ref, INDEX["doc"]["sha256"], len(INDEX["data"]))
+    except client.Unusable:
+        return
+    assert sum(c[0] for c in doc["chunks"]) == len(INDEX["data"])
+
+
+def t_cut(rng):
+    """lantern-cdc-1 (SPEC.md § 22.2): chunks that cover the bytes in order, each of min to max but the last."""
+    size = 65536            # a few chunks of the least chunker: kept short, as pure Python hashes slowly
+    data = rng.randbytes(rng.randint(0, 40000))
+    if rng.random() < 0.3:
+        data = data[:20000] + bytes(rng.randint(0, 20000))
+    cuts = cdc.cut(data, size)
+    assert sum(n for _, n in cuts) == len(data)
+    assert all(o == sum(n for _, n in cuts[:i]) for i, (o, _) in enumerate(cuts))
+    assert all(size // 4 < n <= 4 * size for _, n in cuts[:-1]) and all(0 < n <= 4 * size for _, n in cuts[-1:])
+
+
 TARGETS = {"document": t_document, "manifest": t_manifest, "nro": t_nro, "homebrew-json": t_homebrew_json,
            "rating-cap": t_rating_cap, "signature": t_signature, "headers": t_headers, "datagram": t_datagram,
-           "grant": t_grant, "sync": t_sync, "encryption": t_encryption, "mdns": t_mdns, "peer-datagram": t_peer_datagram}
+           "grant": t_grant, "sync": t_sync, "encryption": t_encryption, "mdns": t_mdns, "peer-datagram": t_peer_datagram,
+           "canonical": t_canonical, "chunk-index": t_chunk_index, "cut": t_cut}
 
 
 def run(target, iterations, seed):

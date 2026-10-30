@@ -138,6 +138,22 @@ deletions kept 30 days.
 Static libraries (SPEC.md § 21): --export DIR writes the library as files
 (server/static.py), then exits.
 
+Differential updates (SPEC.md § 22): every app and homebrew package of 128
+KiB to --deltas-max bytes (64 MiB by default; 0 turns the family off) is
+cut into chunks by lantern-cdc-1 (server/cdc.py) at the scan that finds it,
+once per SHA-256, and carries `chunks`; its index, in canonical JSON, is at
+/v1/chunks/sha256/<hex>, and the export holds it.
+
+Browsers (SPEC.md § 2.5): --cors-origin ORIGIN (again for more, or *)
+names the origins whose pages may read the server: their requests get
+Access-Control-Allow-Origin and the headers a page reads, their preflights
+204. None by default. No cookie is ever set or read.
+
+Images (SPEC.md § 7.1): a library.json entry's icon, banner or screenshots
+may be a path in the library's folder (media/frostline.png), served on this
+server's origin at /v1/media/<sha256>.<ext> for a year; or an HTTPS address
+elsewhere, served as external.
+
 Each file is hashed once (SHA-256); the hashes are kept with the server's
 uid and secret in a state file (--state, default DIR/.lantern-state.json).
 Every file this server reads or writes has a `schema`: one newer than it
@@ -145,7 +161,7 @@ knows is treated as absent and never written over, and the keys it does
 not know are kept.
 
 Families offered: library, titles, changes, homebrew, cheats, saves,
-encrypted_saves, requests, admin, events, peers and sync (to an account
+encrypted_saves, requests, admin, events, peers, sync and deltas (to an account
 with the scope), and pairing and signatures when there are accounts.
 Sections stay at 0: their routes answer 404.
 
@@ -229,8 +245,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 try:
-    from server import ed25519, mdns, nro, signatures, texts
+    from server import cdc, ed25519, mdns, nro, signatures, texts
 except ImportError:     # run as server/lantern_server.py
+    import cdc
     import ed25519
     import mdns
     import nro
@@ -242,13 +259,15 @@ try:                    # Python 3.14 and later: zstd in the standard library (S
 except ImportError:
     zstd = None
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 BASE = "/api/lantern"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
-            "signatures", "admin", "events", "peers", "sync", "encrypted_saves")
+            "signatures", "admin", "events", "peers", "sync", "encrypted_saves", "deltas")
 OFFERED = {"library": 1, "titles": 1, "changes": 1, "homebrew": 1, "saves": 1, "cheats": 1,
-           "requests": 1, "admin": 1, "events": 1, "peers": 1, "sync": 1, "encrypted_saves": 1}  # the schema written
+           "requests": 1, "admin": 1, "events": 1, "peers": 1, "sync": 1, "encrypted_saves": 1,
+           "deltas": 1}  # the schema written
 SCOPE_OF = {"library": "library", "titles": "library", "changes": "library", "homebrew": "library",
+            "deltas": "library",
             "saves": "saves", "cheats": "cheats", "cheats.write": "cheats.write", "requests": "requests",
             "admin": "admin", "peers": "library", "sync": "sync.read", "sync.write": "sync.write",
             "encrypted_saves": "saves"}
@@ -265,6 +284,24 @@ GRANT_LIFETIME = 600
 MIRRORS_LIMIT = 8
 PRIVATE_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7",
                                                   "fe80::/10")]
+# Differential updates (SPEC.md § 22): the files this server cuts into chunks, by size; a smaller one gains
+# nothing, a larger one takes this pure Python too long at a scan (its clients then read it whole).
+DELTAS_MIN = 128 << 10
+DELTAS_MAX = 64 << 20
+# Browsers (SPEC.md § 2.5): what a preflight may ask for, and what a page may read of an answer.
+CORS_METHODS = "GET, HEAD, POST, PUT, PATCH, DELETE"
+CORS_HEADERS = ("Authorization", "Content-Type", "Content-Digest", "Signature", "Signature-Input", "Accept-Schema",
+                "Lantern-Platform", "Lantern-Save-Kind", "Lantern-Save-Slot", "Lantern-Game-Version",
+                "Lantern-Profile", "Lantern-Note", "Lantern-Save-Encryption", "Upload-Offset", "If-Match",
+                "If-None-Match", "If-Range", "Range", "Last-Event-ID")
+CORS_EXPOSED = ("Date", "ETag", "Content-Range", "Accept-Ranges", "Repr-Digest", "Retry-After", "WWW-Authenticate",
+                "Accept-Signature", "Upload-Offset", "Upload-Length", "Lantern-Chunk-Size", "Allow", "Deprecation", "Sunset", "Link")
+CORS_MAX_AGE = 600
+ORIGIN = re.compile(r"^https?://[A-Za-z0-9.-]+(?::[0-9]{1,5})?$|^https?://\[[0-9A-Fa-f:.]+\](?::[0-9]{1,5})?$")
+# Images on this server's origin (SPEC.md § 7.1): content-addressed, served for a year.
+IMAGE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}
+IMAGE_LIMIT = 4 << 20
+IMAGE_CACHE = "max-age=31536000, immutable"
 # Sync (SPEC.md § 20).
 SYNC_COLLECTIONS = ("wishes", "installed")
 SYNC_ITEMS = 10000      # limits.sync_items
@@ -519,7 +556,9 @@ def derive(app_id):
 
 def title_id_ok(platform, title_id):
     """A title id of the core's form (SPEC.md § 6.1) and of its profile's, when there is one
-    (on a Switch, a base game's id: Annex A.1)."""
+    (on a Switch, a base game's id: Annex A.1). None on the web, which has nothing to install (Annex A.7)."""
+    if platform == "web":
+        return False
     profile = PROFILES.get(platform)
     pattern = profile and (profile.get("title") or profile["id"])
     return isinstance(title_id, str) and bool(CORE_ID.match(title_id)) and (
@@ -953,9 +992,13 @@ def above_cap(ratings, cap):
     return limit is None or age > limit
 
 
-def title_metadata(entry):
-    """The title's sheet (SPEC.md § 7.1) from a library.json entry's fields, checked."""
+def title_metadata(entry, local=None):
+    """The title's sheet (SPEC.md § 7.1) from a library.json entry's fields, checked. `local(path)`: an image of
+    the library's folder, served on this server's origin, or None."""
     meta = {}
+
+    def image_of(value):
+        return image(value) or (local(value) if local and isinstance(value, str) else None)
     for key in ("publisher", "developer"):
         if plain(entry.get(key)):
             meta[key] = plain(entry[key])
@@ -980,10 +1023,10 @@ def title_metadata(entry):
         if localizable(entry.get(key)):
             meta[key] = localizable(entry[key])
     for key in ("icon", "banner"):
-        if image(entry.get(key)):
-            meta[key] = image(entry[key])
+        if image_of(entry.get(key)):
+            meta[key] = image_of(entry[key])
     if isinstance(entry.get("screenshots"), list):
-        meta["screenshots"] = [i for i in map(image, entry["screenshots"][:16]) if i]
+        meta["screenshots"] = [i for i in map(image_of, entry["screenshots"][:16]) if i]
     if image(entry.get("video")):
         meta["video"] = image(entry["video"])
     return meta
@@ -992,7 +1035,10 @@ def title_metadata(entry):
 class Library:
     """Everything the server serves from its folder: apps, titles, homebrew and cheats."""
 
-    def __init__(self, root, state_path):
+    cut_before = {}     # a file's SHA-256 -> its chunk index, for every library of this process: made once
+
+    def __init__(self, root, state_path, deltas=(DELTAS_MIN, DELTAS_MAX)):
+        """`deltas`: (min, max), the sizes of the files cut into chunks (SPEC.md § 22); max 0 for none."""
         self.root = Path(root).resolve()
         self.state_path = Path(state_path)
         self.lock = threading.RLock()
@@ -1019,6 +1065,10 @@ class Library:
         self.floor = 0                      # tokens below it are gone
         self.apps, self.files, self.titles, self.homebrew, self.cheats = {}, {}, {}, {}, {}
         self.manifests = {}                 # (rel, size, mtime) -> a zip's manifest, or None when refused
+        self.media, self.media_next = {}, {}    # sha256 -> an image of the folder: {path, type, size, titles}
+        self.images = {}                    # (rel, size, mtime) -> (sha256, width, height), hashed once
+        self.indexes = {}                   # a file's sha256 -> its chunk index's canonical bytes (SPEC.md § 22)
+        self.deltas = tuple(deltas)         # the sizes of the files cut into chunks
         self.signatures = {}                # (signed bytes, key, value) -> whether it verifies
         self.cursors = OrderedDict()
         self.skipped = set()                # files not served, reported once
@@ -1145,6 +1195,7 @@ class Library:
             self.files_seen = self.fingerprint()    # before reading: a change made meanwhile is seen next time
             meta, seen, files = self.metadata(), set(), {}
             self.dirty = False
+            self.media_next = {}
             apps, entries = {}, {}
             for path in sorted(self.root.rglob("*")):
                 rel = path.relative_to(self.root).as_posix()
@@ -1165,6 +1216,9 @@ class Library:
                 fid = self.file_id(app_key)
                 app = {"id": aid, **app, "size": st.st_size, "format": fmt, "sha256": sha,
                        "added": utc(st.st_mtime_ns), "file": f"{BASE}/v1/files/{fid}"}
+                chunks = self.chunks(path, st.st_size, sha)
+                if chunks:
+                    app["chunks"] = chunks
                 apps[aid] = {"doc": app, "path": path, "keys": {
                     "name": (fold(app["name"]), aid),
                     "added": (-st.st_mtime_ns, aid),
@@ -1195,6 +1249,9 @@ class Library:
                     self.emit("library", items=items)
             arrived = set(titles) - set(self.titles)
             self.apps, self.files, self.titles, self.homebrew, self.cheats = apps, files, titles, homebrew, cheats
+            self.media = self.media_next
+            live = {a["doc"]["sha256"] for a in apps.values()} | {f["sha256"] for f in files.values()}
+            self.indexes = {k: v for k, v in self.indexes.items() if k in live}
             if not initial:
                 self.requests_done(arrived)
             self.scanned = time.monotonic()
@@ -1267,7 +1324,8 @@ class Library:
             mine.sort(key=lambda e: (e["doc"]["type"] != "base", e["keys"]["name"]))
             meta = {}
             for e in reversed(mine):      # the base's fields last, so they win
-                meta.update(title_metadata(entries[e["doc"]["id"]]))
+                meta.update(title_metadata(entries[e["doc"]["id"]], lambda rel, k=(platform, title_id):
+                                           self.local_image(rel, k)))
             release = min((e["release"] for e in mine if e["release"]), default=None)
             name = mine[0]["doc"]["name"]
             digest = hashlib.sha256(json.dumps([name, str(release), meta], sort_keys=True).encode()).hexdigest()
@@ -1357,6 +1415,9 @@ class Library:
         key = hmac.new(self.secret, f"homebrew\0{rel}\0{st.st_size}\0{st.st_mtime_ns}".encode(), "sha256").digest()
         fid = self.file_id(key)
         package = {"format": ext, "file": f"{BASE}/v1/files/{fid}", "size": st.st_size, "sha256": sha}
+        chunks = self.chunks(path, st.st_size, sha)
+        if chunks:
+            package["chunks"] = chunks
         place = profile["homebrew"][ext]
         if place == "system":
             manifest = package["manifest"] = []     # the platform's installer installs it (SPEC.md § 8.2)
@@ -1561,6 +1622,60 @@ class Library:
             files[f["fid"]] = {"path": f["path"], "size": f["size"], "sha256": f["sha256"],
                                "owner": ("homebrew", platform, hid)}
         return {"doc": doc, "texts": texts, "keys": {"name": (fold(name), platform, hid)}}
+
+    def chunks(self, path, size, sha256):
+        """A file's `chunks` (SPEC.md § 22.1): its index made once, by its SHA-256, kept in memory; None for a file
+        this server does not cut (too small to gain, too large for a scan, or past the chunker's limits)."""
+        if not self.deltas[0] <= size <= self.deltas[1] or cdc.size_for(size) is None:
+            return None
+        raw = self.indexes.get(sha256) or Library.cut_before.get(sha256)
+        if raw is None:
+            try:
+                data = Path(path).read_bytes()
+            except OSError:
+                return None
+            if hashlib.sha256(data).hexdigest() != sha256:
+                return None     # it changed meanwhile: the next scan sees it
+            _, raw = cdc.index(data)
+            Library.cut_before[sha256] = raw
+            while len(Library.cut_before) > 64:
+                Library.cut_before.pop(next(iter(Library.cut_before)))
+        self.indexes[sha256] = raw
+        return {"url": f"{BASE}/v1/chunks/sha256/{sha256}", "size": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest()}
+
+    def local_image(self, rel, title):
+        """An image of the library's folder for the title `title` ((platform, title_id)), served on this server's
+        origin at <base>/v1/media/<sha256>.<ext>, content-addressed (SPEC.md § 7.1); None when it is not one."""
+        if not (isinstance(rel, str) and 0 < len(rel) <= 1024) or "\\" in rel or rel.startswith("/"):
+            return None
+        parts = rel.split("/")
+        ext = parts[-1].rsplit(".", 1)[-1].lower() if "." in parts[-1] else ""
+        if any(x in ("", ".", "..") or x.startswith(".") for x in parts) or ext not in IMAGE_TYPES:
+            return None
+        path = self.root / rel
+        try:
+            st = path.stat()
+        except OSError:
+            return None
+        if not path.is_file() or st.st_size > IMAGE_LIMIT or not path.resolve().is_relative_to(self.root):
+            return None
+        memo = (rel, st.st_size, st.st_mtime_ns)
+        if memo not in self.images:
+            data = path.read_bytes()
+            width = height = None
+            if data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR":
+                width, height = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+            self.images = {k: v for k, v in self.images.items() if k[0] != rel}
+            self.images[memo] = (hashlib.sha256(data).hexdigest(), width, height)
+        sha, width, height = self.images[memo]
+        entry = self.media_next.setdefault(sha, {"path": path, "type": IMAGE_TYPES[ext], "ext": ext,
+                                                 "size": st.st_size, "titles": set()})
+        entry["titles"].add(title)
+        out = {"url": f"{BASE}/v1/media/{sha}.{entry['ext']}", "sha256": sha}
+        if width and height:
+            out.update(width=width, height=height)
+        return out
 
     def verified(self, message, signature):
         """Whether an author's signature verifies, remembered (SPEC.md § 8.4)."""
@@ -2297,13 +2412,14 @@ def sync_time(text, now, skew):
 
 
 def canonical(value):
-    """A value's canonical JSON (SPEC.md § 20.4): keys sorted, no space, characters other than ASCII as they are."""
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    """A value's canonical JSON (SPEC.md § 2.3, § 20.4): RFC 8785's, numbers as ECMAScript writes them."""
+    return cdc.canonical(value)
 
 
 def sync_wins(sent, have):
     """Whether the item sent replaces the one kept (SPEC.md § 20.4's merge rule): the later `updated`; on the same,
-    a deletion; between two values, the greater canonical JSON. An item the same as the one kept does not."""
+    a deletion; between two values, the greater canonical JSON. An item whose canonical JSON is the same as the one
+    kept does not: the server keeps its own."""
     if have is None:
         return True
     if sent["updated"] != have["updated"]:
@@ -2713,9 +2829,11 @@ class Pairing:
             if entry is None:
                 raise Problem(410, "gone", "Pairing gone", "Refused, expired, already collected or unknown.")
             now = time.monotonic()
+            # interval counts from the last poll answered, never from one refused (SPEC.md § 5.2): a client that
+            # waits Retry-After, the time left until then, is answered.
             if entry["polled"] is not None and now - entry["polled"] < entry["interval"] * 0.8:
-                entry["polled"] = now
-                raise slow_down(entry["interval"], f"Poll every {entry['interval']} seconds.")
+                left = entry["interval"] * 0.8 - (now - entry["polled"])
+                raise slow_down(max(1, math.ceil(left)), f"Poll every {entry['interval']} seconds.")
             entry["polled"] = now
             if entry["state"] == "refused":
                 del self.pending[pid]
@@ -2769,6 +2887,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_any(self, method):
         self.method, self.head, self.began = method, method == "HEAD", False
+        self.cors = self.cors_origin()
         self.authenticated = bool(self.headers.get("Authorization"))
         self.length, self.body_read, self.body_data = 0, False, b""
         self.account, self.record, self.signed_digest = None, None, None
@@ -2779,6 +2898,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 raise bad_request("Not a request target this server can read.") from None
             path = unquote(url.path)
+            if method == "OPTIONS":
+                return self.preflight()
             query = read_query(url.query)
             self.server.library.refresh(self.server.rescan)
             self.route(method, path, query)
@@ -2822,6 +2943,38 @@ class Handler(BaseHTTPRequestHandler):
     def do_PATCH(self):
         self.handle_any("PATCH")
 
+    def do_OPTIONS(self):
+        self.handle_any("OPTIONS")
+
+    # Browsers (SPEC.md § 2.5).
+
+    def cors_origin(self):
+        """The Access-Control-Allow-Origin of this request: "*" or its Origin when the server allows it, None when
+        it does not (or the request has none, or it is not to one of this text's routes)."""
+        allowed = self.server.cors_origins
+        origin = (self.headers.get("Origin") or "").strip()
+        path = urlsplit(self.path).path if self.path.startswith("/") else ""
+        if not allowed or not origin or not (path == "/.well-known/lantern" or path.startswith(BASE + "/")):
+            return None
+        if "*" in allowed:
+            return "*"
+        return origin if origin in allowed else None
+
+    def preflight(self):
+        """A browser's preflight (SPEC.md § 2.5): 204 with what the page may send, without a token; an OPTIONS that
+        is not one, or of an origin not allowed, is a method no route takes."""
+        if self.cors is None or not self.headers.get("Access-Control-Request-Method"):
+            raise Problem(405, "bad_request", "Method not allowed", None,
+                          {"Allow": "GET, HEAD, POST, PUT, PATCH, DELETE"})
+        asked = [h.strip() for h in (self.headers.get("Access-Control-Request-Headers") or "").split(",") if h.strip()]
+        known = {h.lower(): h for h in CORS_HEADERS}
+        allowed = [known[h.lower()] for h in asked if h.lower() in known] or list(CORS_HEADERS)
+        headers = {"Access-Control-Allow-Methods": CORS_METHODS, "Access-Control-Allow-Headers": ", ".join(allowed),
+                   "Access-Control-Max-Age": str(CORS_MAX_AGE), "Cache-Control": "no-store"}
+        if (self.headers.get("Access-Control-Request-Private-Network") or "").strip().lower() == "true":
+            headers["Access-Control-Allow-Private-Network"] = "true"
+        self.send_head(204, None, headers)
+
     def content_length(self):
         if self.headers.get("Transfer-Encoding"):
             self.close_connection = True
@@ -2860,6 +3013,8 @@ class Handler(BaseHTTPRequestHandler):
         ("changes", ("GET", "HEAD"), None, "changes"),     # changes, or events with wait: chosen within
         ("events", ("GET",), "events", "events"),
         ("grants/sha256/{}", ("GET", "HEAD"), "peers", "grant"),
+        ("chunks/sha256/{}", ("GET", "HEAD"), "deltas", "chunk_index"),
+        ("media/{}", ("GET", "HEAD"), "titles", "media"),
         ("sync", ("GET", "HEAD"), "sync", "sync_overview"),
         ("sync", ("DELETE",), "sync.write", "sync_erase"),
         ("sync/{}", ("GET", "HEAD"), "sync", "sync_read"),
@@ -2994,6 +3149,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if family in ("saves", "encrypted_saves") and not self.server.saves.available:
             raise not_found("Save backups are unavailable on this server for now.")
+        if family == "deltas" and not self.server.library.deltas[1]:
+            raise not_found("This server cuts no file into chunks.")
         if family in ("sync", "sync.write") and not self.server.sync.available:
             raise not_found("Sync is unavailable on this server for now.")
         if account["state"] == "anonymous" and (not self.server.accounts.public or family in ("admin", "sync",
@@ -3305,12 +3462,13 @@ class Handler(BaseHTTPRequestHandler):
 
     # Grants (SPEC.md § 19.3).
 
-    def grant(self, query, hexdigest):
+    def visible_file(self, query, hexdigest):
+        """The app's or homebrew package's file of this SHA-256 that this caller may read (of its platform, within
+        its rating cap: SPEC.md § 5.6), else 404 as for a file the server does not have."""
         if not re.fullmatch(r"[0-9a-f]{64}", hexdigest):
             raise not_found("A file is named by its SHA-256, lower-case hex.")
         lib, platform = self.server.library, self.platform(query)
         with lib.lock:
-            found = None
             for entry in lib.files.values():
                 kind, p, ref = entry.get("owner", (None, None, None))
                 if entry["sha256"] != hexdigest or kind not in ("app", "homebrew") or (platform and p != platform):
@@ -3318,16 +3476,40 @@ class Handler(BaseHTTPRequestHandler):
                 hidden = self.title_hidden(p, ref) if kind == "app" else \
                     self.homebrew_hidden((lib.homebrew.get((p, ref)) or {}).get("doc", {}))
                 if not hidden:
-                    found = entry
-                    break
-        if found is None:
-            raise not_found("No such file for this caller.")
+                    return entry
+        raise not_found("No such file for this caller.")
+
+    def grant(self, query, hexdigest):
+        lib, found = self.server.library, self.visible_file(query, hexdigest)
         exp = int(time.time()) + GRANT_LIFETIME
         self.send_doc(200, {"schema": 1, "sha256": hexdigest, "size": found["size"],
                             "grant": make_grant(lib.grant_seed, lib.uid, hexdigest, found["size"], exp),
                             "expires": utc(exp * 10 ** 9)}, {"Cache-Control": "no-store"})
 
+    # Differential updates (SPEC.md § 22).
+
+    def chunk_index(self, query, hexdigest):
+        """The chunk index of a file this caller may read, its bytes as kept: those whose SHA-256 its app or
+        package gives (§ 22.1)."""
+        self.visible_file(query, hexdigest)
+        raw = self.server.library.indexes.get(hexdigest)
+        if raw is None:
+            raise not_found("This file has no chunk index: read it whole.")
+        self.kept_bytes = raw
+        self.send_doc(200, json.loads(raw))
+
     # Titles (SPEC.md § 7).
+
+    def media(self, query, name):
+        """An image of a title, on this server's origin: content-addressed, for a year (SPEC.md § 7.1)."""
+        m = re.fullmatch(r"([0-9a-f]{64})\.([a-z]{3,4})", name)
+        lib = self.server.library
+        with lib.lock:
+            entry = lib.media.get(m.group(1)) if m else None
+        if entry is None or entry["ext"] != m.group(2) or all(self.title_hidden(*t) for t in entry["titles"]):
+            raise not_found("No such image.")
+        cache = ("private, " if self.authenticated else "public, ") + IMAGE_CACHE
+        self.send_file(entry["path"], entry["size"], m.group(1), entry["type"], {"Cache-Control": cache})
 
     def titles(self, query):
         platform = self.platform(query)
@@ -3515,7 +3697,8 @@ class Handler(BaseHTTPRequestHandler):
             raise not_found("No such upload: it finished, expired or was abandoned.")
         if self.method == "HEAD":
             return self.send_head(204, None, {"Upload-Offset": str(saves.offset(uid)),
-                                              "Upload-Length": str(s["size"]), "Cache-Control": "no-store"})
+                                              "Upload-Length": str(s["size"]), "Cache-Control": "no-store",
+                                              "Lantern-Chunk-Size": str(saves.chunk)})    # SPEC.md § 9.3
         if self.method == "DELETE":
             saves.abandon(uid)
             return self.send_head(204, None, {})
@@ -4155,7 +4338,7 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
             raise not_found("No such file; read the app again.")
         self.send_file(entry["path"], entry["size"], entry["sha256"], "application/octet-stream")
 
-    def send_file(self, path, size, sha256, ctype):
+    def send_file(self, path, size, sha256, ctype, extra=None):
         etag = f'"{sha256[:32]}"'
         start, end = 0, size - 1
         status = 200
@@ -4170,7 +4353,7 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
                 start, end = parsed
                 status = 206
         headers = {"Content-Type": ctype, "Accept-Ranges": "bytes", "ETag": etag,
-                   "Repr-Digest": f"sha-256=:{base64.b64encode(bytes.fromhex(sha256)).decode()}:"}
+                   "Repr-Digest": f"sha-256=:{base64.b64encode(bytes.fromhex(sha256)).decode()}:", **(extra or {})}
         if status == 206:
             headers["Content-Range"] = f"bytes {start}-{end}/{size}"
         length = end - start + 1 if size else 0
@@ -4197,8 +4380,14 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
             self.send_header(k, v)
         if length is not None:
             self.send_header("Content-Length", str(length))
+        cors = getattr(self, "cors", None)
+        if cors is not None:    # SPEC.md § 2.5: on every answer to an origin the server allows, errors included
+            self.send_header("Access-Control-Allow-Origin", cors)
+            if status != 204 or self.method != "OPTIONS":
+                self.send_header("Access-Control-Expose-Headers", ", ".join(CORS_EXPOSED))
+        varies = self.server.cors_origins and "*" not in self.server.cors_origins
         self.send_header("Vary", "Authorization, Lantern-Platform, Accept-Language"
-                         + (", Accept-Encoding" if encodings else ""))
+                         + (", Accept-Encoding" if encodings else "") + (", Origin" if varies else ""))
         if "Cache-Control" not in headers:
             self.send_header("Cache-Control", "private" if self.authenticated else "no-cache")
         self.end_headers()
@@ -4207,7 +4396,11 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
         return accepted_coding(self.headers.get("Accept-Encoding"))
 
     def send_doc(self, status, doc, headers=None, problem=False):
-        body = json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode()
+        kept, self.kept_bytes = getattr(self, "kept_bytes", None), None
+        if kept is not None and json.loads(kept) == doc:
+            body = kept     # the document's bytes as kept: a chunk index's (SPEC.md § 22.1)
+        else:
+            body = json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode()
         headers = dict(headers or {})
         headers["Content-Type"] = "application/problem+json" if problem else "application/json"
         spoken = {doc.get("language")} | {i.get("language") for k in ("items", "titles") for i in doc.get(k, ())
@@ -4386,7 +4579,8 @@ class LanternServer(ThreadingHTTPServer):
     def __init__(self, address, library, accounts, name="Lantern reference server", rescan=30.0,
                  quiet=False, handler=Handler, tls=None, spki=None, token_lifetime=None, saves=None,
                  bound_only=False, motd=None, skew=signatures.SKEW, sync=None, heartbeat=HEARTBEAT,
-                 event_streams=EVENT_STREAMS, wait_limit=WAIT_LIMIT, stream_max=STREAM_MAX, beat=None):
+                 event_streams=EVENT_STREAMS, wait_limit=WAIT_LIMIT, stream_max=STREAM_MAX, beat=None,
+                 cors_origins=()):
         """`tls`: an ssl.SSLContext; without it, only a loopback address (SPEC.md § 2).
         `spki`: the SHA-256 of the certificate's key, for /pair (SPEC.md § 5.3).
         `saves`: a Saves, by default in the library's .lantern-saves/.
@@ -4396,7 +4590,8 @@ class LanternServer(ThreadingHTTPServer):
         `heartbeat`, `event_streams`, `wait_limit`: limits.heartbeat, .event_streams and .wait (SPEC.md § 18.4);
         `stream_max`: the seconds a stream lasts at most. `beat`: for tests only, the seconds between two
         heartbeats actually written, below `heartbeat` (which the handshake still announces), so that a test
-        need not wait for one."""
+        need not wait for one. `cors_origins`: the origins whose pages may read this server (SPEC.md § 2.5), "*"
+        for every one; none by default."""
         if tls is None and not is_loopback(address[0]):
             raise ValueError(f"plain HTTP only on a loopback address, not {address[0] or 'every address'}: "
                              "give --tls-cert and --tls-key (SPEC.md § 2)")
@@ -4419,11 +4614,19 @@ class LanternServer(ThreadingHTTPServer):
         self.heartbeat, self.event_streams, self.wait_limit = heartbeat, event_streams, wait_limit
         self.stream_max = stream_max
         self.beat = min(beat, heartbeat) if beat else heartbeat
+        self.cors_origins = frozenset(cors_origins or ())
         self.stopping = threading.Event()
         self.streams, self.streams_lock = {}, threading.Lock()
         self.nonces = signatures.Nonces(2 * skew)
         self.pair_limiter = Limiter(*PAIR_RATE)
         self.attempts = Limiter(*PAIR_ATTEMPTS)
+
+    def handle_error(self, request, client_address):
+        """A client that went away (it read what it wanted of a file, then closed) is not an error of this
+        server: only the others are logged."""
+        if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
 
     def announce_pairing(self, entry):
         """The event of a pairing waiting (SPEC.md § 18.2), as § 5.7 lists it."""
@@ -4586,6 +4789,12 @@ def main(argv=None):
                    help="for tests only: write a stream's heartbeats this often, below --heartbeat, which the "
                         "handshake still announces, so that a test run need not wait for one")
     p.add_argument("--sync-file", help="where sync data is kept (default <library>/.lantern-sync.json)")
+    p.add_argument("--cors-origin", action="append", default=[], metavar="ORIGIN",
+                   help="an origin whose pages may read this server (https://app.example.org), or * for every one; "
+                        "again for more (SPEC.md § 2.5). None by default")
+    p.add_argument("--deltas-max", type=int, default=DELTAS_MAX, metavar="BYTES",
+                   help=f"cut files of {DELTAS_MIN} to this many bytes into chunks, for differential updates "
+                        f"(SPEC.md § 22; default {DELTAS_MAX}, 0: none, and the family deltas is not offered)")
     p.add_argument("--export", metavar="DIR", help="write the library as a static library into DIR (SPEC.md § 21), "
                                                    "then exit")
     p.add_argument("--page-size", type=int, default=100, help="--export: items per page (1 to 1000)")
@@ -4615,7 +4824,14 @@ def main(argv=None):
         tls.minimum_version = ssl.TLSVersion.TLSv1_2
         tls.load_cert_chain(args.tls_cert, args.tls_key)
         spki = spki_sha256(Path(args.tls_cert).read_text(encoding="ascii"))
-    library = Library(args.library, args.state or Path(args.library) / ".lantern-state.json")
+    bad = [o for o in args.cors_origin if o != "*" and not ORIGIN.match(o)]
+    if bad:
+        p.error(f"--cors-origin {bad[0]}: an origin is a scheme, a host and a port, without a path "
+                "(https://app.example.org), or *")
+    if args.deltas_max < 0:
+        p.error("--deltas-max is 0 or more")
+    library = Library(args.library, args.state or Path(args.library) / ".lantern-state.json",
+                      deltas=(DELTAS_MIN, args.deltas_max))
     if args.export:
         if not 1 <= args.page_size <= 1000:
             p.error("--page-size is 1 to 1000")
@@ -4641,7 +4857,7 @@ def main(argv=None):
         server = LanternServer((args.host, args.port), library, Accounts(args.users), args.name, args.rescan,
                                args.quiet, tls=tls, spki=spki, token_lifetime=lifetime, saves=saves,
                                bound_only=args.bound_only, motd=motd, heartbeat=args.heartbeat,
-                               beat=args.test_heartbeat,
+                               beat=args.test_heartbeat, cors_origins=args.cors_origin,
                                sync=Sync(args.sync_file or Path(args.library) / ".lantern-sync.json"))
     except ValueError as e:
         p.error(str(e))

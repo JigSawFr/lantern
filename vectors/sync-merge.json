@@ -2,7 +2,7 @@
  "schema": 1,
  "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
  "vectors": "sync-merge",
- "description": "Sync's merge rule (SPEC.md § 20.4), item by item: the item a server keeps of the one it has (have) and the one sent, at the server's time below, with auth.skew 300 seconds; replaced says whether the item sent is the one kept (and takes the next rev).",
+ "description": "Sync's merge rule (SPEC.md § 20.4), item by item: the item a server keeps of the one it has (have) and the one sent, at the server's time below, with auth.skew 300 seconds; replaced says whether the item sent is the one kept (and takes the next rev). canonical gives both values' canonical JSON (SPEC.md § 2.3): a reader keeps the numbers of a value as the JSON writes them (1.0, 1e+21), and canonicalizes them as ECMAScript writes numbers.",
  "server_time": "2026-10-30T09:30:00.000Z",
  "skew": 300,
  "cases": [
@@ -274,6 +274,102 @@
    "canonical": {
     "have": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}",
     "sent": "{\"note\":\"For the holidays\",\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}"
+   }
+  },
+  {
+   "name": "The same updated: 1.0 and 1 are the same canonical JSON, and the server keeps its own",
+   "have": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "x-example-priority": 1
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "x-example-priority": 1.0
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "replaced": false,
+   "kept": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "x-example-priority": 1
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "canonical": {
+    "have": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\",\"x-example-priority\":1}",
+    "sent": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\",\"x-example-priority\":1}"
+   }
+  },
+  {
+   "name": "The same updated: 0.5 is written 0.5, greater than 0.25",
+   "have": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "x-example-priority": 0.25
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "x-example-priority": 0.5
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "replaced": true,
+   "kept": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "x-example-priority": 0.5
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "canonical": {
+    "have": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\",\"x-example-priority\":0.25}",
+    "sent": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\",\"x-example-priority\":0.5}"
+   }
+  },
+  {
+   "name": "The same updated: 1e21 is written 1e+21, greater than 1e20, written 100000000000000000000",
+   "have": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "x-example-priority": 1e+21
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "x-example-priority": 1e+20
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "replaced": false,
+   "kept": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "x-example-priority": 1e+21
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "canonical": {
+    "have": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\",\"x-example-priority\":1e+21}",
+    "sent": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\",\"x-example-priority\":100000000000000000000}"
    }
   }
  ]

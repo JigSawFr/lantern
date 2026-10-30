@@ -593,7 +593,7 @@ class StaticLibraries(unittest.TestCase):
         self.assertEqual((hello["base"], hello["static"]["page_size"], hello["features"]["pairing"]), (".", 3, 0))
         code, report = run_suite("--static", str(out))
         self.assertEqual(code, 0, report)
-        self.assertIn("Levels reached (SPEC.md § 17, draft 0.6): Lantern Static\n", report)
+        self.assertIn("Levels reached (SPEC.md § 17, draft 0.7): Lantern Static\n", report)
         class Quiet(http.server.SimpleHTTPRequestHandler):
             def log_message(self, *args):
                 pass

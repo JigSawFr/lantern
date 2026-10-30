@@ -9,9 +9,9 @@ backups and cheats.
 
 Website: <https://lantern.boreale.dev/?utm_source=github&utm_medium=readme>.
 
-**Status: draft 0.6**, the draft that readies the text for 1.0. The text may
-still change before 1.0; comments and issues are welcome, from client and
-server authors especially.
+**Status: draft 0.7**: differential updates and browser clients, on a core
+ready for 1.0. The text may still change before 1.0; comments and issues are
+welcome, from client and server authors especially.
 
 - **[The specification](SPEC.md)**: REST and JSON, versioned by path (`/v1/`)
   and by a `schema` in every document, so a client and a server of
@@ -87,6 +87,21 @@ server authors especially.
     sums and build provenance attestations (below);
   - a suite that reads the mirrors' bytes (`--fetch-mirrors`) and fills a
     peer's slots, and unit tests that run in a few minutes.
+- **What 0.7 adds**:
+  - **differential updates** (`deltas`): a file cut into chunks by a
+    content-defined chunker spelled out to the byte, an index per file in
+    canonical JSON, and a client that takes from the version it holds the
+    chunks that did not change and reads only the others, as ranges of the
+    file, from its server, a mirror or a peer; each chunk checked, then the
+    whole file; no patch format, nothing computed per request, and static
+    libraries hold the indexes too;
+  - **browser clients**: the CORS answers a server gives the origins its
+    owner allows, a `web` profile (HTTPS only, servers the browser trusts,
+    a non-extractable WebCrypto key, static libraries read with simple
+    requests), and nothing to install for `web`;
+  - canonical JSON as RFC 8785 says, numbers included; a pairing's poll that
+    a fast client can no longer lock out; an upload's chunk size on `HEAD`;
+    and the suite's `--origin`.
 - **What makes it solid**: versioned twice (path and `schema`); a token per
   device, approved on the server, revocable, and no password ever on the
   device; HTTPS everywhere, with the key of a server at home pinned at
@@ -139,7 +154,8 @@ folder, and prints `Lantern Static` when it passes.
 ```sh
 pip install -r tools/requirements.txt   # jsonschema, for the schema checks
 python3 conformance/run.py https://shelf.example.org/ [--token et_… --key device.key] [--discover 192.168.1.255] \
-    [--pin <SPKI SHA-256>] [--dns-sd 192.168.1.10] [--peer http://192.168.1.20:47116/lantern] [--fetch-mirrors]
+    [--pin <SPKI SHA-256>] [--dns-sd 192.168.1.10] [--peer http://192.168.1.20:47116/lantern] [--fetch-mirrors] \
+    [--origin https://app.example.org]
 python3 conformance/run.py --static https://lea.example.org/library/      # or a folder
 ```
 
@@ -152,7 +168,7 @@ The **[reference server](server/lantern_server.py)** serves a folder of
 packages and homebrew, for the platforms with a profile, with the families
 `library`, `titles`, `changes`, `homebrew`, `cheats` (writing included),
 `saves` and `encrypted_saves`, `requests` (declined or done by an admin),
-`events`, `peers` and `sync`, and
+`events`, `peers`, `sync` and `deltas`, and
 `pairing` and `admin` when it has accounts; `sections` stays at 0. Its
 docstring says how it reads the folder. Standard library only; a
 reference, not a product:
@@ -176,7 +192,11 @@ python3 -m server.peer --folder ~/switch-sd --server https://shelf.example.org/ 
 - `--discovery` answers Lantern's discovery datagram on UDP 47115, and
   `--dns-sd` advertises `_lantern._tcp` over multicast DNS, with the
   standard library alone.
-- `--export DIR` writes the library as a static library (SPEC.md § 21).
+- `--export DIR` writes the library as a static library (SPEC.md § 21),
+  with its chunk indexes.
+- `--cors-origin ORIGIN` lets the pages of that origin read the server
+  (SPEC.md § 2.5); `--deltas-max BYTES` bounds the files it cuts into chunks
+  for differential updates (SPEC.md § 22).
 - JSON goes compressed when a client asks: with zstd from Python 3.14,
   whose standard library has it, and with **gzip only below 3.14** (never
   br): the suite then warns that a SHOULD (`L-2.1-1`) is not met, and the
@@ -200,7 +220,8 @@ with a device key.
 signature bases and signatures of requests, homebrew signatures, SPKI
 fingerprints, paths accepted and refused, `version_code` per profile,
 requirements' decisions, rating caps, encrypted backups and recovery
-phrases, grants, sync's merge rule and the static layout;
+phrases, grants, sync's merge rule, canonical JSON, the static layout, and
+chunks and their indexes;
 `tools/make_vectors.py` writes them, and the tests check them against the
 reference.
 
@@ -213,7 +234,7 @@ and their SHA-256 sums. The release workflow builds them reproducibly from
 the tag and has GitHub attest their provenance; to check a file:
 
 ```sh
-gh attestation verify lantern-0.6.zip --repo JigSawFr/lantern
+gh attestation verify lantern-0.7.zip --repo JigSawFr/lantern
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 

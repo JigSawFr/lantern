@@ -70,9 +70,10 @@ class Running:
     """A reference server on a free port, over a fresh library."""
 
     def __init__(self, users=None, handler=ls.Handler, discovery=False, tls=False, large=False, mirror=None,
-                 folder=None):
+                 folder=None, cors=()):
         """`large` and `mirror`: library.make()'s; `folder`: where to make the library, else in a folder of its
-        own."""
+        own; `cors`: the origins whose pages may read it (SPEC.md § 2.5). Files up to 1 MiB are cut into chunks
+        (SPEC.md § 22): the large game is not, so that a run need not wait for it."""
         self.tmp = tempfile.TemporaryDirectory()
         self.root = library.make(folder or Path(self.tmp.name) / "library", large, mirror)
         users_path = None
@@ -80,7 +81,7 @@ class Running:
             users_path = Path(self.tmp.name) / "users.json"
             users_path.write_text(json.dumps(users), encoding="utf-8")
         self.state = Path(self.tmp.name) / "state.json"
-        self.lib = ls.Library(self.root, self.state)
+        self.lib = ls.Library(self.root, self.state, deltas=(ls.DELTAS_MIN, 1 << 20))
         context = spki = None
         self.cafile = None
         if tls:
@@ -91,7 +92,8 @@ class Running:
         self.server = ls.LanternServer(("127.0.0.1", 0), self.lib, ls.Accounts(users_path), rescan=0,
                                        quiet=True, handler=handler, tls=context, spki=spki,
                                        heartbeat=5,     # limits.heartbeat's least (SPEC.md § 18.4)
-                                       beat=0.25)       # heartbeats written more often, for short runs
+                                       beat=0.25,       # heartbeats written more often, for short runs
+                                       cors_origins=cors)
         self.port = self.server.server_address[1]
         self.url = f"{'https' if tls else 'http'}://127.0.0.1:{self.port}/"
         self.client_tls = ssl.create_default_context(cafile=self.cafile) if tls else None
@@ -228,8 +230,8 @@ class SuiteAgainstReference(unittest.TestCase):
                                      "admin.users", "admin.users-write", "admin.pairings", "admin.rating-cap",
                                      "admin.refuse", "admin.devices", "admin.invitations", "language.problem",
                                      "compression.files", "limits.depth", "budget.cold-start"])
-        self.assertIn("Levels reached (SPEC.md § 17, draft 0.6): Lantern Core +titles +homebrew +saves +cheats "
-                      "+requests +admin +events +peers +sync +encrypted_saves\n", report)
+        self.assertIn("Levels reached (SPEC.md § 17, draft 0.7): Lantern Core +titles +homebrew +saves +cheats "
+                      "+requests +admin +events +peers +sync +encrypted_saves +deltas\n", report)
         self.assertIn("4 backup(s) deleted", report)                     # two in clear, two encrypted (§ 9.4)
         self.assertIn("for another architecture", report)                # the Linux port's packages, read
         self.assertIn("posted, replaced and deleted", report)

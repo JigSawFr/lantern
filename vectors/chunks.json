@@ -1,0 +1,508 @@
+{
+ "schema": 1,
+ "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
+ "vectors": "chunks",
+ "description": "Differential updates (SPEC.md § 22): lantern-cdc-1's gear table (each value the first 8 bytes, big-endian, of SHA-256('lantern-cdc-1' ‖ the byte)), files cut into chunks (each file's bytes are SHA-256(seed ‖ i, i on 8 bytes big-endian) for i = 0, 1, …, cut to its size, unless said otherwise), with each chunk's offset, size and SHA-256 and the index's canonical bytes (§ 22.1); a newer version put together from an older one; then indexes a client refuses, and so reads the file whole (§ 22.4).",
+ "gear": {
+  "first": [
+   "3b4be79c064a7c38",
+   "a1bb6c3c69d2ca48",
+   "e4d372b5a4370bb0",
+   "ff971b4837c37b3c"
+  ],
+  "last": "056f96100664507b",
+  "sha256": "dac1933b1ee55a2489904dba82a29621bae6a8e50558649da608a8f4798b0ea0"
+ },
+ "cases": [
+  {
+   "name": "An empty file: no chunk",
+   "file": {
+    "seed": "",
+    "size": 0
+   },
+   "file_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "file_size": 0,
+   "chunker": {
+    "alg": "lantern-cdc-1",
+    "size": 65536
+   },
+   "cuts": [],
+   "chunks": [],
+   "index_size": 156,
+   "index_sha256": "4814aa68d99290b839f95c03d01ec46acc62006a0eee146843d2c4a82d4e7aca",
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[],\"schema\":1,\"sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"size\":0}"
+  },
+  {
+   "name": "A file below the least chunk: one chunk",
+   "file": {
+    "seed": "lantern-cdc-1 vector",
+    "size": 1000
+   },
+   "file_sha256": "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7",
+   "file_size": 1000,
+   "chunker": {
+    "alg": "lantern-cdc-1",
+    "size": 65536
+   },
+   "cuts": [
+    0
+   ],
+   "chunks": [
+    [
+     1000,
+     "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7"
+    ]
+   ],
+   "index_size": 232,
+   "index_sha256": "6ccd8d5cdf09912d07f6cecb79bdf5fd04e3258369ab0543e9f574c3a8c4b893",
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[[1000,\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\"]],\"schema\":1,\"sha256\":\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\",\"size\":1000}"
+  },
+  {
+   "name": "1,000,000 bytes, a chunker of 64 KiB",
+   "file": {
+    "seed": "lantern-cdc-1 vector",
+    "size": 1000000
+   },
+   "file_sha256": "85592ec891f0b51408128247d9536981d6bf0d0d3df31e59ad2a31bf402abbc5",
+   "file_size": 1000000,
+   "chunker": {
+    "alg": "lantern-cdc-1",
+    "size": 65536
+   },
+   "cuts": [
+    0,
+    48083,
+    87166,
+    223418,
+    363660,
+    414316,
+    527958,
+    766749,
+    856208,
+    920878,
+    950235,
+    994774
+   ],
+   "chunks": [
+    [
+     48083,
+     "ece35ba27a95d0167eee454f8339e82d1ac226a0111e15bf98cb617cf1fea7ab"
+    ],
+    [
+     39083,
+     "775fb5ffbc7d01fd56b603a9ae8cb4fef7ed3ce8fbc4d0d888ce92248ba9c426"
+    ],
+    [
+     136252,
+     "c236d967a7efd11e825445de14723f21e20a4ddce4cbd55323a58a91aa7e5d43"
+    ],
+    [
+     140242,
+     "6a33abce89ba33d5a884e99d3bdd9689de0d94c3ee43f3af972034a517dc8bd2"
+    ],
+    [
+     50656,
+     "e66db6b7a351a7056a0146a4a43cca3f4199112b87eb115bec0a6e552e32c361"
+    ],
+    [
+     113642,
+     "912d1b8a2ca8cf712e4dd72db9b0e49aef91e733454f3fa8370edbc2c8290003"
+    ],
+    [
+     238791,
+     "bf48d97ebac91582dc41c446e62fa57c44d2b32e633ec03ef41f76d2ab73f43a"
+    ],
+    [
+     89459,
+     "b12c7f34a31ad19b7072c5c33fb76295788646190472f09c6d342310b2fb2d57"
+    ],
+    [
+     64670,
+     "ae3355a7297d1e86908efc264caf32f5865de21347c88241a070a65649880bea"
+    ],
+    [
+     29357,
+     "fc962aadbbaadbf38d402d395bddf782e880820645a509d4c0a9b70b6ec71b00"
+    ],
+    [
+     44539,
+     "22772472cd2c323fe4010b80b5a99043582dc933584b74e9f21944b570a44abc"
+    ],
+    [
+     5226,
+     "534498499ca835311b25906daa0f0606dae2e9f9eb46612833b17e6dc09afbe7"
+    ]
+   ],
+   "index_size": 1064,
+   "index_sha256": "cde75915c26f050a710ff6c0b904eadb91d8f064a1ff475621ee3b34a6be25a5",
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[[48083,\"ece35ba27a95d0167eee454f8339e82d1ac226a0111e15bf98cb617cf1fea7ab\"],[39083,\"775fb5ffbc7d01fd56b603a9ae8cb4fef7ed3ce8fbc4d0d888ce92248ba9c426\"],[136252,\"c236d967a7efd11e825445de14723f21e20a4ddce4cbd55323a58a91aa7e5d43\"],[140242,\"6a33abce89ba33d5a884e99d3bdd9689de0d94c3ee43f3af972034a517dc8bd2\"],[50656,\"e66db6b7a351a7056a0146a4a43cca3f4199112b87eb115bec0a6e552e32c361\"],[113642,\"912d1b8a2ca8cf712e4dd72db9b0e49aef91e733454f3fa8370edbc2c8290003\"],[238791,\"bf48d97ebac91582dc41c446e62fa57c44d2b32e633ec03ef41f76d2ab73f43a\"],[89459,\"b12c7f34a31ad19b7072c5c33fb76295788646190472f09c6d342310b2fb2d57\"],[64670,\"ae3355a7297d1e86908efc264caf32f5865de21347c88241a070a65649880bea\"],[29357,\"fc962aadbbaadbf38d402d395bddf782e880820645a509d4c0a9b70b6ec71b00\"],[44539,\"22772472cd2c323fe4010b80b5a99043582dc933584b74e9f21944b570a44abc\"],[5226,\"534498499ca835311b25906daa0f0606dae2e9f9eb46612833b17e6dc09afbe7\"]],\"schema\":1,\"sha256\":\"85592ec891f0b51408128247d9536981d6bf0d0d3df31e59ad2a31bf402abbc5\",\"size\":1000000}"
+  },
+  {
+   "name": "The same bytes, a chunker of 128 KiB",
+   "file": {
+    "seed": "lantern-cdc-1 vector",
+    "size": 1000000
+   },
+   "file_sha256": "85592ec891f0b51408128247d9536981d6bf0d0d3df31e59ad2a31bf402abbc5",
+   "file_size": 1000000,
+   "chunker": {
+    "alg": "lantern-cdc-1",
+    "size": 131072
+   },
+   "cuts": [
+    0,
+    87166,
+    223418,
+    363660,
+    766749,
+    856208,
+    950235
+   ],
+   "chunks": [
+    [
+     87166,
+     "cc2b5c6ea36c83b790b633520e16663eeebe3ae8babf70c24e25e96259296eb8"
+    ],
+    [
+     136252,
+     "c236d967a7efd11e825445de14723f21e20a4ddce4cbd55323a58a91aa7e5d43"
+    ],
+    [
+     140242,
+     "6a33abce89ba33d5a884e99d3bdd9689de0d94c3ee43f3af972034a517dc8bd2"
+    ],
+    [
+     403089,
+     "035de8bca29d47464933790940293b5a1ef5363c2a302329dc3b1cc3a8986cc4"
+    ],
+    [
+     89459,
+     "b12c7f34a31ad19b7072c5c33fb76295788646190472f09c6d342310b2fb2d57"
+    ],
+    [
+     94027,
+     "f9096c065b9438d3a68b4f4788bc067679afeb7b6f9e7f16f22ba615f7c9d8d6"
+    ],
+    [
+     49765,
+     "2d57a3d45f4e1a1557786fafcbfe9f2771a0f12678c6b42877e11341c92ef763"
+    ]
+   ],
+   "index_size": 690,
+   "index_sha256": "841491e1563f8330cb8d88baf353f2e6fd675e3a02e45704368b4c1538071dee",
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":131072},\"chunks\":[[87166,\"cc2b5c6ea36c83b790b633520e16663eeebe3ae8babf70c24e25e96259296eb8\"],[136252,\"c236d967a7efd11e825445de14723f21e20a4ddce4cbd55323a58a91aa7e5d43\"],[140242,\"6a33abce89ba33d5a884e99d3bdd9689de0d94c3ee43f3af972034a517dc8bd2\"],[403089,\"035de8bca29d47464933790940293b5a1ef5363c2a302329dc3b1cc3a8986cc4\"],[89459,\"b12c7f34a31ad19b7072c5c33fb76295788646190472f09c6d342310b2fb2d57\"],[94027,\"f9096c065b9438d3a68b4f4788bc067679afeb7b6f9e7f16f22ba615f7c9d8d6\"],[49765,\"2d57a3d45f4e1a1557786fafcbfe9f2771a0f12678c6b42877e11341c92ef763\"]],\"schema\":1,\"sha256\":\"85592ec891f0b51408128247d9536981d6bf0d0d3df31e59ad2a31bf402abbc5\",\"size\":1000000}"
+  },
+  {
+   "name": "Their newer version: 777 bytes inserted at 300,000, and 10,000 removed at 700,000",
+   "file": {
+    "edit": "the 1,000,000 bytes above; then stream('an insertion', 777) inserted at 300000, and bytes 700000 to 709999 of the original removed"
+   },
+   "file_sha256": "1a66fb379e84e4897657a12f6bea7116b3d712ac31426e9a4182608e3b4876f4",
+   "file_size": 990777,
+   "chunker": {
+    "alg": "lantern-cdc-1",
+    "size": 65536
+   },
+   "cuts": [
+    0,
+    48083,
+    87166,
+    223418,
+    364437,
+    415093,
+    528735,
+    757526,
+    846985,
+    911655,
+    941012,
+    985551
+   ],
+   "chunks": [
+    [
+     48083,
+     "ece35ba27a95d0167eee454f8339e82d1ac226a0111e15bf98cb617cf1fea7ab"
+    ],
+    [
+     39083,
+     "775fb5ffbc7d01fd56b603a9ae8cb4fef7ed3ce8fbc4d0d888ce92248ba9c426"
+    ],
+    [
+     136252,
+     "c236d967a7efd11e825445de14723f21e20a4ddce4cbd55323a58a91aa7e5d43"
+    ],
+    [
+     141019,
+     "b83572610f869ad12053cb6f24b01d41d1e0420cbae272e0ba2504b938205259"
+    ],
+    [
+     50656,
+     "e66db6b7a351a7056a0146a4a43cca3f4199112b87eb115bec0a6e552e32c361"
+    ],
+    [
+     113642,
+     "912d1b8a2ca8cf712e4dd72db9b0e49aef91e733454f3fa8370edbc2c8290003"
+    ],
+    [
+     228791,
+     "08755864c324e6164885760cc9e8c603973e91dfec189c56d2d0af6e09e7d79b"
+    ],
+    [
+     89459,
+     "b12c7f34a31ad19b7072c5c33fb76295788646190472f09c6d342310b2fb2d57"
+    ],
+    [
+     64670,
+     "ae3355a7297d1e86908efc264caf32f5865de21347c88241a070a65649880bea"
+    ],
+    [
+     29357,
+     "fc962aadbbaadbf38d402d395bddf782e880820645a509d4c0a9b70b6ec71b00"
+    ],
+    [
+     44539,
+     "22772472cd2c323fe4010b80b5a99043582dc933584b74e9f21944b570a44abc"
+    ],
+    [
+     5226,
+     "534498499ca835311b25906daa0f0606dae2e9f9eb46612833b17e6dc09afbe7"
+    ]
+   ],
+   "index_size": 1063,
+   "index_sha256": "4a26a645d0a8d53759775948e7137867c83ca823ca6919943c8186c9dd1129ba",
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[[48083,\"ece35ba27a95d0167eee454f8339e82d1ac226a0111e15bf98cb617cf1fea7ab\"],[39083,\"775fb5ffbc7d01fd56b603a9ae8cb4fef7ed3ce8fbc4d0d888ce92248ba9c426\"],[136252,\"c236d967a7efd11e825445de14723f21e20a4ddce4cbd55323a58a91aa7e5d43\"],[141019,\"b83572610f869ad12053cb6f24b01d41d1e0420cbae272e0ba2504b938205259\"],[50656,\"e66db6b7a351a7056a0146a4a43cca3f4199112b87eb115bec0a6e552e32c361\"],[113642,\"912d1b8a2ca8cf712e4dd72db9b0e49aef91e733454f3fa8370edbc2c8290003\"],[228791,\"08755864c324e6164885760cc9e8c603973e91dfec189c56d2d0af6e09e7d79b\"],[89459,\"b12c7f34a31ad19b7072c5c33fb76295788646190472f09c6d342310b2fb2d57\"],[64670,\"ae3355a7297d1e86908efc264caf32f5865de21347c88241a070a65649880bea\"],[29357,\"fc962aadbbaadbf38d402d395bddf782e880820645a509d4c0a9b70b6ec71b00\"],[44539,\"22772472cd2c323fe4010b80b5a99043582dc933584b74e9f21944b570a44abc\"],[5226,\"534498499ca835311b25906daa0f0606dae2e9f9eb46612833b17e6dc09afbe7\"]],\"schema\":1,\"sha256\":\"1a66fb379e84e4897657a12f6bea7116b3d712ac31426e9a4182608e3b4876f4\",\"size\":990777}"
+  },
+  {
+   "name": "A million zero bytes: no cut but at the most, 262,144",
+   "file": {
+    "zeros": 1000000
+   },
+   "file_sha256": "d29751f2649b32ff572b5e0a9f541ea660a50f94ff0beedfb0b692b924cc8025",
+   "file_size": 1000000,
+   "chunker": {
+    "alg": "lantern-cdc-1",
+    "size": 65536
+   },
+   "cuts": [
+    0,
+    262144,
+    524288,
+    786432
+   ],
+   "chunks": [
+    [
+     262144,
+     "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90"
+    ],
+    [
+     262144,
+     "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90"
+    ],
+    [
+     262144,
+     "8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90"
+    ],
+    [
+     213568,
+     "90012b54394952664fead74f58fe03e7b31f0aff00ec03a962eceacbae4d58c7"
+    ]
+   ],
+   "index_size": 465,
+   "index_sha256": "547d480f4b695601413e86fe68ce22b13447e49ee5cd3426e20e2f8fab8467ea",
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[[262144,\"8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90\"],[262144,\"8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90\"],[262144,\"8a39d2abd3999ab73c34db2476849cddf303ce389b35826850f9a700589b4a90\"],[213568,\"90012b54394952664fead74f58fe03e7b31f0aff00ec03a962eceacbae4d58c7\"]],\"schema\":1,\"sha256\":\"d29751f2649b32ff572b5e0a9f541ea660a50f94ff0beedfb0b692b924cc8025\",\"size\":1000000}"
+  }
+ ],
+ "update": {
+  "name": "The newer version from the older one: the chunks found in the older bytes, cut by the newer index's chunker, and the ranges of the newer file to read",
+  "seed": "the 1,000,000 bytes above",
+  "index_sha256": "4a26a645d0a8d53759775948e7137867c83ca823ca6919943c8186c9dd1129ba",
+  "plan": [
+   {
+    "offset": 0,
+    "size": 48083,
+    "sha256": "ece35ba27a95d0167eee454f8339e82d1ac226a0111e15bf98cb617cf1fea7ab",
+    "from": "seed at 0"
+   },
+   {
+    "offset": 48083,
+    "size": 39083,
+    "sha256": "775fb5ffbc7d01fd56b603a9ae8cb4fef7ed3ce8fbc4d0d888ce92248ba9c426",
+    "from": "seed at 48083"
+   },
+   {
+    "offset": 87166,
+    "size": 136252,
+    "sha256": "c236d967a7efd11e825445de14723f21e20a4ddce4cbd55323a58a91aa7e5d43",
+    "from": "seed at 87166"
+   },
+   {
+    "offset": 223418,
+    "size": 141019,
+    "sha256": "b83572610f869ad12053cb6f24b01d41d1e0420cbae272e0ba2504b938205259",
+    "from": "read"
+   },
+   {
+    "offset": 364437,
+    "size": 50656,
+    "sha256": "e66db6b7a351a7056a0146a4a43cca3f4199112b87eb115bec0a6e552e32c361",
+    "from": "seed at 363660"
+   },
+   {
+    "offset": 415093,
+    "size": 113642,
+    "sha256": "912d1b8a2ca8cf712e4dd72db9b0e49aef91e733454f3fa8370edbc2c8290003",
+    "from": "seed at 414316"
+   },
+   {
+    "offset": 528735,
+    "size": 228791,
+    "sha256": "08755864c324e6164885760cc9e8c603973e91dfec189c56d2d0af6e09e7d79b",
+    "from": "read"
+   },
+   {
+    "offset": 757526,
+    "size": 89459,
+    "sha256": "b12c7f34a31ad19b7072c5c33fb76295788646190472f09c6d342310b2fb2d57",
+    "from": "seed at 766749"
+   },
+   {
+    "offset": 846985,
+    "size": 64670,
+    "sha256": "ae3355a7297d1e86908efc264caf32f5865de21347c88241a070a65649880bea",
+    "from": "seed at 856208"
+   },
+   {
+    "offset": 911655,
+    "size": 29357,
+    "sha256": "fc962aadbbaadbf38d402d395bddf782e880820645a509d4c0a9b70b6ec71b00",
+    "from": "seed at 920878"
+   },
+   {
+    "offset": 941012,
+    "size": 44539,
+    "sha256": "22772472cd2c323fe4010b80b5a99043582dc933584b74e9f21944b570a44abc",
+    "from": "seed at 950235"
+   },
+   {
+    "offset": 985551,
+    "size": 5226,
+    "sha256": "534498499ca835311b25906daa0f0606dae2e9f9eb46612833b17e6dc09afbe7",
+    "from": "seed at 994774"
+   }
+  ],
+  "ranges": [
+   "bytes=223418-364436",
+   "bytes=528735-757525"
+  ],
+  "read": 369810
+ },
+ "refused": [
+  {
+   "name": "Its bytes are not those whose SHA-256 the document gives",
+   "file_sha256": "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7",
+   "file_size": 1000,
+   "chunks": {
+    "url": "v1/chunks/sha256/b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7.json",
+    "size": 232,
+    "sha256": "6ccd8d5cdf09912d07f6cecb79bdf5fd04e3258369ab0543e9f574c3a8c4b893"
+   },
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[[1000,\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\"]],\"schema\":1,\"sha256\":\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\",\"size\":1000} ",
+   "usable": false
+  },
+  {
+   "name": "A schema above 1: absent",
+   "file_sha256": "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7",
+   "file_size": 1000,
+   "chunks": {
+    "url": "v1/chunks/sha256/b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7.json",
+    "size": 232,
+    "sha256": "60662fdb3c95d381aac164d61d5333bd4d2acb943286c90b27fbdd1f5df01db4"
+   },
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[[1000,\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\"]],\"schema\":2,\"sha256\":\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\",\"size\":1000}",
+   "usable": false
+  },
+  {
+   "name": "A chunker this client does not know",
+   "file_sha256": "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7",
+   "file_size": 1000,
+   "chunks": {
+    "url": "v1/chunks/sha256/b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7.json",
+    "size": 230,
+    "sha256": "a65c837917155323ad869047e174d88b66d079c3d3daf772b8e41c6374dd5036"
+   },
+   "index": "{\"chunker\":{\"alg\":\"x-other-cdc\",\"size\":65536},\"chunks\":[[1000,\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\"]],\"schema\":1,\"sha256\":\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\",\"size\":1000}",
+   "usable": false
+  },
+  {
+   "name": "A chunker's size that is not one of lantern-cdc-1's",
+   "file_sha256": "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7",
+   "file_size": 1000,
+   "chunks": {
+    "url": "v1/chunks/sha256/b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7.json",
+    "size": 232,
+    "sha256": "5a9b9c8c5b5cac03fa2b8fd0474aab8147a063dcbece2371f21468e1d0e3477a"
+   },
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65535},\"chunks\":[[1000,\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\"]],\"schema\":1,\"sha256\":\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\",\"size\":1000}",
+   "usable": false
+  },
+  {
+   "name": "The index of another file",
+   "file_sha256": "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7",
+   "file_size": 1000,
+   "chunks": {
+    "url": "v1/chunks/sha256/b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7.json",
+    "size": 232,
+    "sha256": "a47a02a91aafdb02dcff276c1314b1a5b5a9aa0d50571b2f81b7f4cf5d123f5e"
+   },
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[[1000,\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\"]],\"schema\":1,\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"size\":1000}",
+   "usable": false
+  },
+  {
+   "name": "Chunks that add up to more than the file",
+   "file_sha256": "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7",
+   "file_size": 1000,
+   "chunks": {
+    "url": "v1/chunks/sha256/b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7.json",
+    "size": 306,
+    "sha256": "999a1a66084a9451252032b0aea641e884c645be2085b882361e4883542cd5e1"
+   },
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[[1000,\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\"],[1000,\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\"]],\"schema\":1,\"sha256\":\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\",\"size\":1000}",
+   "usable": false
+  },
+  {
+   "name": "A chunk of 0 bytes",
+   "file_sha256": "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7",
+   "file_size": 1000,
+   "chunks": {
+    "url": "v1/chunks/sha256/b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7.json",
+    "size": 303,
+    "sha256": "8c96539642b084b2d0ad3431041cb267d376faec071a8b9bdda008039ea496b3"
+   },
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[[0,\"0000000000000000000000000000000000000000000000000000000000000000\"],[1000,\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\"]],\"schema\":1,\"sha256\":\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\",\"size\":1000}",
+   "usable": false
+  },
+  {
+   "name": "A chunk above the chunker's most (4 times its size)",
+   "file_sha256": "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7",
+   "file_size": 1000,
+   "chunks": {
+    "url": "v1/chunks/sha256/b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7.json",
+    "size": 236,
+    "sha256": "530842c06f0266b9b6ef6b9d100a634defb40e4afef26393f005e42154714586"
+   },
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[[262145,\"0000000000000000000000000000000000000000000000000000000000000000\"]],\"schema\":1,\"sha256\":\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\",\"size\":262145}",
+   "usable": false
+  },
+  {
+   "name": "A chunk's SHA-256 in upper case",
+   "file_sha256": "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7",
+   "file_size": 1000,
+   "chunks": {
+    "url": "v1/chunks/sha256/b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7.json",
+    "size": 232,
+    "sha256": "7084adee46fd52cde8bda815de42112f8f34973f205ae08366cd794c0504a275"
+   },
+   "index": "{\"chunker\":{\"alg\":\"lantern-cdc-1\",\"size\":65536},\"chunks\":[[1000,\"B5CA432F78AA497417836CB44D9BDC03D4ECFF920E68A86138E9A353A75D99B7\"]],\"schema\":1,\"sha256\":\"b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7\",\"size\":1000}",
+   "usable": false
+  }
+ ]
+}

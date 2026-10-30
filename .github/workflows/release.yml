@@ -1,11 +1,11 @@
 # A release of the specification (SPEC.md § 3.6), on a tag spec-v<version>
-# (spec-v0.6) that names the version SPEC.md gives: the checks first, then
+# (spec-v0.7) that names the version SPEC.md gives: the checks first, then
 # tools/release.py writes SPEC.md, openapi.yaml, the zips of the schemas,
 # examples, test vectors and conformance suite, one zip of them all and
 # SHA256SUMS, reproducibly (dated by the tagged commit); GitHub attests the
 # provenance of each (SLSA, Sigstore), and the release carries them, a
 # prerelease while the text is a draft. To check one:
-#   gh attestation verify lantern-0.6.zip --repo JigSawFr/lantern
+#   gh attestation verify lantern-0.7.zip --repo JigSawFr/lantern
 # The maintainer makes the tag; nothing here makes one.
 name: release
 

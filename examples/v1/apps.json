@@ -39,7 +39,12 @@
       "format": "nsz",
       "sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
       "added": "2026-10-28T19:02:11Z",
-      "file": "/api/lantern/v1/files/f_Zk81Qp"
+      "file": "/api/lantern/v1/files/f_Zk81Qp",
+      "chunks": {
+        "url": "/api/lantern/v1/chunks/sha256/85592ec891f0b51408128247d9536981d6bf0d0d3df31e59ad2a31bf402abbc5",
+        "size": 1064,
+        "sha256": "cde75915c26f050a710ff6c0b904eadb91d8f064a1ff475621ee3b34a6be25a5"
+      }
     },
     {
       "id": "a_Lw4Tq8",

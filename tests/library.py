@@ -15,9 +15,11 @@ import hashlib
 import io
 import json
 import os
+import random
 import struct
 import sys
 import zipfile
+import zlib
 from pathlib import Path
 from urllib.parse import quote
 
@@ -46,6 +48,7 @@ FILES = [
 ]
 META = {"schema": 1, "apps": [
     {"file": "Frostline Tales [0100ABCD00010000][v0].nsp", "release": "2025-03-14",
+     "icon": "media/frostline-icon.png",       # an image of the folder, served on the server's origin (§ 7.1)
      "publisher": "Fjord Works", "developer": "Fjord Works",
      "genres": ["adventure", "puzzle", "dating-sim"],     # not a genre: dropped
      "tags": ["co-op", "winter"], "players": {"min": 1, "max": 4, "online": True, "online_max": 8},
@@ -332,6 +335,30 @@ CHEATS = {
 }
 
 
+# Two versions of one update whose bytes are mostly the same (SPEC.md § 22): the newer one is the older one with
+# a few kilobytes changed and inserted, so that the server cuts both into chunks and most of them are shared.
+DELTA_OLD = "Frostline Tales [0100ABCD00010800][v65536].nsz"
+DELTA_NEW = "Frostline Tales [0100ABCD00010800][v196608].nsz"
+DELTA_SIZE = 400000
+
+
+def delta_pair():
+    """(older, newer): the bytes of the two versions, the same at every run (the server cuts them once a process)."""
+    rng = random.Random(22)
+    old = rng.randbytes(DELTA_SIZE)
+    new = old[:150000] + rng.randbytes(2000) + old[150000:260000] + rng.randbytes(1000) + old[261000:]
+    return old, new
+
+
+def png(width, height, rgb=(0x2b, 0x3a, 0x67)):
+    """A PNG of one colour: a title's icon (SPEC.md § 7.1)."""
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    rows = b"".join(b"\0" + bytes(rgb) * width for _ in range(height))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
 # With large: a game of 16 MiB besides, whose download holds a peer's slot long enough for the suite to see
 # its slots fill (SPEC.md § 19.4).
 LARGE = ("Lumen Depths [0100D1D200070000][v0].nsp", 16 << 20)
@@ -347,6 +374,11 @@ def make(root, large=False, mirror=None):
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(os.urandom(size))
+    old, new = delta_pair()
+    (root / DELTA_OLD).write_bytes(old)
+    (root / DELTA_NEW).write_bytes(new)
+    (root / "media").mkdir(exist_ok=True)
+    (root / "media" / "frostline-icon.png").write_bytes(png(64, 64))
     for name, data in {**HOMEBREW, **{k: v.encode() for k, v in CHEATS.items()}}.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)

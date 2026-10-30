@@ -104,6 +104,10 @@ class StaticChecks:
                    self.s_signatures)
         self.check("static.limits", "13", "Every document within § 13's limits: depth, strings, items",
                    self.s_limits)
+        self.check("static.chunks", "22.1", "Chunk indexes at v1/chunks/sha256/<hex>.json: of their file, in "
+                   "canonical JSON, cut by lantern-cdc-1", self.s_chunks)
+        self.check("static.cors", "21.3", "Over HTTP: Access-Control-Allow-Origin for a page of any origin",
+                   self.s_cors, level="should")
         return self.summary_static()
 
     def summary_static(self):
@@ -234,12 +238,21 @@ class StaticChecks:
         for full in self.static_full:
             for x in [full["package"], *full.get("packages", [])]:
                 out.append((x["file"], x["size"], x["sha256"], f"homebrew {full['platform']}/{full['id']}"))
+        for (family, _), items in getattr(self, "static_items", {}).items():
+            if family == "titles":      # the images of the library, files by their SHA-256 like the others
+                for t in items:
+                    for img in [t.get("icon"), t.get("banner"), *t.get("screenshots", [])]:
+                        if isinstance(img, dict) and not img.get("external") and isinstance(img.get("sha256"), str):
+                            if str(img.get("url", "")).startswith("v1/blobs/"):
+                                out.append((img["url"], None, img["sha256"], f"image of {t.get('title_id')}"))
         return out
 
     def s_paths(self):
         bad = [f"{where}: {path}" for path, _, _, where in self.static_files() if not RELATIVE.match(path)]
         for (family, _), items in getattr(self, "static_items", {}).items():
             for i in items:
+                if isinstance(i.get("chunks"), dict) and not RELATIVE.match(str(i["chunks"].get("url"))):
+                    bad.append(f"{family}: chunks {i['chunks'].get('url')}")
                 for img in [i.get("icon"), i.get("banner"), *i.get("screenshots", [])]:
                     if isinstance(img, dict) and not img.get("external") and not RELATIVE.match(str(img.get("url"))):
                         bad.append(f"{family}: image {img.get('url')}")
@@ -253,13 +266,13 @@ class StaticChecks:
         budget, read = self.args.max_download, 0
         for path, size, sha, where in files:
             expect(path == f"v1/blobs/sha256/{sha}", f"{where}: {path}, not v1/blobs/sha256/{sha}")
-            if size > budget:
+            if size is not None and size > budget:
                 continue
-            data = self.read(path, limit=size)
+            data = self.read(path, limit=size if size is not None else min(budget, JSON_LIMIT))
             expect(data is not None, f"{where}: {path} missing")
-            expect(len(data) == size and hashlib.sha256(data).hexdigest() == sha, f"{where}: {path} is not of its "
-                   "size and SHA-256")
-            budget -= size
+            expect((size is None or len(data) == size) and hashlib.sha256(data).hexdigest() == sha,
+                   f"{where}: {path} is not of its size and SHA-256")
+            budget -= len(data)
             read += 1
         return f"{read} of {len(files)} file(s) read and checked"
 

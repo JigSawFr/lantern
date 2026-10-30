@@ -20,14 +20,18 @@ administration API, invitations and their limits, and rating caps hiding
 titles everywhere; then what 0.5 adds (checks_v05.py): event streams and
 long polling, grants and mirrors (and a peer, with --peer), sync, encrypted
 backups, deleting an account, DNS-SD (--dns-sd), and the rate limits of
-pairing, last. With --static, it checks a static library instead
+pairing, last; what 0.6 settles (checks_v06.py); and what 0.7 adds
+(checks_v07.py): differential updates (chunk indexes, their chunks, and a
+newer version put together from an older one), the answers to a browser's
+page of the origin --origin names (preflights, the headers of every
+answer), the web platform, and a pairing's poll after a slow_down. With --static, it checks a static library instead
 (static_check.py). Each check prints PASS, FAIL, WARN (a SHOULD not met) or
 SKIP, with the SPEC.md section it comes from and the requirement ids it
 covers (SPEC.md § 3.5); the exit code is 1 when one fails. At the end it
 prints the conformance levels the server reaches (SPEC.md § 17): `Lantern
 Core`, then `+titles`, `+homebrew`, `+saves`, `+cheats`, `+requests`,
-`+admin`, `+events`, `+peers`, `+sync` and `+encrypted_saves`; or `Lantern
-Static` for a static library.
+`+admin`, `+events`, `+peers`, `+sync`, `+encrypted_saves` and `+deltas`;
+or `Lantern Static` for a static library.
 
 The token is one a device got by pairing (SPEC.md § 5.2), and --key the file
 of the device's key (its 32-byte Ed25519 seed, base64) when the token is
@@ -85,6 +89,7 @@ from urllib.parse import quote, unquote, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import checks_v05
 import checks_v06
+import checks_v07
 import lantern_client as client
 import static_check
 
@@ -92,12 +97,16 @@ try:                    # Python 3.14 and later: zstd, to read what a server com
     from compression import zstd
 except ImportError:
     zstd = None
+# What the suite asks for when it reads the bodies: only what this Python decodes (zstd from 3.14, never br), so
+# that every document stays checked; the SHOULD of zstd or br (SPEC.md § 2.1) is asked of a HEAD, whose headers
+# alone say what the server would send.
+READABLE = "zstd, gzip" if zstd is not None else "gzip"
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
-            "signatures", "admin", "events", "peers", "sync", "encrypted_saves")
+            "signatures", "admin", "events", "peers", "sync", "encrypted_saves", "deltas")
 LEVELS = ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
-          "encrypted_saves")    # SPEC.md § 17; and Lantern Static, for a static library
+          "encrypted_saves", "deltas")    # SPEC.md § 17; and Lantern Static, for a static library
 LEVEL_NAMES = {"core": "Lantern Core", **{x: "+" + x for x in LEVELS[1:]}}
 BUDGET = 256 << 10      # a cold start's JSON, as it travels (SPEC.md Annex B.8)
 JSON_LIMIT = 32 << 20
@@ -223,6 +232,12 @@ REQS = {
     "admin.requests": ["L-11-3", "L-11-4", "L-11-5", "L-11-6"], "auth.tokens": ["L-5.1-2"],
     "titles.images": ["L-7.1-2"], "discovery.rate": ["L-4.1-3"], "peers.mirrors-fetch": ["L-19.2-2"],
     "peer.slots": ["L-19.4-4"],
+    # Draft 0.7 (checks_v07.py).
+    "deltas.index": ["L-22.1-1", "L-13-2"], "deltas.cut": ["L-22.1-1", "L-6.6-1"], "deltas.route": ["L-22.1-2"],
+    "deltas.update": ["L-22.1-1"],
+    "cors.preflight": ["L-2.5-3"], "cors.max-age": ["L-2.5-4"], "cors.responses": ["L-2.5-2"],
+    "cors.other-origin": ["L-2.5-2"], "cors.credentials": ["L-2.5-5"], "platforms.web": ["L-A.7-1"],
+    "pairing.after-slow-down": ["L-5.2-15"], "static.chunks": ["L-22.1-1", "L-21.1-1"], "static.cors": ["L-21.3-4"],
 }
 # Rules only a client keeps: the suite cannot see them (SPEC.md § 17).
 CLIENT_RULES = [
@@ -274,6 +289,14 @@ CLIENT_RULES = [
     ("20.1", ["L-20.1-1", "L-20.1-2", "L-20.1-3"], "Sync only with the user's consent, installed games by name"),
     ("20.3", ["L-20.3-2"], "Another generation: nothing written back, sync off, the user asked again"),
     ("21.3", ["L-21.3-1", "L-21.3-2"], "A static library's files read whatever their type, checked; missing computed"),
+    ("21.3", ["L-21.3-3"], "An address: a server's handshake at /.well-known/lantern first, then lantern.json"),
+    ("22.3", ["L-22.3-1"], "A chunk index checked (its bytes, its file, its chunks) before it is used"),
+    ("22.3", ["L-22.3-2", "L-22.3-3"], "Each chunk, then the whole file, checked; nothing written beyond its size"),
+    ("22.3", ["L-22.3-4"], "The whole file read when an index, a chunk or a source fails"),
+    ("A.7", ["L-A.7-2", "L-A.7-3"], "A browser client: over HTTPS, to servers its browser trusts, no warning accepted"),
+    ("A.7", ["L-A.7-4"], "A browser client's key: WebCrypto, not extractable, in IndexedDB; no cookie"),
+    ("A.7", ["L-A.7-5", "L-A.7-6"], "A static library read without preflights; a download checked before it is "
+     "handed over"),
 ]
 # A server's rules the suite cannot see from outside, and why.
 UNSEEN = {
@@ -286,6 +309,7 @@ UNSEEN = {
     "L-18.2-2": "a server stops when its owner says, not the suite",
     "L-19.4-3": "whether a peer's user allowed it, and its networks, are the device's",
     "L-20.5-2": "thirty days are longer than a run",
+    "L-2.5-1": "which origins a server allows is its owner's choice",
 }
 
 
@@ -437,7 +461,7 @@ class Client:
         return res
 
 
-class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks):
+class Suite(checks_v05.NewFamilies, checks_v06.Sweep, checks_v07.Seven, static_check.StaticChecks):
     version = VERSION
 
     def __init__(self, args):
@@ -666,6 +690,15 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
                        self.c_compression_files)
             self.check("budget.cold-start", "B.8", f"A cold start: 3 requests, {BUDGET >> 10} KiB of JSON at most",
                        self.c_budget, level="should")
+        self.check("platforms.web", "A.7", "Nothing of platform web, which has nothing to install", self.c_platforms_web)
+        self.check("cors.preflight", "2.5", "A preflight of the allowed origin: 204 without a token, the method and "
+                   "the headers asked, named", self.c_cors_preflight)
+        self.check("cors.max-age", "2.5", "A preflight's answer kept 600 seconds at least", self.c_cors_max_age,
+                   level="should")
+        self.check("cors.responses", "2.5", "Answers to the allowed origin, errors included: Allow-Origin, the "
+                   "headers exposed", self.c_cors_responses)
+        self.check("cors.other-origin", "2.5", "An origin not allowed: no Access-Control-Allow-Origin of its own",
+                   self.c_cors_other_origin)
         if mine["changes"]:
             self.check("changes.token", "6.4", "Changes: no apps and a token, then from it", self.c_changes)
             self.check("changes.bad-token", "6.4", "An unknown since token gives 400 or 410", self.c_bad_since)
@@ -802,6 +835,16 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
                        self.c_peer_discovery)
             self.check("peer.slots", "19.4", "The peer's slots: its downloads at once, then 429", self.c_peer_slots)
             self.check("peer.rate", "19.4", "The peer limits requests: 429 with Retry-After", self.c_peer_rate)
+        self.level = "deltas"
+        if mine["deltas"]:
+            self.check("deltas.index", "22.1", "Chunk indexes: their bytes as chunks gives, of their file, in "
+                       "canonical JSON, a client can use them", self.c_deltas_index)
+            self.check("deltas.cut", "22.2", "Files cut again by lantern-cdc-1: the same index; chunks read as "
+                       "ranges", self.c_deltas_cut)
+            self.check("deltas.route", "22.1", "<base>/v1/chunks/sha256/{hex}: the index of a file; an unknown one "
+                       "404", self.c_deltas_route)
+            self.check("deltas.update", "22.3", "A newer version put together from an older one, chunk by chunk, "
+                       "then checked whole", self.c_deltas_update)
         self.level = "sync"
         if mine["sync"]:
             self.check("sync.overview", "20.3", "GET <base>/v1/sync: generation, collections, the device's id",
@@ -838,6 +881,8 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
         self.check("discovery.dns-sd", "4.1", "DNS-SD: _lantern._tcp, its uid, path, versions and port",
                    self.c_dns_sd, level="should")
         if self.features(self.hello_anon)["pairing"]:
+            self.check("pairing.after-slow-down", "5.2", "A poll after Retry-After is answered: interval counts from "
+                       "the last poll answered", self.c_pairing_after_slow_down)
             self.check("invitations.rate-limit", "5.5", "Wrong invitation codes from one address: 429 slow_down",
                        self.c_invitation_rate)
             self.check("pairing.rate-limit", "5.2", "Pairing requests from one address: 429 slow_down",
@@ -857,6 +902,8 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
         self.check("documents.times", "2.3", "Every time in UTC with Z, every date YYYY-MM-DD", self.g_times)
         self.check("documents.nfc", "2.3", "Text in Normalization Form C", self.g_nfc, level="should")
         self.check("routes.no-redirect", "2.4", "No route answers with a redirect", self.g_no_redirect)
+        self.check("cors.credentials", "2.5", "No Access-Control-Allow-Credentials, no cookie set",
+                   self.g_cors_credentials)
         self.check("auth.tokens", "5.1", "Tokens of 128 bits at least, each its own", self.g_tokens)
         self.check("deprecation.headers", "3.4", "Deprecation and Sunset, where sent, are of their forms",
                    self.g_deprecation)
@@ -1029,6 +1076,8 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
         self.expect_problem(r, [429], {"slow_down"})
         if not r.header("Retry-After"):
             raise Warn(f"{r}: no Retry-After")
+        if r.header("Retry-After").strip().isdigit():
+            self.slowed = (time.monotonic(), int(r.header("Retry-After")))
 
     def c_pairing_unknown(self):
         r = self.http.request("GET", self.api("/v1/pairing/p_lantern-conformance-" + secrets.token_hex(16)),
@@ -1049,6 +1098,8 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
     def c_feature(self, family, auth, level):
         if family == "events":
             return self.c_feature_events(auth, level)
+        if family == "deltas":
+            return self.c_feature_deltas(auth, level)
         if family == "peers" and level and not self.sample:
             raise Skip("no app to ask a grant for")
         r, schema = self.probe(family, auth)
@@ -1062,7 +1113,7 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
         anon = self.features(self.hello_anon)
         problems = []
         for family in FAMILIES:
-            if family not in PROBES and family != "events":
+            if family not in PROBES and family not in ("events", "deltas"):
                 continue
             try:
                 self.c_feature(family, "none", anon[family])
@@ -1962,6 +2013,9 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
                 expect(at == offset + len(part), f"{head}: Upload-Offset {at}, expected {offset + len(part)}")
                 expect(head.header("Upload-Length") == str(len(data)),
                        f"{head}: Upload-Length {head.header('Upload-Length')}, expected {len(data)}")
+                expect(head.header("Lantern-Chunk-Size") == str(doc["chunk_size"]),
+                       f"{head}: Lantern-Chunk-Size {head.header('Lantern-Chunk-Size')}, expected the upload's "
+                       f"chunk_size, {doc['chunk_size']} (§ 9.3)")
                 if sent == 1:
                     wrong = self.patch(upload, 0, part)
                     self.expect_problem(wrong, [409], {"conflict"})
@@ -2296,14 +2350,17 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
         self.expect_problem(r, [400, 413], {"bad_request", "too_large"})
 
     def c_compression_json(self):
-        r = self.http.request("GET", self.api("/v1/apps?page_size=50"), headers={"Accept-Encoding": "zstd, br, gzip"})
+        # The headers of a HEAD say which coding the server would choose; the body read is of a coding this Python
+        # decodes, so that it is checked as every other (READABLE).
+        head = self.http.request("HEAD", self.api("/v1/apps?page_size=50"), headers={"Accept-Encoding": "zstd, br, gzip"})
+        r = self.http.request("GET", self.api("/v1/apps?page_size=50"), headers={"Accept-Encoding": READABLE})
         expect(r.status == 200, f"{r}, expected 200" + problem_detail(r))
         self.compressed = r
-        if r.encoding not in ("zstd", "br", "gzip"):
-            raise Warn(f"{r}: sent as it is, without zstd, br or gzip")
-        if r.encoding == "gzip":
-            raise Warn(f"{r}: gzip, but neither zstd nor br (§ 2.1)")
-        return f"{r.encoding}: {r.wire} bytes for {len(r.body)}"
+        if head.encoding not in ("zstd", "br", "gzip"):
+            raise Warn(f"{head}: sent as it is, without zstd, br or gzip")
+        if head.encoding == "gzip":
+            raise Warn(f"{head}: gzip, but neither zstd nor br (§ 2.1)")
+        return f"{head.encoding}; read as {r.encoding or 'it is'}: {r.wire} bytes for {len(r.body)}"
 
     def c_compression_etag(self):
         r = getattr(self, "compressed", None)
@@ -2321,7 +2378,7 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
         if not apps or apps[0]["size"] > self.args.max_download:
             raise Skip("no file to read within --max-download")
         app = apps[0]
-        r = self.http.request("GET", self.file_path(app["file"]), headers={"Accept-Encoding": "zstd, br, gzip"},
+        r = self.http.request("GET", self.file_path(app["file"]), headers={"Accept-Encoding": READABLE},
                               limit=app["size"], raw=True)
         expect(r.status == 200, f"{r}, expected 200")
         expect(r.encoding in ("", "identity"), f"{r}: a file sent with Content-Encoding {r.encoding}")
@@ -2706,7 +2763,7 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
 
     def json_documents(self):
         for r in self.http.log:
-            if r.is_json and r.body and r.method != "HEAD" and not r.raw:
+            if r.is_json and r.body and r.method != "HEAD" and not r.raw and not r.unreadable:
                 try:
                     yield r, r.json()
                 except Fail:
@@ -2782,6 +2839,7 @@ def bind_checks():
     static_check.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Client=Client, client=client,
                       limit_problems=lambda doc: limit_problems(doc))
     checks_v06.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
+    checks_v07.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
 
 
 bind_checks()
@@ -2895,6 +2953,8 @@ def limit_problems(doc):
                     out.append(f"{len(value)} items on a page")
                 if key == "manifest" and len(value) > client.MANIFEST_LIMIT:
                     out.append(f"{len(value)} files in a manifest")
+                if key == "chunks" and len(value) > client.CHUNKS_LIMIT:
+                    out.append(f"{len(value)} chunks in an index")
                 for v in value:
                     walk(v, depth + 1, key)
             else:
@@ -2937,6 +2997,8 @@ def main(argv=None, out=None):
                    "http://192.168.1.20:47116/lantern")
     p.add_argument("--fetch-mirrors", action="store_true", help="also read the bytes of every mirror the library "
                    "names, without any credential of the server, and check their size and SHA-256 (SPEC.md § 19.2)")
+    p.add_argument("--origin", metavar="ORIGIN", help="also check the answers to a page of this origin, preflights "
+                   "included (SPEC.md § 2.5), as the server's owner allowed it: https://app.example.org")
     p.add_argument("--peer-discover-port", type=int, help="the UDP port the peer answers discovery on (default: "
                    "--discover-port's)")
     p.add_argument("--dns-sd", metavar="ADDRESS[:PORT]", help="also ask DNS-SD for _lantern._tcp, unicast, at this "
