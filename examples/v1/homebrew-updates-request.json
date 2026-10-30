@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "installed": [
+    {
+      "id": "org.example.frostline",
+      "build": 10300
+    },
+    {
+      "id": "org.example.paperlamp",
+      "build": 902
+    }
+  ]
+}

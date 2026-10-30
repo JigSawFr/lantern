@@ -10,6 +10,10 @@
   "versions": [
     1
   ],
+  "platforms": [
+    "switch",
+    "android"
+  ],
   "motd": "New this week: two co-op games.",
   "account": {
     "name": "lea",
@@ -20,6 +24,9 @@
     ]
   },
   "limits": {
-    "page_size": 500
+    "page_size": 500,
+    "save_body": 8388608,
+    "save_size": 1073741824,
+    "saves_kept_per_title": 10
   }
 }

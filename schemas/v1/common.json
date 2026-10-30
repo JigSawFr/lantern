@@ -8,10 +8,30 @@
       "description": "The document's schema (SPEC.md § 3.2). A reader treats a higher one as absent.",
       "const": 1
     },
+    "platform": {
+      "description": "A platform's name (SPEC.md § 4.3): Atlas's where it has one (switch, steam, gog, xbox), and 3ds, vita, ps4, android, ios, windows, macos, linux, web.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+    },
+    "id": {
+      "description": "A title or app id (SPEC.md § 6.1): opaque, of the form its platform's profile gives (Annex A), compared exactly.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,128}$"
+    },
     "id16": {
-      "description": "A title or app id: 16 upper-case hex digits.",
+      "description": "A Switch title or app id: 16 upper-case hex digits (SPEC.md Annex A.1).",
       "type": "string",
       "pattern": "^[0-9A-F]{16}$"
+    },
+    "app_type": {
+      "description": "An app's type, from its profile's list (SPEC.md § 6.1).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,31}$"
+    },
+    "format": {
+      "description": "A package format, from its profile's list (SPEC.md § 6.1).",
+      "type": "string",
+      "pattern": "^[a-z0-9]{1,16}$"
     },
     "sha256": {
       "description": "A SHA-256, lower-case hex.",
@@ -25,19 +45,24 @@
       "maxLength": 512
     },
     "text": {
-      "description": "A string field (SPEC.md § 11: 4 KiB at most).",
+      "description": "A string field (SPEC.md § 13: 4 KiB at most).",
       "type": "string",
       "maxLength": 4096
     },
     "name": {
-      "description": "A name (SPEC.md § 11: 512 bytes at most).",
+      "description": "A name (SPEC.md § 13: 512 bytes at most).",
       "type": "string",
       "maxLength": 512
     },
     "note": {
-      "description": "A note (SPEC.md § 11: 120 bytes at most).",
+      "description": "A note (SPEC.md § 13: 120 bytes at most).",
       "type": "string",
       "maxLength": 120
+    },
+    "profile": {
+      "description": "The name a user gave a profile (SPEC.md § 9.1: 64 bytes at most); never a hardware or account identifier.",
+      "type": "string",
+      "maxLength": 64
     },
     "url": {
       "description": "An absolute URL, or a path on the server's origin.",
@@ -49,6 +74,11 @@
       "description": "A UTC time, RFC 3339.",
       "type": "string",
       "format": "date-time"
+    },
+    "language": {
+      "description": "A language tag (BCP 47).",
+      "type": "string",
+      "maxLength": 35
     },
     "uint64": {
       "type": "integer",
@@ -70,78 +100,113 @@
         "admin"
       ]
     },
-    "app_type": {
-      "enum": [
-        "base",
-        "update",
-        "dlc"
-      ]
-    },
     "app": {
-      "description": "One installable package (SPEC.md § 6.1).",
+      "description": "One installable package (SPEC.md § 6.1). On a Switch, its ids, type and format follow Annex A.1.",
       "type": "object",
       "properties": {
         "id": {
-          "$ref": "#/$defs/opaque"
+          "$ref": "common.json#/$defs/opaque"
+        },
+        "platform": {
+          "$ref": "common.json#/$defs/platform"
         },
         "title_id": {
-          "$ref": "#/$defs/id16"
+          "$ref": "common.json#/$defs/id"
         },
         "app_id": {
-          "$ref": "#/$defs/id16"
+          "$ref": "common.json#/$defs/id"
         },
         "type": {
-          "$ref": "#/$defs/app_type"
+          "$ref": "common.json#/$defs/app_type"
         },
-        "version": {
-          "$ref": "#/$defs/uint32"
+        "version_code": {
+          "$ref": "common.json#/$defs/uint64",
+          "description": "An integer, as the profile derives it: clients compare it, never version_name."
         },
-        "display_version": {
-          "$ref": "#/$defs/name"
+        "version_name": {
+          "$ref": "common.json#/$defs/name"
         },
         "name": {
-          "$ref": "#/$defs/name"
+          "$ref": "common.json#/$defs/name"
         },
         "size": {
-          "$ref": "#/$defs/uint64"
+          "$ref": "common.json#/$defs/uint64"
         },
         "format": {
-          "enum": [
-            "nsp",
-            "nsz",
-            "xci",
-            "xcz"
-          ]
+          "$ref": "common.json#/$defs/format"
         },
         "sha256": {
-          "$ref": "#/$defs/sha256",
+          "$ref": "common.json#/$defs/sha256",
           "description": "Of the file as served (SPEC.md § 6.1). Required: a server hashes a file before it lists it."
         },
         "added": {
-          "$ref": "#/$defs/time"
+          "$ref": "common.json#/$defs/time"
         },
         "file": {
-          "$ref": "#/$defs/url"
+          "$ref": "common.json#/$defs/url"
         }
       },
       "required": [
         "id",
+        "platform",
         "title_id",
         "app_id",
         "type",
-        "version",
+        "version_code",
         "size",
         "format",
         "sha256",
         "file"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "switch"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
+          "then": {
+            "properties": {
+              "title_id": {
+                "$ref": "common.json#/$defs/id16"
+              },
+              "app_id": {
+                "$ref": "common.json#/$defs/id16"
+              },
+              "type": {
+                "enum": [
+                  "base",
+                  "update",
+                  "dlc"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "nsp",
+                  "nsz",
+                  "xci",
+                  "xcz"
+                ]
+              },
+              "version_code": {
+                "$ref": "common.json#/$defs/uint32"
+              }
+            }
+          }
+        }
       ]
     },
     "image": {
-      "description": "An image (SPEC.md § 6.6). external: elsewhere than the server's origin, never sent credentials.",
+      "description": "An image (SPEC.md § 7.1). external: elsewhere than the server's origin, never sent credentials.",
       "type": "object",
       "properties": {
         "url": {
-          "$ref": "#/$defs/url"
+          "$ref": "common.json#/$defs/url"
         },
         "width": {
           "type": "integer",
@@ -152,7 +217,7 @@
           "minimum": 1
         },
         "sha256": {
-          "$ref": "#/$defs/sha256"
+          "$ref": "common.json#/$defs/sha256"
         },
         "external": {
           "type": "boolean"
@@ -167,22 +232,22 @@
       "type": "object",
       "properties": {
         "schema": {
-          "$ref": "#/$defs/schema1"
+          "$ref": "common.json#/$defs/schema1"
         },
         "items": {
           "type": "array",
           "maxItems": 1000,
           "items": {
-            "$ref": "#/$defs/app"
+            "$ref": "common.json#/$defs/app"
           }
         },
         "total": {
-          "$ref": "#/$defs/uint64"
+          "$ref": "common.json#/$defs/uint64"
         },
         "next": {
           "oneOf": [
             {
-              "$ref": "#/$defs/opaque"
+              "$ref": "common.json#/$defs/opaque"
             },
             {
               "type": "null"
@@ -194,6 +259,523 @@
         "schema",
         "items",
         "next"
+      ]
+    },
+    "genre": {
+      "description": "A genre, from SPEC.md § 7.1's fixed list. A reader shows one it does not know as other; the schema lists today's.",
+      "enum": [
+        "action",
+        "adventure",
+        "rpg",
+        "strategy",
+        "simulation",
+        "sports",
+        "racing",
+        "puzzle",
+        "platformer",
+        "shooter",
+        "fighting",
+        "music",
+        "party",
+        "education",
+        "other"
+      ]
+    },
+    "title": {
+      "description": "What the server knows about a game on one platform (SPEC.md § 7.1).",
+      "type": "object",
+      "properties": {
+        "platform": {
+          "$ref": "common.json#/$defs/platform"
+        },
+        "title_id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "language": {
+          "$ref": "common.json#/$defs/language"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/name"
+        },
+        "publisher": {
+          "$ref": "common.json#/$defs/name"
+        },
+        "developer": {
+          "$ref": "common.json#/$defs/name"
+        },
+        "release": {
+          "type": "string",
+          "format": "date"
+        },
+        "updated": {
+          "$ref": "common.json#/$defs/time"
+        },
+        "genres": {
+          "type": "array",
+          "items": {
+            "$ref": "common.json#/$defs/genre"
+          },
+          "uniqueItems": true
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "players": {
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "online": {
+              "type": "boolean"
+            },
+            "online_max": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "ratings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9-]{1,15}$"
+              },
+              "rating": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 16
+              }
+            },
+            "required": [
+              "system",
+              "rating"
+            ]
+          }
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "$ref": "common.json#/$defs/language"
+          }
+        },
+        "summary": {
+          "$ref": "common.json#/$defs/text"
+        },
+        "description": {
+          "$ref": "common.json#/$defs/text"
+        },
+        "icon": {
+          "$ref": "common.json#/$defs/image"
+        },
+        "banner": {
+          "$ref": "common.json#/$defs/image"
+        },
+        "screenshots": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "common.json#/$defs/image"
+          }
+        },
+        "video": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "$ref": "common.json#/$defs/url"
+            },
+            "external": {
+              "const": true
+            }
+          },
+          "required": [
+            "url",
+            "external"
+          ]
+        }
+      },
+      "required": [
+        "platform",
+        "title_id",
+        "name"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "switch"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
+          "then": {
+            "properties": {
+              "title_id": {
+                "$ref": "common.json#/$defs/id16"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "device_path": {
+      "description": "A path on the device (SPEC.md § 8.2): absolute, parts separated by /, none empty, . or ..; no backslash, colon, quote or control character; a part 255 bytes at most.",
+      "type": "string",
+      "maxLength": 1024,
+      "pattern": "^(?!.*/\\.\\.?(?:/|$))(?:/[^/\\\\:\"\\u0000-\\u001f\\u007f]{1,255})+$"
+    },
+    "manifest_entry": {
+      "description": "A file a homebrew installs (SPEC.md § 8.2).",
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "common.json#/$defs/device_path"
+        },
+        "size": {
+          "$ref": "common.json#/$defs/uint64"
+        },
+        "sha256": {
+          "$ref": "common.json#/$defs/sha256"
+        }
+      },
+      "required": [
+        "path",
+        "size",
+        "sha256"
+      ]
+    },
+    "homebrew_id": {
+      "description": "A homebrew's id (SPEC.md § 8.1): reverse-DNS, lower-case, stable.",
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_-]*(?:\\.[a-z0-9][a-z0-9_-]*)+$"
+    },
+    "base64": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+    },
+    "homebrew": {
+      "description": "A homebrew (SPEC.md § 8.1). A listing leaves package.manifest out (§ 8.2).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/homebrew_id"
+        },
+        "platform": {
+          "$ref": "common.json#/$defs/platform"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/name"
+        },
+        "author": {
+          "$ref": "common.json#/$defs/name"
+        },
+        "category": {
+          "enum": [
+            "game",
+            "emulator",
+            "tool",
+            "media",
+            "system",
+            "other"
+          ]
+        },
+        "version": {
+          "$ref": "common.json#/$defs/name"
+        },
+        "build": {
+          "$ref": "common.json#/$defs/uint64"
+        },
+        "license": {
+          "description": "An SPDX licence expression.",
+          "type": "string",
+          "maxLength": 256
+        },
+        "source": {
+          "$ref": "common.json#/$defs/url"
+        },
+        "language": {
+          "$ref": "common.json#/$defs/language"
+        },
+        "summary": {
+          "$ref": "common.json#/$defs/text"
+        },
+        "description": {
+          "$ref": "common.json#/$defs/text"
+        },
+        "icon": {
+          "$ref": "common.json#/$defs/image"
+        },
+        "screenshots": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "common.json#/$defs/image"
+          }
+        },
+        "requires": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "$ref": "common.json#/$defs/text"
+            },
+            "min": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[0-9]+(\\.[0-9]+){0,3}$"
+              }
+            }
+          },
+          "required": [
+            "text"
+          ]
+        },
+        "updated": {
+          "$ref": "common.json#/$defs/time"
+        },
+        "package": {
+          "type": "object",
+          "properties": {
+            "format": {
+              "$ref": "common.json#/$defs/format"
+            },
+            "file": {
+              "$ref": "common.json#/$defs/url"
+            },
+            "size": {
+              "$ref": "common.json#/$defs/uint64"
+            },
+            "sha256": {
+              "$ref": "common.json#/$defs/sha256"
+            },
+            "manifest_sha256": {
+              "$ref": "common.json#/$defs/sha256",
+              "description": "The SHA-256 of the manifest's canonical form (SPEC.md § 8.2)."
+            },
+            "path": {
+              "$ref": "common.json#/$defs/device_path",
+              "description": "A single file's place on the device; absent when the system's installer installs it."
+            },
+            "manifest": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "$ref": "common.json#/$defs/manifest_entry"
+              }
+            }
+          },
+          "required": [
+            "format",
+            "file",
+            "size",
+            "sha256",
+            "manifest_sha256"
+          ]
+        },
+        "signature": {
+          "type": "object",
+          "properties": {
+            "alg": {
+              "const": "ed25519"
+            },
+            "public_key": {
+              "$ref": "common.json#/$defs/base64",
+              "minLength": 44,
+              "maxLength": 44
+            },
+            "value": {
+              "$ref": "common.json#/$defs/base64",
+              "minLength": 88,
+              "maxLength": 88
+            }
+          },
+          "required": [
+            "alg",
+            "public_key",
+            "value"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "platform",
+        "name",
+        "version",
+        "build",
+        "package"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "switch"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
+          "then": {
+            "properties": {
+              "package": {
+                "properties": {
+                  "format": {
+                    "enum": [
+                      "nro",
+                      "zip"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "save_kind": {
+      "enum": [
+        "account",
+        "device",
+        "bcat",
+        "cache",
+        "other"
+      ]
+    },
+    "save": {
+      "description": "A save backup (SPEC.md § 9.1).",
+      "type": "object",
+      "properties": {
+        "platform": {
+          "$ref": "common.json#/$defs/platform"
+        },
+        "title_id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "save_id": {
+          "$ref": "common.json#/$defs/opaque"
+        },
+        "created": {
+          "$ref": "common.json#/$defs/time"
+        },
+        "size": {
+          "$ref": "common.json#/$defs/uint64"
+        },
+        "sha256": {
+          "$ref": "common.json#/$defs/sha256"
+        },
+        "kind": {
+          "$ref": "common.json#/$defs/save_kind"
+        },
+        "game_version_code": {
+          "$ref": "common.json#/$defs/uint64"
+        },
+        "profile": {
+          "$ref": "common.json#/$defs/profile"
+        },
+        "note": {
+          "$ref": "common.json#/$defs/note"
+        },
+        "device": {
+          "$ref": "common.json#/$defs/name"
+        }
+      },
+      "required": [
+        "platform",
+        "title_id",
+        "save_id",
+        "created",
+        "size",
+        "sha256"
+      ]
+    },
+    "cheat_set": {
+      "description": "A set of cheats for a game's build (SPEC.md § 10).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/opaque"
+        },
+        "platform": {
+          "$ref": "common.json#/$defs/platform"
+        },
+        "title_id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "build_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]{1,64}$"
+        },
+        "source": {
+          "$ref": "common.json#/$defs/name"
+        },
+        "note": {
+          "$ref": "common.json#/$defs/note"
+        },
+        "updated": {
+          "$ref": "common.json#/$defs/time"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1048576
+        },
+        "sha256": {
+          "$ref": "common.json#/$defs/sha256"
+        }
+      },
+      "required": [
+        "id",
+        "platform",
+        "title_id",
+        "size",
+        "sha256"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "switch"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
+          "then": {
+            "properties": {
+              "title_id": {
+                "$ref": "common.json#/$defs/id16"
+              },
+              "build_id": {
+                "type": "string",
+                "pattern": "^[0-9A-F]{1,64}$"
+              }
+            },
+            "required": [
+              "build_id"
+            ]
+          }
+        }
       ]
     }
   }

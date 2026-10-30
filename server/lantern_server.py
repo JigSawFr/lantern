@@ -4,32 +4,67 @@
     python3 -m server --library DIR [--port 8080] [--users users.json]
     server/lantern_server.py --library DIR ...
 
-A reference, not a product: it shows what SPEC.md asks of a server in a few
-hundred lines of standard-library Python, and passes conformance/run.py.
+A reference, not a product: it shows what SPEC.md asks of a server in
+standard-library Python, and passes conformance/run.py.
 
-What it serves (SPEC.md § 6): every .nsp, .nsz, .xci and .xcz below DIR
-(dot folders skipped). An app's identity comes from DIR/library.json when
-it lists the file, otherwise from the `[0100ABCD00010000]` and `[v196608]`
-in its name; the title id and type follow from the app id. library.json:
+Apps (SPEC.md § 6): every package below DIR (dot folders, homebrew/ and
+cheats/ skipped). A Switch package (.nsp, .nsz, .xci, .xcz) is identified by
+DIR/library.json when it lists the file, otherwise by the `[0100ABCD00010000]`
+and `[v196608]` in its name; its title id and type follow from the app id.
+A package of another platform (.cia, .vpk, .pkg, .apk: SPEC.md Annex A) is
+served only when library.json gives its identity. library.json:
 
-    {"schema": 1, "apps": [{"file": "Frostline Tales [0100ABCD00010000][v0].nsp",
-      "title_id": "0100ABCD00010000", "app_id": "0100ABCD00010000",
-      "type": "base", "version": 0, "display_version": "1.0.0",
-      "name": "Frostline Tales", "release": "2025-03-14"}]}
+    {"schema": 1, "apps": [
+      {"file": "Frostline Tales [0100ABCD00010000][v0].nsp",
+       "title_id": "0100ABCD00010000", "app_id": "0100ABCD00010000",
+       "type": "base", "version_code": 0, "version_name": "1.0.0",
+       "name": "Frostline Tales", "release": "2025-03-14",
+       "developer": "Fjord Works", "genres": ["adventure"], "players": {"min": 1, "max": 4},
+       "summary": {"en": "Guide a lantern-bearer…", "fr": "Guidez un porteur de lanterne…"}},
+      {"file": "android/frostline.apk", "platform": "android",
+       "title_id": "org.example.frostlinetales", "version_code": 12, "name": "Frostline Tales"}]}
+
+An entry's other fields (publisher, developer, genres, tags, players,
+ratings, languages, summary, description, icon, banner, screenshots, video)
+make its title's sheet (feature `titles`, SPEC.md § 7); summary and
+description may be one text or one per language.
+
+Homebrew (SPEC.md § 8): every .nro, .3dsx, .zip, .apk, .vpk, .pkg and .cia
+below DIR/homebrew/. An .nro's name, author and version come from its NACP
+(server/nro.py); a homebrew.json next to a package gives the rest:
+
+    {"schema": 1, "id": "org.example.frostline", "build": 10400,
+     "license": "MIT", "source": "https://code.example.org/noor/frostline",
+     "category": "tool", "summary": "…", "requires": {"text": "…", "min": {"atmosphere": "1.7.0"}},
+     "signature": {"alg": "ed25519", "public_key": "…", "value": "…"}}
+
+A .zip's manifest is its files, each at "/" + its name in the archive; one
+whose paths break SPEC.md § 8.2 or leave the platform's roots is not
+served. A signature is served as given, never made here. Without an id, a
+homebrew gets `local.<its file's name>`.
+
+Cheats (SPEC.md § 10): DIR/cheats/[<platform>/]<title id>/<build id>/<source>.txt,
+one set per file (the Switch when no platform is named).
+
+Save backups (SPEC.md § 9): kept under --saves (default DIR/.lantern-saves/),
+an index.json and the archives, sent in one request or by resumable upload.
 
 Each file is hashed once (SHA-256); the hashes are kept with the server's
 uid and secret in a state file (--state, default DIR/.lantern-state.json).
+Every file this server reads or writes has a `schema`: one newer than it
+knows is treated as absent and never written over, and the keys it does
+not know are kept.
 
-Families offered: library, changes and media (a title's name, no images),
-and pairing when there are accounts. Saves, cheats, requests and sections
-stay at 0: their routes answer 404.
+Families offered: library, titles, changes, homebrew, cheats, saves (to an
+account with the scope), and pairing when there are accounts. Requests and
+sections stay at 0: their routes answer 404.
 
 Accounts (SPEC.md § 5): without --users, the server is public, every caller
 reads the library anonymously, and nobody pairs. With --users FILE:
 
     {"schema": 1, "public": false, "users": [
       {"name": "lea", "password": "pbkdf2-sha256$600000$<salt>$<hash>",
-       "scopes": ["library"], "state": "active"}]}
+       "scopes": ["library", "saves", "cheats"], "state": "active"}]}
 
 `python3 -m server --hash-password` prints a password's hash. `state` is
 `active` or `frozen`. A password is only ever typed on the server's own
@@ -66,31 +101,77 @@ import threading
 import time
 import traceback
 import uuid
+import zipfile
 from collections import OrderedDict
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-VERSION = "0.2.0"
+try:
+    from server import nro
+except ImportError:     # run as server/lantern_server.py
+    import nro
+
+VERSION = "0.3.0"
 BASE = "/api/lantern"
-FORMATS = {".nsp": "nsp", ".nsz": "nsz", ".xci": "xci", ".xcz": "xcz"}
-FAMILIES = ("library", "media", "changes", "sections", "saves", "cheats", "requests", "pairing")
-OFFERED = {"library": 1, "media": 1, "changes": 1}  # family -> the schema written; the others are 0
-SCOPE_OF = {"library": "library", "media": "library", "changes": "library"}
+FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing")
+OFFERED = {"library": 1, "titles": 1, "changes": 1, "homebrew": 1, "saves": 1, "cheats": 1}  # the schema written
+SCOPE_OF = {"library": "library", "titles": "library", "changes": "library", "homebrew": "library",
+            "saves": "saves", "cheats": "cheats"}
 PAGE_LIMIT = 500        # limits.page_size
 PAGE_DEFAULT = 100
-BODY_LIMIT = 1 << 20    # a request document, well under SPEC.md § 11's 32 MiB
-JOURNAL_LIMIT = 10000   # changes kept for /v1/changes; older tokens are gone
+BODY_LIMIT = 1 << 20    # a request document, well under SPEC.md § 13's 32 MiB
+DRAIN_LIMIT = 4 << 20   # a body left unread is read and dropped up to this, else the connection is closed
+JOURNAL_LIMIT = 10000   # changes kept for /v1/changes and /v1/titles/changes; older tokens are gone
 CURSOR_LIMIT = 10000    # cursors kept; older ones are gone
+TITLES_AT_ONCE = 100    # SPEC.md § 7.2
+CHEAT_LIMIT = 1 << 20   # SPEC.md § 10
+MANIFEST_LIMIT = 4096   # SPEC.md § 8.2
+SAVE_BODY = 8 << 20     # limits.save_body
+SAVE_SIZE = 1 << 30     # limits.save_size
+SAVE_CHUNK = 1 << 20    # an upload's chunk_size
+SAVES_KEPT = 10         # limits.saves_kept_per_title
+UPLOAD_HOURS = 24       # an upload not finished by then is gone
 ID16 = re.compile(r"^[0-9A-F]{16}$")
+PLATFORM = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")         # SPEC.md § 4.3
+CORE_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")            # SPEC.md § 6.1
+WORD = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+HOMEBREW_ID = re.compile(r"^(?=.{1,128}$)[a-z][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)+$")
+BUILD_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+DOTTED = re.compile(r"^[0-9]+(?:\.[0-9]+){0,3}$")
 TID_IN_NAME = re.compile(r"\[([0-9A-Fa-f]{16})\]")
 VERSION_IN_NAME = re.compile(r"\[v(\d+)\]")
-APP_TYPES = ("base", "update", "dlc")
+# The profiles of SPEC.md's Annex A, as far as this server needs them: the
+# id's form, the types and formats of apps, whether a newer base replaces the
+# old one (§ 6.3), and for homebrew, each format's place (a folder for a
+# single file, None for an archive and its manifest, "system" for a package
+# the platform's installer installs) and the roots a manifest may write to.
+PROFILES = {
+    "switch": {"id": ID16, "types": ("base", "update", "dlc"), "formats": ("nsp", "nsz", "xci", "xcz"),
+               "build_id": re.compile(r"^[0-9A-F]{1,64}$"), "homebrew": {"nro": "/switch/{id}/", "zip": None},
+               "roots": ("/switch/{id}/", "/config/{id}/", "/atmosphere/", "/switch/.overlays/")},
+    "3ds": {"id": ID16, "types": ("base", "update", "dlc"), "formats": ("cia",),
+            "homebrew": {"3dsx": "/3ds/{id}/", "zip": None, "cia": "system"}, "roots": ("/3ds/{id}/", "/luma/")},
+    "vita": {"id": re.compile(r"^[A-Z]{4}[0-9]{5}$"), "types": ("base", "update", "dlc"), "formats": ("vpk",),
+             "homebrew": {"vpk": "system"}, "roots": ()},
+    "ps4": {"id": re.compile(r"^[A-Z]{4}[0-9]{5}$"), "types": ("base", "update", "dlc"), "formats": ("pkg",),
+            "homebrew": {"pkg": "system"}, "roots": ()},
+    "android": {"id": re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$"), "types": ("base",),
+                "formats": ("apk",), "replaces": True, "homebrew": {"apk": "system"}, "roots": ()},
+}
+APP_EXT = {f: p for p, prof in PROFILES.items() for f in prof["formats"]}   # nsp -> switch, apk -> android…
+HOMEBREW_EXT = {"nro": "switch", "zip": "switch", "3dsx": "3ds", "cia": "3ds", "vpk": "vita", "pkg": "ps4",
+                "apk": "android"}
+GENRES = ("action", "adventure", "rpg", "strategy", "simulation", "sports", "racing", "puzzle", "platformer",
+          "shooter", "fighting", "music", "party", "education", "other")
+CATEGORIES = ("game", "emulator", "tool", "media", "system", "other")
+SAVE_KINDS = ("account", "device", "bcat", "cache", "other")
+RATING_SYSTEM = re.compile(r"^[A-Z][A-Z0-9-]{1,15}$")
 CHUNK = 1 << 20
 SCOPES = ("library", "saves", "cheats", "cheats.write", "requests", "admin")
 DISCOVERY_PORT = 47115
-DATAGRAM_LIMIT = 1200   # SPEC.md § 4.1, § 11
+DATAGRAM_LIMIT = 1200   # SPEC.md § 4.1, § 13
 CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"  # 5 bits a symbol; no 0, O, 1 or I
 CODE_SYMBOLS = 8        # 40 bits
 PAIR_EXPIRES = 600      # seconds a code lives (SPEC.md § 5.2: 10 minutes at most)
@@ -115,8 +196,16 @@ def unb64url(text):
 
 
 def clip(text, limit=512):
-    """A string cut to `limit` UTF-8 bytes on a character boundary (SPEC.md § 11)."""
+    """A string cut to `limit` UTF-8 bytes on a character boundary (SPEC.md § 13)."""
     return text.encode()[:limit].decode(errors="ignore")
+
+
+def plain(value, limit=512):
+    """A string from a file this server reads, without control characters and cut to `limit`; None otherwise."""
+    if not isinstance(value, str):
+        return None
+    value = "".join(c for c in value if ord(c) >= 32 and ord(c) != 127 or c == "\n").strip()
+    return clip(value, limit) or None
 
 
 def utc(ns):
@@ -125,6 +214,10 @@ def utc(ns):
 
 def now_utc(offset=0.0):
     return utc(time.time_ns() + int(offset * 1e9))
+
+
+def is_int(value, top=1 << 64):
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value < top
 
 
 def is_loopback(host):
@@ -206,15 +299,98 @@ def slow_down(wait, detail):
 
 
 def derive(app_id):
-    """(title_id, type) from an app id: base ...000, update ...800, add-on otherwise."""
+    """(title_id, type) of a Switch app id: base ...000, update ...800, add-on otherwise."""
     n = int(app_id, 16)
     low = n & 0x1FFF
     kind = "base" if low == 0 else "update" if low == 0x800 else "dlc"
     return f"{n & ~0x1FFF:016X}", kind
 
 
+def title_id_ok(platform, title_id):
+    """A title or app id of the core's form (SPEC.md § 6.1) and of its profile's, when there is one."""
+    profile = PROFILES.get(platform)
+    return isinstance(title_id, str) and bool(CORE_ID.match(title_id)) and (
+        profile is None or bool(profile["id"].match(title_id)))
+
+
+def device_path_ok(path):
+    """A path on the device as SPEC.md § 8.2 wants it."""
+    if not isinstance(path, str) or not path.startswith("/") or len(path.encode()) > 1024:
+        return False
+    parts = path[1:].split("/")
+    return all(p and p not in (".", "..") and len(p.encode()) <= 255
+               and not any(c in '\\:"' or ord(c) < 32 or ord(c) == 127 for c in p) for p in parts)
+
+
+def manifest_digest(manifest):
+    """The SHA-256 of a manifest's canonical form (SPEC.md § 8.2)."""
+    entries = sorted(manifest, key=lambda e: e["path"].encode())
+    canonical = "[" + ",".join('{"path":%s,"sha256":"%s","size":%d}' % (
+        json.dumps(e["path"], ensure_ascii=False), e["sha256"], e["size"]) for e in entries) + "]"
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def build_of(version):
+    """This server's own `build` for a homebrew that gives none: 1.4.2 is 1004002 (SPEC.md § 8.1)."""
+    parts = re.findall(r"\d+", version or "")[:3]
+    parts = [min(int(p), 999) for p in parts] + [0] * (3 - len(parts))
+    return parts[0] * 1000000 + parts[1] * 1000 + parts[2]
+
+
+def languages(header):
+    """The tags of an Accept-Language, best first."""
+    prefs = []
+    for i, part in enumerate((header or "").split(",")):
+        tag, _, params = part.strip().partition(";")
+        q = 1.0
+        m = re.search(r"q\s*=\s*([0-9.]+)", params)
+        if m:
+            try:
+                q = float(m.group(1))
+            except ValueError:
+                q = 0.0
+        if tag and tag != "*" and q > 0:
+            prefs.append((-q, i, tag.lower()))
+    return [t for _, _, t in sorted(prefs)]
+
+
+def localized(value, prefs):
+    """(text, language) of a text given once or per language, for the client's languages."""
+    if isinstance(value, str):
+        return value, None
+    if not value:
+        return None, None
+    by_tag = {k.lower(): k for k in value}
+    for tag in prefs + ["en"]:
+        if tag in by_tag:
+            return value[by_tag[tag]], by_tag[tag]
+        primary = tag.split("-")[0]
+        found = next((k for t, k in by_tag.items() if t.split("-")[0] == primary), None)
+        if found:
+            return value[found], found
+    first = next(iter(value))
+    return value[first], first
+
+
+def localizable(value, limit=4096):
+    """A text from a file: one string, or one per language; None when neither."""
+    if isinstance(value, str):
+        return plain(value, limit)
+    if isinstance(value, dict):
+        out = {k: plain(v, limit) for k, v in value.items() if isinstance(k, str) and 0 < len(k) <= 35}
+        return {k: v for k, v in out.items() if v} or None
+    return None
+
+
+def image(value):
+    """An image from a file: an absolute URL elsewhere, served as `external` (SPEC.md § 7.1)."""
+    if isinstance(value, str) and urlsplit(value).scheme == "https" and len(value) <= 4096:
+        return {"url": value, "external": True}
+    return None
+
+
 class Problem(Exception):
-    """An error answered as application/problem+json (SPEC.md § 10)."""
+    """An error answered as application/problem+json (SPEC.md § 12)."""
 
     def __init__(self, status, code, title, detail=None, headers=None):
         super().__init__(title)
@@ -231,6 +407,14 @@ class Problem(Exception):
 
 def bad_request(detail):
     return Problem(400, "bad_request", "Bad request", detail)
+
+
+def not_found(detail="Not here."):
+    return Problem(404, "not_found", "Not found", detail)
+
+
+def digest_mismatch(detail):
+    return Problem(422, "digest_mismatch", "Digest mismatch", detail)
 
 
 # --- State and library ----------------------------------------------------
@@ -253,6 +437,12 @@ def read_versioned(path, what):
     return doc
 
 
+def write_json(path, doc):
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(doc, indent=1, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -261,7 +451,45 @@ def sha256_file(path):
     return h.hexdigest()
 
 
+def title_metadata(entry):
+    """The title's sheet (SPEC.md § 7.1) from a library.json entry's fields, checked."""
+    meta = {}
+    for key in ("publisher", "developer"):
+        if plain(entry.get(key)):
+            meta[key] = plain(entry[key])
+    if isinstance(entry.get("genres"), list):
+        genres = [g for g in dict.fromkeys(entry["genres"]) if g in GENRES]
+        meta["genres"] = genres
+    if isinstance(entry.get("tags"), list):
+        meta["tags"] = [t for t in (plain(x, 64) for x in entry["tags"][:32]) if t]
+    players = entry.get("players")
+    if isinstance(players, dict):
+        p = {k: players[k] for k in ("min", "max", "online_max") if is_int(players.get(k), 1 << 16) and players[k] >= 1}
+        if isinstance(players.get("online"), bool):
+            p["online"] = players["online"]
+        meta["players"] = p
+    if isinstance(entry.get("ratings"), list):
+        meta["ratings"] = [{"system": r["system"], "rating": plain(r["rating"], 16)} for r in entry["ratings"]
+                           if isinstance(r, dict) and isinstance(r.get("system"), str)
+                           and RATING_SYSTEM.match(r["system"]) and plain(r.get("rating"), 16)]
+    if isinstance(entry.get("languages"), list):
+        meta["languages"] = [x for x in entry["languages"] if isinstance(x, str) and 0 < len(x) <= 35]
+    for key in ("summary", "description"):
+        if localizable(entry.get(key)):
+            meta[key] = localizable(entry[key])
+    for key in ("icon", "banner"):
+        if image(entry.get(key)):
+            meta[key] = image(entry[key])
+    if isinstance(entry.get("screenshots"), list):
+        meta["screenshots"] = [i for i in map(image, entry["screenshots"][:16]) if i]
+    if image(entry.get("video")):
+        meta["video"] = image(entry["video"])
+    return meta
+
+
 class Library:
+    """Everything the server serves from its folder: apps, titles, homebrew and cheats."""
+
     def __init__(self, root, state_path):
         self.root = Path(root).resolve()
         self.state_path = Path(state_path)
@@ -273,16 +501,20 @@ class Library:
         self.state.setdefault("uid", str(uuid.uuid4()))
         self.state.setdefault("secret", secrets.token_hex(32))
         self.state.setdefault("hashes", {})
+        if not isinstance(self.state.get("titles"), dict):
+            self.state["titles"] = {}
         self.secret = bytes.fromhex(self.state["secret"])
         self.epoch = secrets.token_hex(4)   # since tokens do not outlive the process
         self.seq = 0
-        self.journal = []                   # (seq, "added" | "removed", app id)
+        self.journal = []                   # (seq, kind, ref, platform): kind added | removed | title | untitled
         self.floor = 0                      # tokens below it are gone
-        self.apps, self.files = {}, {}
+        self.apps, self.files, self.titles, self.homebrew, self.cheats = {}, {}, {}, {}, {}
+        self.manifests = {}                 # (rel, size, mtime) -> a zip's manifest, or None when refused
         self.cursors = OrderedDict()
-        self.skipped = set()                # files without an id, reported once
+        self.skipped = set()                # files not served, reported once
         self.scanned = None
         self.state_mtime = None
+        self.dirty = False
         self.scan(initial=True)
         self.state_mtime = self.mtime()
 
@@ -300,9 +532,7 @@ class Library:
         if not self.writable:
             return
         try:
-            tmp = self.state_path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.state, indent=1), encoding="utf-8")
-            tmp.replace(self.state_path)
+            write_json(self.state_path, self.state)
             self.state_mtime = self.mtime()
         except OSError as e:
             log(f"{self.state_path}: not written ({e}); kept in memory")
@@ -320,6 +550,11 @@ class Library:
                 tokens = doc.get("tokens")
                 self.state["tokens"] = tokens if isinstance(tokens, dict) else {}
 
+    def skip(self, rel, why):
+        if rel not in self.skipped:
+            log(f"{rel}: {why}, skipped")
+            self.skipped.add(rel)
+
     def metadata(self):
         doc = read_versioned(self.root / "library.json", "library.json")
         entries = doc.get("apps") if doc else None
@@ -327,86 +562,329 @@ class Library:
             return {}
         return {e["file"]: e for e in entries if isinstance(e, dict) and isinstance(e.get("file"), str)}
 
+    def hashed(self, rel, path, st, seen):
+        """A file's SHA-256, from the state's hashes while the file does not change."""
+        hashes = self.state["hashes"]
+        seen.add(rel)
+        known = hashes.get(rel)
+        if not (isinstance(known, dict) and known.get("size") == st.st_size
+                and known.get("mtime_ns") == st.st_mtime_ns and isinstance(known.get("sha256"), str)):
+            known = {"size": st.st_size, "mtime_ns": st.st_mtime_ns, "sha256": sha256_file(path)}
+            hashes[rel], self.dirty = known, True
+        return known["sha256"]
+
+    def file_id(self, key):
+        return "f_" + b64url(hmac.new(self.secret, b"file\0" + key, "sha256").digest()[:18])
+
     def identify(self, rel, entry):
-        """An app's identity from its library.json entry, else from its file name."""
-        name = Path(rel).name
+        """An app's identity from its library.json entry, else (a Switch package) from its file name."""
+        name, ext = Path(rel).name, Path(rel).suffix.lower()[1:]
         entry = entry or {}
-        found = TID_IN_NAME.search(name)
-        app_id = entry.get("app_id") if ID16.match(str(entry.get("app_id", ""))) else None
-        app_id = app_id or (found.group(1).upper() if found else None)
-        if not app_id:
+        platform = entry.get("platform") if PLATFORM.match(str(entry.get("platform", ""))) else APP_EXT.get(ext)
+        profile = PROFILES.get(platform)
+        if profile and ext not in profile["formats"]:
             return None
-        title_id, kind = derive(app_id)
-        if ID16.match(str(entry.get("title_id", ""))):
-            title_id = entry["title_id"]
-        if entry.get("type") in APP_TYPES:
+        version = entry.get("version_code", entry.get("version"))
+        if platform == "switch":
+            found = TID_IN_NAME.search(name)
+            app_id = entry.get("app_id") if ID16.match(str(entry.get("app_id", ""))) else None
+            app_id = app_id or (found.group(1).upper() if found else None)
+            if not app_id:
+                return None
+            title_id, kind = derive(app_id)
+            if ID16.match(str(entry.get("title_id", ""))):
+                title_id = entry["title_id"]
+            if not is_int(version, 1 << 32):
+                v = VERSION_IN_NAME.search(name)
+                version = int(v.group(1)) if v and int(v.group(1)) < 1 << 32 else 0
+        else:
+            title_id = entry.get("title_id")
+            if not title_id_ok(platform, title_id):
+                return None
+            app_id = entry.get("app_id") if title_id_ok(platform, entry.get("app_id")) else title_id
+            kind = "base"
+            version = version if is_int(version) else 0
+        types = profile["types"] if profile else None
+        if isinstance(entry.get("type"), str) and WORD.match(entry["type"]) and (types is None or entry["type"] in types):
             kind = entry["type"]
-        version = entry.get("version")
-        if not (isinstance(version, int) and 0 <= version < 1 << 32):
-            v = VERSION_IN_NAME.search(name)
-            version = int(v.group(1)) if v and int(v.group(1)) < 1 << 32 else 0
-        title = entry.get("name") if isinstance(entry.get("name"), str) else name.split("[")[0]
-        app = {"title_id": title_id, "app_id": app_id, "type": kind, "version": version,
+        title = entry.get("name") if isinstance(entry.get("name"), str) else \
+            name.split("[")[0] if "[" in name else Path(name).stem
+        app = {"platform": platform, "title_id": title_id, "app_id": app_id, "type": kind, "version_code": version,
                "name": clip(title.strip() or app_id)}
-        if isinstance(entry.get("display_version"), str):
-            app["display_version"] = clip(entry["display_version"])
+        version_name = plain(entry.get("version_name", entry.get("display_version")))
+        if version_name:
+            app["version_name"] = version_name
         try:
             release = date.fromisoformat(entry["release"]) if isinstance(entry.get("release"), str) else None
         except ValueError:
             release = None
-        return app, release
+        return app, release, ext
 
     def scan(self, initial=False):
         with self.lock:
-            meta, hashes, dirty = self.metadata(), self.state["hashes"], False
-            apps, files, seen = {}, {}, set()
+            meta, seen, files = self.metadata(), set(), {}
+            self.dirty = False
+            apps, entries = {}, {}
             for path in sorted(self.root.rglob("*")):
                 rel = path.relative_to(self.root).as_posix()
-                fmt = FORMATS.get(path.suffix.lower())
-                if not fmt or any(p.startswith(".") for p in Path(rel).parts) or not path.is_file():
+                parts = Path(rel).parts
+                if path.suffix.lower()[1:] not in APP_EXT or any(p.startswith(".") for p in parts) \
+                        or parts[0] in ("homebrew", "cheats") or not path.is_file():
                     continue
                 found = self.identify(rel, meta.get(rel))
                 if not found:
-                    if rel not in self.skipped:
-                        log(f"{rel}: no app id in library.json nor in its name, skipped")
-                        self.skipped.add(rel)
+                    self.skip(rel, "no identity in library.json nor in its name")
                     continue
-                app, release = found
+                app, release, fmt = found
                 st = path.stat()
-                seen.add(rel)
-                known = hashes.get(rel)
-                if not (isinstance(known, dict) and known.get("size") == st.st_size
-                        and known.get("mtime_ns") == st.st_mtime_ns):
-                    known = {"size": st.st_size, "mtime_ns": st.st_mtime_ns, "sha256": sha256_file(path)}
-                    hashes[rel], dirty = known, True
+                sha = self.hashed(rel, path, st, seen)
                 app_key = hmac.new(self.secret, f"app\0{rel}\0{st.st_size}\0{st.st_mtime_ns}".encode(),
                                    "sha256").digest()
                 aid = "a_" + b64url(app_key[:12])
-                fid = "f_" + b64url(hmac.new(self.secret, b"file\0" + app_key, "sha256").digest()[:18])
-                app = {"id": aid, **app, "size": st.st_size, "format": fmt, "sha256": known["sha256"],
+                fid = self.file_id(app_key)
+                app = {"id": aid, **app, "size": st.st_size, "format": fmt, "sha256": sha,
                        "added": utc(st.st_mtime_ns), "file": f"{BASE}/v1/files/{fid}"}
                 apps[aid] = {"doc": app, "path": path, "keys": {
                     "name": (app["name"].casefold(), aid),
                     "added": (-st.st_mtime_ns, aid),
-                    "release": (release is None, -(release.toordinal() if release else 0), aid)}}
-                files[fid] = aid
+                    "release": (release is None, -(release.toordinal() if release else 0), aid)},
+                    "release": release}
+                entries[aid] = meta.get(rel) or {}
+                files[fid] = {"path": path, "size": st.st_size, "sha256": sha}
+            titles = self.scan_titles(apps, entries, initial)
+            homebrew = self.scan_homebrew(seen, files)
+            cheats = self.scan_cheats(seen)
+            hashes = self.state["hashes"]
             for rel in [r for r in hashes if r not in seen]:
                 del hashes[rel]
-                dirty = True
+                self.dirty = True
             if not initial:
                 for aid in apps.keys() - self.apps.keys():
-                    self.seq += 1
-                    self.journal.append((self.seq, "added", aid))
+                    self.journal.append((self.next_seq(), "added", aid, apps[aid]["doc"]["platform"]))
                 for aid in self.apps.keys() - apps.keys():
-                    self.seq += 1
-                    self.journal.append((self.seq, "removed", aid))
+                    self.journal.append((self.next_seq(), "removed", aid, self.apps[aid]["doc"]["platform"]))
                 if len(self.journal) > JOURNAL_LIMIT:
                     self.floor = self.journal[-JOURNAL_LIMIT - 1][0]
                     del self.journal[:-JOURNAL_LIMIT]
-            self.apps, self.files = apps, files
+            self.apps, self.files, self.titles, self.homebrew, self.cheats = apps, files, titles, homebrew, cheats
             self.scanned = time.monotonic()
-            if dirty:
+            if self.dirty:
                 self.save_state()
+
+    def next_seq(self):
+        self.seq += 1
+        return self.seq
+
+    def scan_titles(self, apps, entries, initial):
+        """The titles of the apps (SPEC.md § 7): a name, a release, the entries' metadata, and when it changed."""
+        groups = {}
+        for aid, e in apps.items():
+            groups.setdefault((e["doc"]["platform"], e["doc"]["title_id"]), []).append(e)
+        known, titles = self.state["titles"], {}
+        for (platform, title_id), mine in groups.items():
+            mine.sort(key=lambda e: (e["doc"]["type"] != "base", e["keys"]["name"]))
+            meta = {}
+            for e in reversed(mine):      # the base's fields last, so they win
+                meta.update(title_metadata(entries[e["doc"]["id"]]))
+            release = min((e["release"] for e in mine if e["release"]), default=None)
+            name = mine[0]["doc"]["name"]
+            digest = hashlib.sha256(json.dumps([name, str(release), meta], sort_keys=True).encode()).hexdigest()
+            key = f"{platform}/{title_id}"
+            record = known.get(key)
+            if not (isinstance(record, dict) and record.get("digest") == digest and isinstance(record.get("updated"), str)):
+                record = {"digest": digest, "updated": now_utc()}
+                known[key], self.dirty = record, True
+                if not initial:
+                    self.journal.append((self.next_seq(), "title", key, platform))
+            titles[key] = {"platform": platform, "title_id": title_id, "name": name, "release": release,
+                           "meta": meta, "updated": record["updated"]}
+        for key in [k for k in known if k not in titles]:
+            del known[key]
+            self.dirty = True
+            if not initial:
+                self.journal.append((self.next_seq(), "untitled", key, key.split("/", 1)[0]))
+        return titles
+
+    # Homebrew (SPEC.md § 8).
+
+    def scan_homebrew(self, seen, files):
+        root = self.root / "homebrew"
+        out = {}
+        if not root.is_dir():
+            return out
+        folders = {}
+        for path in sorted(root.rglob("*")):
+            rel = path.relative_to(self.root)
+            if any(p.startswith(".") for p in rel.parts) or not path.is_file():
+                continue
+            if path.suffix.lower()[1:] in HOMEBREW_EXT:
+                folders.setdefault(path.parent, []).append(path)
+        for folder, packages in folders.items():
+            meta = read_versioned(folder / "homebrew.json", "homebrew.json")
+            for path in packages:
+                mine = meta if meta and (meta.get("file") == path.name
+                                         or (not meta.get("file") and len(packages) == 1)) else None
+                entry = self.homebrew_entry(path, mine or {}, seen, files)
+                if entry is None:
+                    continue
+                key = (entry["doc"]["platform"], entry["doc"]["id"])
+                if key in out:
+                    self.skip(path.relative_to(self.root).as_posix(), f"a second homebrew {key[1]} on {key[0]}")
+                    continue
+                out[key] = entry
+        return out
+
+    def homebrew_entry(self, path, meta, seen, files):
+        rel = path.relative_to(self.root).as_posix()
+        ext = path.suffix.lower()[1:]
+        st = path.stat()
+        platform = meta.get("platform") if PLATFORM.match(str(meta.get("platform", ""))) else HOMEBREW_EXT[ext]
+        profile = PROFILES.get(platform)
+        if profile is None or ext not in profile["homebrew"]:
+            self.skip(rel, f"no {ext} homebrew on {platform}")
+            return None
+        info = {}
+        if ext == "nro":
+            with path.open("rb") as f:
+                info = nro.read_nro(f, st.st_size) or {}
+        hid = meta.get("id") if HOMEBREW_ID.match(str(meta.get("id", ""))) else \
+            "local." + (re.sub(r"[^a-z0-9]+", "-", path.stem.lower()).strip("-") or "homebrew")
+        name = plain(meta.get("name")) or info.get("name") or path.stem
+        version = plain(meta.get("version")) or info.get("version") or "0"
+        build = meta["build"] if is_int(meta.get("build")) else build_of(version)
+        sha = self.hashed(rel, path, st, seen)
+        key = hmac.new(self.secret, f"homebrew\0{rel}\0{st.st_size}\0{st.st_mtime_ns}".encode(), "sha256").digest()
+        fid = self.file_id(key)
+        package = {"format": ext, "file": f"{BASE}/v1/files/{fid}", "size": st.st_size, "sha256": sha}
+        place = profile["homebrew"][ext]
+        if place == "system":
+            manifest = []
+        elif place is None:
+            manifest = self.zip_manifest(path, rel, st)
+            if manifest is None:
+                return None
+            package["manifest"] = manifest
+        else:
+            target = meta.get("path") if device_path_ok(meta.get("path")) else place.format(id=hid) + path.name
+            if not device_path_ok(target):
+                self.skip(rel, f"no place for it on the device ({target})")
+                return None
+            package["path"] = target
+            manifest = [{"path": target, "size": st.st_size, "sha256": sha}]
+        roots = [r.format(id=hid) for r in profile["roots"]]
+        outside = [m["path"] for m in manifest if not any(m["path"].startswith(r) for r in roots)]
+        if outside:
+            self.skip(rel, f"writes outside {platform}'s roots ({outside[0]})")
+            return None
+        package["manifest_sha256"] = manifest_digest(manifest)
+        doc = {"id": hid, "platform": platform, "name": name, "category": meta.get("category")
+               if meta.get("category") in CATEGORIES else "other", "version": version, "build": build}
+        author = plain(meta.get("author")) or info.get("author")
+        if author:
+            doc["author"] = author
+        for k, limit in (("license", 256), ("source", 4096)):
+            if plain(meta.get(k), limit):
+                doc[k] = plain(meta[k], limit)
+        if image(meta.get("icon")):
+            doc["icon"] = image(meta["icon"])
+        if isinstance(meta.get("screenshots"), list):
+            doc["screenshots"] = [i for i in map(image, meta["screenshots"][:16]) if i]
+        requires = meta.get("requires")
+        if isinstance(requires, dict) and plain(requires.get("text"), 4096):
+            doc["requires"] = {"text": plain(requires["text"], 4096)}
+            if isinstance(requires.get("min"), dict):
+                doc["requires"]["min"] = {k: v for k, v in requires["min"].items()
+                                          if isinstance(k, str) and WORD.match(k) and isinstance(v, str) and DOTTED.match(v)}
+        mtimes = [st.st_mtime_ns]
+        try:
+            mtimes.append((path.parent / "homebrew.json").stat().st_mtime_ns)
+        except OSError:
+            pass
+        doc["updated"] = utc(max(mtimes))
+        doc["package"] = package
+        signature = meta.get("signature")
+        if isinstance(signature, dict) and signature.get("alg") == "ed25519" \
+                and re.fullmatch(r"[A-Za-z0-9+/]{43}=", str(signature.get("public_key", ""))) \
+                and re.fullmatch(r"[A-Za-z0-9+/]{86}==", str(signature.get("value", ""))):
+            doc["signature"] = {"alg": "ed25519", "public_key": signature["public_key"], "value": signature["value"]}
+        elif signature is not None:
+            log(f"{rel}: its signature is not an ed25519 one; served without it")
+        texts = {k: localizable(meta.get(k)) for k in ("summary", "description") if localizable(meta.get(k))}
+        files[fid] = {"path": path, "size": st.st_size, "sha256": sha}
+        return {"doc": doc, "texts": texts, "keys": {"name": (name.casefold(), platform, hid)}}
+
+    def zip_manifest(self, path, rel, st):
+        """A zip's manifest: every file in it, at "/" + its name; None when one breaks SPEC.md § 8.2."""
+        memo = (rel, st.st_size, st.st_mtime_ns)
+        if memo in self.manifests:
+            return self.manifests[memo]
+        manifest = None
+        try:
+            with zipfile.ZipFile(path) as z:
+                members = [i for i in z.infolist() if not i.is_dir()]
+                bad = next((i.filename for i in members if not device_path_ok("/" + i.filename)), None)
+                lower = [("/" + i.filename).casefold() for i in members]
+                if len(members) > MANIFEST_LIMIT:
+                    self.skip(rel, f"{len(members)} files, above {MANIFEST_LIMIT}")
+                elif bad is not None:
+                    self.skip(rel, f"a path SPEC.md § 8.2 refuses ({bad!r})")
+                elif len(set(lower)) != len(lower):
+                    self.skip(rel, "two paths that differ only by case")
+                else:
+                    manifest = []
+                    for i in members:
+                        h, size = hashlib.sha256(), 0
+                        with z.open(i) as f:
+                            while chunk := f.read(CHUNK):
+                                h.update(chunk)
+                                size += len(chunk)
+                        manifest.append({"path": "/" + i.filename, "size": size, "sha256": h.hexdigest()})
+                    manifest.sort(key=lambda e: e["path"].encode())
+        except (zipfile.BadZipFile, OSError, ValueError, NotImplementedError, RuntimeError, EOFError) as e:
+            self.skip(rel, f"not a zip this server can read ({e})")
+        self.manifests = {k: v for k, v in self.manifests.items() if k[0] != rel}
+        self.manifests[memo] = manifest
+        return manifest
+
+    # Cheats (SPEC.md § 10).
+
+    def scan_cheats(self, seen):
+        root = self.root / "cheats"
+        out = {}
+        if not root.is_dir():
+            return out
+        for path in sorted(root.rglob("*.txt")):
+            parts = path.relative_to(root).parts
+            rel = path.relative_to(self.root).as_posix()
+            if any(p.startswith(".") for p in parts) or not path.is_file():
+                continue
+            if len(parts) == 4 and PLATFORM.match(parts[0]):
+                platform, title_id, build_id = parts[:3]
+            elif len(parts) == 3:
+                platform, (title_id, build_id) = "switch", parts[:2]
+            else:
+                self.skip(rel, "not cheats/[<platform>/]<title id>/<build id>/<source>.txt")
+                continue
+            profile = PROFILES.get(platform)
+            pattern = (profile or {}).get("build_id", BUILD_ID)
+            if not title_id_ok(platform, title_id) or not pattern.match(build_id):
+                self.skip(rel, "not a title id and a build id of its platform")
+                continue
+            st = path.stat()
+            if st.st_size > CHEAT_LIMIT:
+                self.skip(rel, f"above {CHEAT_LIMIT} bytes")
+                continue
+            cid = "cs_" + b64url(hmac.new(self.secret, b"cheat\0" + rel.encode(), "sha256").digest()[:12])
+            out[cid] = {"path": path, "doc": {
+                "id": cid, "platform": platform, "title_id": title_id, "build_id": build_id,
+                "source": clip(path.stem.replace("_", " ")), "updated": utc(st.st_mtime_ns),
+                "size": st.st_size, "sha256": self.hashed(rel, path, st, seen)}}
+        return out
+
+    def platforms(self):
+        with self.lock:
+            return sorted({e["doc"]["platform"] for e in self.apps.values()} | {p for p, _ in self.homebrew}
+                          | {e["doc"]["platform"] for e in self.cheats.values()})
 
     def refresh(self, every):
         if time.monotonic() - self.scanned >= every:
@@ -415,7 +893,7 @@ class Library:
     # Pages (SPEC.md § 6.2): sorted by key, ties broken by id; a cursor keeps
     # the last key read, so a page after a change neither skips nor repeats.
 
-    def page(self, entries, sort, size, cursor, scope):
+    def page(self, entries, sort, size, cursor, scope, view=lambda e: e["doc"]):
         with self.lock:
             if cursor:
                 if not cursor.startswith("c_"):
@@ -440,50 +918,281 @@ class Library:
                 while len(self.cursors) > CURSOR_LIMIT:
                     self.cursors.popitem(last=False)
             total = len(entries)
-        return {"schema": 1, "items": [e["doc"] for e in items], "total": total, "next": nxt}
+        return {"schema": 1, "items": [view(e) for e in items], "total": total, "next": nxt}
 
-    def missing(self, installed, want):
-        """SPEC.md § 6.3, from the console's installed apps."""
+    def missing(self, platform, installed, want):
+        """SPEC.md § 6.3, on one platform, from the console's installed apps."""
         with self.lock:
-            by_app = {e["doc"]["app_id"]: e["doc"] for e in self.apps.values()}
+            apps = [e for e in self.apps.values() if e["doc"]["platform"] == platform]
+            replaces = PROFILES.get(platform, {}).get("replaces", False)
+            by_app = {e["doc"]["app_id"]: e["doc"] for e in apps}
             have = {}
             for item in installed:
                 known = by_app.get(item["app_id"])
-                title, kind = (known["title_id"], known["type"]) if known else derive(item["app_id"])
+                if known:
+                    title, kind = known["title_id"], known["type"]
+                elif platform == "switch" and ID16.match(item["app_id"]):
+                    title, kind = derive(item["app_id"])
+                else:
+                    continue    # a game this server does not know
                 if kind in ("base", "update"):
-                    have[title] = max(have.get(title, -1), item["version"])
+                    have[title] = max(have.get(title, -1), item["version_code"])
             ids = {i["app_id"] for i in installed}
             out = []
             for title, version in have.items():
-                mine = [e for e in self.apps.values() if e["doc"]["title_id"] == title]
-                updates = [e for e in mine if e["doc"]["type"] == "update"]
-                newest = max((e["doc"]["version"] for e in updates), default=-1)
+                mine = [e for e in apps if e["doc"]["title_id"] == title]
+                if replaces:
+                    updates = [e for e in mine if e["doc"]["type"] == "base" and e["doc"]["app_id"] in ids]
+                else:
+                    updates = [e for e in mine if e["doc"]["type"] == "update"]
+                newest = max((e["doc"]["version_code"] for e in updates), default=-1)
                 if "update" in want and newest > version:
-                    out += [e for e in updates if e["doc"]["version"] == newest]
+                    out += [e for e in updates if e["doc"]["version_code"] == newest]
                 if "dlc" in want:
                     out += [e for e in mine if e["doc"]["type"] == "dlc" and e["doc"]["app_id"] not in ids]
             if "base" in want:
-                out += [e for e in self.apps.values() if e["doc"]["type"] == "base" and e["doc"]["title_id"] not in have]
+                out += [e for e in apps if e["doc"]["type"] == "base" and e["doc"]["title_id"] not in have]
             return out
 
-    def changes(self, since):
+    def since(self, prefix, since):
+        """The journal's entries after a `since` token of /v1/changes (s_) or /v1/titles/changes (t_)."""
+        current = f"{prefix}_{self.epoch}_{self.seq}"
+        if since is None:
+            return None, current
+        m = re.fullmatch(prefix + r"_([0-9a-f]{8})_(\d+)", since)
+        if not m:
+            raise bad_request("Unknown since token.")
+        seq = int(m.group(2))
+        if m.group(1) != self.epoch or seq < self.floor or seq > self.seq:
+            raise Problem(410, "gone", "Token too old", "Read them all again.")
+        return [j for j in self.journal if j[0] > seq], current
+
+    def changes(self, since, platform):
         with self.lock:
-            current = f"s_{self.epoch}_{self.seq}"
-            if since is None:
+            journal, current = self.since("s", since)
+            if journal is None:
                 return {"schema": 1, "added": [], "removed": [], "since": current}
-            m = re.fullmatch(r"s_([0-9a-f]{8})_(\d+)", since)
-            if not m:
-                raise bad_request("Unknown since token.")
-            seq = int(m.group(2))
-            if m.group(1) != self.epoch or seq < self.floor or seq > self.seq:
-                raise Problem(410, "gone", "Token too old", "Read the whole library again.")
             added, removed = set(), set()
-            for s, kind, aid in self.journal:
-                if s > seq:
+            for _, kind, aid, p in journal:
+                if kind in ("added", "removed") and (platform is None or p == platform):
                     (added if kind == "added" else removed).add(aid)
             docs = sorted((self.apps[a] for a in added if a in self.apps), key=lambda e: e["keys"]["name"])
             return {"schema": 1, "added": [e["doc"] for e in docs],
                     "removed": sorted(a for a in removed if a not in self.apps), "since": current}
+
+    def title_changes(self, since, platform, prefs):
+        with self.lock:
+            journal, current = self.since("t", since)
+            doc = {"schema": 1, "titles": [], "removed": [], "since": current, "more": False}
+            if journal is None:
+                return doc
+            keys = {key for _, kind, key, p in journal
+                    if kind in ("title", "untitled") and (platform is None or p == platform)}
+            doc["titles"] = [self.title_doc(k, prefs) for k in sorted(keys) if k in self.titles]
+            doc["removed"] = [dict(zip(("platform", "title_id"), k.split("/", 1))) for k in sorted(keys)
+                              if k not in self.titles]
+            return doc
+
+    def title_doc(self, key, prefs):
+        t = self.titles[key]
+        doc = {"platform": t["platform"], "title_id": t["title_id"], "name": t["name"], "updated": t["updated"]}
+        if t["release"]:
+            doc["release"] = t["release"].isoformat()
+        meta = t["meta"]
+        for k in ("publisher", "developer", "genres", "tags", "players", "ratings", "languages", "icon", "banner",
+                  "screenshots", "video"):
+            if k in meta:
+                doc[k] = meta[k]
+        for k in ("summary", "description"):
+            if k in meta:
+                text, language = localized(meta[k], prefs)
+                doc[k] = text
+                if language and "language" not in doc:
+                    doc["language"] = language
+        return doc
+
+    def find(self, table, ident, platform):
+        """The one entry of `table` (keyed (platform, id)) named `ident`; 400 when several platforms have it."""
+        with self.lock:
+            found = [v for (p, i), v in table.items() if i == ident and (platform is None or p == platform)]
+        if not found:
+            raise not_found("Not on this server" + (f" for {platform}." if platform else "."))
+        if len(found) > 1:
+            raise bad_request("Several platforms have it: name one (Lantern-Platform).")
+        return found[0]
+
+
+# --- Save backups -----------------------------------------------------------
+
+class Saves:
+    """Save backups (SPEC.md § 9) in a folder: index.json (schema 1: every
+    backup and open upload, with the account it belongs to), archives/ and
+    uploads/. An index of a newer schema, or one this server cannot read,
+    makes the family unavailable, and is never written over."""
+
+    PUBLIC = ("platform", "title_id", "save_id", "created", "size", "sha256", "kind", "game_version_code",
+              "profile", "note", "device")
+
+    def __init__(self, folder, body=SAVE_BODY, size=SAVE_SIZE, chunk=SAVE_CHUNK, kept=SAVES_KEPT,
+                 hours=UPLOAD_HOURS):
+        self.folder = Path(folder)
+        self.body, self.size, self.chunk, self.kept, self.hours = body, size, chunk, kept, hours
+        self.lock = threading.RLock()
+        self.path = self.folder / "index.json"
+        doc = read_versioned(self.path, "saves index")
+        self.available = doc is not None or not self.path.exists()
+        self.index = doc or {"schema": 1}
+        if not isinstance(self.index.get("saves"), list):
+            self.index["saves"] = []
+        if not isinstance(self.index.get("uploads"), dict):
+            self.index["uploads"] = {}
+
+    def write(self):
+        if not self.available:
+            return
+        self.folder.mkdir(parents=True, exist_ok=True)
+        write_json(self.path, self.index)
+
+    def archive(self, save_id):
+        return self.folder / "archives" / f"{save_id}.zip"
+
+    def part(self, upload_id):
+        return self.folder / "uploads" / f"{upload_id}.part"
+
+    @classmethod
+    def public(cls, entry):
+        return {k: entry[k] for k in cls.PUBLIC if k in entry}
+
+    def mine(self, user):
+        return [e for e in self.index["saves"] if isinstance(e, dict) and e.get("user") == user
+                and isinstance(e.get("save_id"), str) and isinstance(e.get("created"), str)]
+
+    def list(self, user, platform=None, title_id=None):
+        with self.lock:
+            found = [e for e in self.mine(user) if (platform is None or e.get("platform") == platform)
+                     and (title_id is None or e.get("title_id") == title_id)]
+            order = {id(e): i for i, e in enumerate(self.index["saves"])}
+            found.sort(key=lambda e: (e.get("platform", ""), e.get("title_id", ""), e["created"], order[id(e)]))
+            # Newest first per title.
+            out, group = [], []
+            for e in found:
+                if group and (group[-1].get("platform"), group[-1].get("title_id")) != (e.get("platform"), e.get("title_id")):
+                    out += reversed(group)
+                    group = []
+                group.append(e)
+            return [self.public(e) for e in out + list(reversed(group))]
+
+    def find(self, user, title_id, save_id, platform):
+        with self.lock:
+            return next((e for e in self.mine(user) if e["save_id"] == save_id and e.get("title_id") == title_id
+                         and (platform is None or e.get("platform") == platform)), None)
+
+    def add(self, user, source, sha256, size, fields):
+        """Keeps the archive at `source` as a new backup, then drops the oldest beyond `kept`."""
+        with self.lock:
+            save_id = "s_" + secrets.token_urlsafe(9)
+            target = self.archive(save_id)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source.replace(target)
+            entry = {"user": user, **fields, "save_id": save_id, "created": now_utc(), "size": size, "sha256": sha256}
+            self.index["saves"].append(entry)
+            same = [e for e in self.mine(user) if e.get("platform") == entry["platform"]
+                    and e.get("title_id") == entry["title_id"]]
+            for old in same[:max(0, len(same) - self.kept)]:
+                self.drop(old)
+            self.write()
+            return self.public(entry)
+
+    def drop(self, entry):
+        with self.lock:
+            self.index["saves"] = [e for e in self.index["saves"] if e is not entry]
+            try:
+                self.archive(entry["save_id"]).unlink()
+            except OSError:
+                pass
+
+    def delete(self, entry):
+        with self.lock:
+            self.drop(entry)
+            self.write()
+
+    # Resumable uploads (SPEC.md § 9.3).
+
+    def purge(self):
+        now = datetime.now(timezone.utc)
+        for uid, s in list(self.index["uploads"].items()):
+            try:
+                gone = datetime.fromisoformat(str(s.get("expires")).replace("Z", "+00:00")) <= now
+            except ValueError:
+                gone = True
+            if gone:
+                self.abandon(uid, write=False)
+
+    def open(self, user, fields, size, sha256):
+        with self.lock:
+            self.purge()
+            uid = "u_" + secrets.token_urlsafe(18)
+            expires = (datetime.now(timezone.utc) + timedelta(hours=self.hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            self.index["uploads"][uid] = {"user": user, **fields, "size": size, "sha256": sha256,
+                                          "expires": expires}
+            part = self.part(uid)
+            part.parent.mkdir(parents=True, exist_ok=True)
+            part.write_bytes(b"")
+            self.write()
+            return uid, expires
+
+    def session(self, uid, user):
+        with self.lock:
+            self.purge()
+            s = self.index["uploads"].get(uid)
+            return s if isinstance(s, dict) and s.get("user") == user else None
+
+    def offset(self, uid):
+        try:
+            return self.part(uid).stat().st_size
+        except OSError:
+            return 0
+
+    def append(self, uid, offset, data):
+        """The new offset; a Problem when `offset` is not the server's (409) or goes past the size."""
+        with self.lock:
+            s = self.index["uploads"][uid]
+            have = self.offset(uid)
+            if offset != have:
+                raise Problem(409, "conflict", "Wrong offset", f"This upload is at {have}.",
+                              {"Upload-Offset": str(have)})
+            if have + len(data) > s["size"]:
+                raise bad_request(f"This chunk goes past the upload's size, {s['size']} bytes.")
+            with self.part(uid).open("ab") as f:
+                f.write(data)
+            return have + len(data)
+
+    def finish(self, uid):
+        """The save entry once the whole archive is in and matches its sha256; 422 otherwise."""
+        with self.lock:
+            s = self.index["uploads"].pop(uid)
+            part = self.part(uid)
+            try:
+                if sha256_file(part) != s["sha256"]:
+                    raise digest_mismatch("The archive's SHA-256 is not the one announced; it was discarded.")
+                if not zipfile.is_zipfile(part):
+                    raise bad_request("A save is a zip archive; this one was discarded.")
+                fields = {k: s[k] for k in self.PUBLIC if k in s and k not in ("size", "sha256")}
+                return self.add(s["user"], part, s["sha256"], s["size"], fields)
+            finally:
+                if part.exists():
+                    part.unlink()
+                self.write()
+
+    def abandon(self, uid, write=True):
+        with self.lock:
+            self.index["uploads"].pop(uid, None)
+            try:
+                self.part(uid).unlink()
+            except OSError:
+                pass
+            if write:
+                self.write()
 
 
 # --- Accounts -----------------------------------------------------------
@@ -538,9 +1247,9 @@ class Accounts:
         return user if ok and user else None
 
     def resolve(self, header, tokens):
-        """The caller's account from its bearer token, or a 401 Problem (SPEC.md § 5.1)."""
+        """(the caller's account, its token's record) from its bearer token, or a 401 Problem (SPEC.md § 5.1)."""
         if not header:
-            return self.anonymous()
+            return self.anonymous(), None
         scheme, _, value = header.strip().partition(" ")
         if scheme.lower() != "bearer" or not value.strip():
             raise unauthorized(CHALLENGE, "Send a token from pairing: Authorization: Bearer <token>.")
@@ -551,7 +1260,7 @@ class Accounts:
         mine = self.scopes(user)
         scopes = [s for s in record.get("scopes", []) if s in mine]
         state = "frozen" if user.get("state") == "frozen" else "active"
-        return {"name": clip(user["name"]), "state": state, "scopes": scopes}
+        return {"name": clip(user["name"]), "state": state, "scopes": scopes}, record
 
 
 def token_hash(token):
@@ -691,6 +1400,20 @@ class Pairing:
 
 # --- HTTP ---------------------------------------------------------------
 
+def content_digest(header):
+    """The SHA-256 a Content-Digest (RFC 9530) gives, as bytes; None without one."""
+    m = re.search(r"(?:^|,)\s*sha-256\s*=\s*:([A-Za-z0-9+/=]*):", header or "")
+    if not m:
+        return None
+    try:
+        raw = base64.b64decode(m.group(1), validate=True)
+    except ValueError:
+        raw = b""
+    if len(raw) != 32:
+        raise bad_request("Content-Digest's sha-256 is not a SHA-256.")
+    return raw
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = f"LanternReference/{VERSION}"
@@ -707,25 +1430,36 @@ class Handler(BaseHTTPRequestHandler):
     def handle_any(self, method):
         self.method, self.head, self.began = method, method == "HEAD", False
         self.authenticated = bool(self.headers.get("Authorization"))
+        self.length, self.body_read, self.body_data = 0, False, b""
+        self.account, self.record = None, None
         try:
-            body = self.read_body()
+            self.length = self.content_length()
             url = urlsplit(self.path)
             path = unquote(url.path)
             query = {k: v[-1] for k, v in parse_qs(url.query, keep_blank_values=True).items()}
             self.server.library.refresh(self.server.rescan)
-            self.route(method, path, query, body)
+            self.route(method, path, query)
         except Problem as p:
             self.send_doc(p.status, p.document(), p.headers, problem=True)
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
         except Exception:  # noqa: BLE001 - any bug of this server answers 500
-            # A bug of this server: logged, answered as SPEC.md § 10 wants,
+            # A bug of this server: logged, answered as SPEC.md § 12 wants,
             # unless the reply had already begun.
             self.log_error("%s", traceback.format_exc())
             self.close_connection = True
             if not self.began:
                 problem = Problem(500, "internal", "Internal error", "The server failed; try again later.")
                 self.send_doc(500, problem.document(), problem=True)
+        if self.length and not self.body_read and not self.close_connection:
+            # A body nobody read: dropped, so the connection can serve the next request.
+            if self.length <= DRAIN_LIMIT:
+                try:
+                    self.rfile.read(self.length)
+                except OSError:
+                    self.close_connection = True
+            else:
+                self.close_connection = True
 
     def do_GET(self):
         self.handle_any("GET")
@@ -745,53 +1479,87 @@ class Handler(BaseHTTPRequestHandler):
     def do_PATCH(self):
         self.handle_any("PATCH")
 
-    def read_body(self):
+    def content_length(self):
+        if self.headers.get("Transfer-Encoding"):
+            self.close_connection = True
+            raise bad_request("Send a Content-Length, not a chunked body.")
         try:
             length = int(self.headers.get("Content-Length") or 0)
+            if length < 0:
+                raise ValueError
         except ValueError:
             self.close_connection = True
             raise bad_request("Bad Content-Length.") from None
-        if length > BODY_LIMIT:
+        return length
+
+    def body(self, limit=BODY_LIMIT):
+        """The request's body, read once, at most `limit` bytes (413 above)."""
+        if self.body_read:
+            return self.body_data
+        if self.length > limit:
+            self.close_connection = self.length > DRAIN_LIMIT
+            raise Problem(413, "too_large", "Too large", f"At most {limit} bytes here.")
+        data = self.rfile.read(self.length) if self.length else b""
+        self.body_read, self.body_data = True, data
+        if len(data) < self.length:     # the connection was cut: nothing of it is kept
             self.close_connection = True
-            raise Problem(413, "too_large", "Too large", f"A request document is {BODY_LIMIT} bytes at most.")
-        return self.rfile.read(length) if length > 0 else b""
+            raise ConnectionResetError("the body was cut")
+        return data
 
-    def route(self, method, path, query, body):
+    # Routes: the path below <base>/v1/, "{}" one segment; the first match wins.
+    ROUTES = [
+        ("pairing", ("POST",), "pairing", "pair_start"),
+        ("pairing/{}", ("GET",), "pairing", "pair_poll"),
+        ("apps", ("GET", "HEAD"), "library", "apps"),
+        ("apps/missing", ("POST",), "library", "missing"),
+        ("changes", ("GET", "HEAD"), "changes", "changes"),
+        ("titles", ("GET", "HEAD"), "titles", "titles"),
+        ("titles/changes", ("GET", "HEAD"), "titles", "title_changes"),
+        ("titles/{}", ("GET", "HEAD"), "titles", "title"),
+        ("homebrew", ("GET", "HEAD"), "homebrew", "homebrew_list"),
+        ("homebrew/updates", ("POST",), "homebrew", "homebrew_updates"),
+        ("homebrew/{}", ("GET", "HEAD"), "homebrew", "homebrew_entry"),
+        ("saves", ("GET", "HEAD"), "saves", "saves_list"),
+        ("saves/{}", ("POST",), "saves", "save_post"),
+        ("saves/{}/uploads", ("POST",), "saves", "upload_open"),
+        ("saves/{}/{}", ("GET", "HEAD", "DELETE"), "saves", "save_one"),
+        ("uploads/{}", ("HEAD", "PATCH", "DELETE"), "saves", "upload"),
+        ("cheats", ("GET", "HEAD"), "cheats", "cheats_list"),
+        ("cheats/{}", ("GET", "HEAD"), "cheats", "cheat_text"),
+        ("files/{}", ("GET", "HEAD"), "library", "file"),
+    ]
+
+    def route(self, method, path, query):
         v1 = BASE + "/v1"
-        routes = [
-            (("/.well-known/lantern", v1, v1 + "/"), ("GET", "HEAD"), None, self.handshake),
-            ((v1 + "/pairing",), ("POST",), "pairing", self.pair_start),
-            ((v1 + "/apps",), ("GET", "HEAD"), "library", self.apps),
-            ((v1 + "/apps/missing",), ("POST",), "library", self.missing),
-            ((v1 + "/changes",), ("GET", "HEAD"), "changes", self.changes),
-        ]
+        if path in ("/.well-known/lantern", v1, v1 + "/"):
+            return self.call(method, ("GET", "HEAD"), None, self.handshake, (), query)
         if path == "/pair":
-            return self.pair_page(method, body)
-        prefixes = [(v1 + "/pairing/", ("GET",), "pairing", self.pair_poll),
-                    (v1 + "/titles/", ("GET", "HEAD"), "media", self.title),
-                    (v1 + "/files/", ("GET", "HEAD"), "library", self.file)]
-        for paths, methods, family, fn in routes:
-            if path in paths:
-                return self.call(method, methods, family, fn, query, body)
-        for prefix, methods, family, fn in prefixes:
-            rest = path[len(prefix):] if path.startswith(prefix) else ""
-            if rest and "/" not in rest:
-                return self.call(method, methods, family, lambda q, b, fn=fn, rest=rest: fn(rest, q, b), query, body)
-        raise Problem(404, "not_found", "Not found", "No such route on this server.")
+            return self.pair_page(method)
+        if path.startswith(v1 + "/"):
+            segments = path[len(v1) + 1:].split("/")
+            for pattern, methods, family, name in self.ROUTES:
+                wanted = pattern.split("/")
+                if len(wanted) == len(segments) and all(w == s or (w == "{}" and s) for w, s in zip(wanted, segments)):
+                    args = tuple(s for w, s in zip(wanted, segments) if w == "{}")
+                    return self.call(method, methods, family, getattr(self, name), args, query)
+        raise not_found("No such route on this server.")
 
-    def call(self, method, methods, family, fn, query, body):
-        account = self.server.accounts.resolve(self.headers.get("Authorization"), self.server.tokens)
+    def call(self, method, methods, family, fn, args, query):
+        self.account, self.record = self.server.accounts.resolve(self.headers.get("Authorization"),
+                                                                 self.server.tokens)
         if method not in methods:
             raise Problem(405, "bad_request", "Method not allowed", None, {"Allow": ", ".join(methods)})
         if family:
-            self.allow(account, family)
-        fn(query, body) if family else fn(account)
+            self.allow(self.account, family)
+        fn(query, *args)
 
     def allow(self, account, family):
         if family == "pairing":     # anyone may ask to pair (SPEC.md § 4.2, § 5.2)
             if not self.server.accounts.pairing:
-                raise Problem(404, "not_found", "Not found", "This server does not pair.")
+                raise not_found("This server does not pair.")
             return
+        if family == "saves" and not self.server.saves.available:
+            raise not_found("Save backups are unavailable on this server for now.")
         if account["state"] == "anonymous" and not self.server.accounts.public:
             raise unauthorized(CHALLENGE, "This server asks for a token: pair this device first.")
         if account["state"] == "frozen":
@@ -810,54 +1578,74 @@ class Handler(BaseHTTPRequestHandler):
         features["pairing"] = 1 if self.server.accounts.pairing else 0
         return features
 
+    def platform(self, query, required=False):
+        """The platform the client named (SPEC.md § 4.3): ?platform=, else Lantern-Platform; None for every one."""
+        name = query.get("platform") or (self.headers.get("Lantern-Platform") or "").strip()
+        if not name:
+            if required:
+                raise bad_request("Name a platform: Lantern-Platform or ?platform= (SPEC.md § 4.3).")
+            return None
+        if not PLATFORM.match(name):
+            raise bad_request(f"{name[:40]!r} is not a platform's name.")
+        return name
+
+    def prefs(self):
+        return languages(self.headers.get("Accept-Language"))
+
     # Routes.
 
-    def handshake(self, account):
-        doc = {"schema": 1, "uid": self.server.library.uid, "name": self.server.name,
+    def handshake(self, query):
+        lib, saves = self.server.library, self.server.saves
+        doc = {"schema": 1, "uid": lib.uid, "name": self.server.name,
                "software": {"name": "Lantern reference server", "version": VERSION},
-               "base": BASE, "versions": [1], "account": account,
-               "features": self.features(account), "limits": {"page_size": PAGE_LIMIT}}
+               "base": BASE, "versions": [1], "platforms": lib.platforms(), "account": self.account,
+               "features": self.features(self.account),
+               "limits": {"page_size": PAGE_LIMIT, "save_body": saves.body, "save_size": saves.size,
+                          "saves_kept_per_title": saves.kept}}
         self.send_doc(200, doc)
 
-    def listing_args(self, query):
+    def listing_args(self, query, sorts=("name", "added", "release")):
         sort = query.get("sort") or "name"
-        if sort not in ("name", "added", "release"):
-            raise bad_request("sort is name, added or release.")
+        if sort not in sorts:
+            raise bad_request("sort is " + ", ".join(sorts) + ".")
         size = query.get("page_size") or str(PAGE_DEFAULT)
         if not size.isdigit() or int(size) < 1:
             raise bad_request("page_size is a positive integer.")
         return sort, min(int(size), PAGE_LIMIT), query.get("cursor")
 
-    def apps(self, query, body):
+    def apps(self, query):
+        platform = self.platform(query)
         kind, title_id, q = query.get("type"), query.get("title_id"), query.get("q")
-        if kind is not None and kind not in APP_TYPES:
-            raise bad_request("type is base, update or dlc.")
-        if title_id is not None and not ID16.match(title_id):
-            raise bad_request("title_id is 16 upper-case hex digits.")
+        if kind is not None and not WORD.match(kind):
+            raise bad_request("type is a lower-case word, such as base, update or dlc.")
+        if title_id is not None and not CORE_ID.match(title_id):
+            raise bad_request("title_id is 1 to 128 letters, digits, '.', '_' and '-'.")
         sort, size, cursor = self.listing_args(query)
         lib = self.server.library
         with lib.lock:
             entries = [e for e in lib.apps.values()
-                       if (kind is None or e["doc"]["type"] == kind)
+                       if (platform is None or e["doc"]["platform"] == platform)
+                       and (kind is None or e["doc"]["type"] == kind)
                        and (title_id is None or e["doc"]["title_id"] == title_id)
                        and (not q or q.casefold() in e["doc"]["name"].casefold())]
-            self.send_doc(200, lib.page(entries, sort, size, cursor, ("apps", kind, title_id, q)))
+            self.send_doc(200, lib.page(entries, sort, size, cursor, ("apps", platform, kind, title_id, q)))
 
-    def missing(self, query, body):
-        doc = self.request_document(body)
+    def missing(self, query):
+        doc = self.request_document(self.body())
+        platform = self.platform(query, required=True)
         installed, want = doc.get("installed"), doc.get("want")
         if not (isinstance(installed, list) and all(
-                isinstance(i, dict) and ID16.match(str(i.get("app_id", "")))
-                and isinstance(i.get("version"), int) and not isinstance(i.get("version"), bool)
-                and 0 <= i["version"] < 1 << 32 for i in installed)):
-            raise bad_request("installed is a list of {app_id, version}.")
-        if not (isinstance(want, list) and want and all(w in APP_TYPES for w in want)):
+                isinstance(i, dict) and CORE_ID.match(str(i.get("app_id", ""))) and is_int(i.get("version_code"))
+                for i in installed)):
+            raise bad_request("installed is a list of {app_id, version_code}.")
+        if not (isinstance(want, list) and want and all(w in ("base", "update", "dlc") for w in want)):
             raise bad_request("want lists base, update or dlc.")
         sort, size, cursor = self.listing_args(query)
         lib = self.server.library
-        scope = ("missing", hashlib.sha256(json.dumps([installed, sorted(set(want))], sort_keys=True).encode()).hexdigest())
+        scope = ("missing", platform, hashlib.sha256(json.dumps([installed, sorted(set(want))], sort_keys=True)
+                                                     .encode()).hexdigest())
         with lib.lock:
-            self.send_doc(200, lib.page(lib.missing(installed, set(want)), sort, size, cursor, scope))
+            self.send_doc(200, lib.page(lib.missing(platform, installed, set(want)), sort, size, cursor, scope))
 
     def request_document(self, body):
         """A client's JSON document: 400 when malformed, 422 for a schema this server cannot read."""
@@ -875,21 +1663,234 @@ class Handler(BaseHTTPRequestHandler):
                           f"This server reads schema 1 here, not {doc['schema']}.")
         return doc
 
-    def changes(self, query, body):
-        self.send_doc(200, self.server.library.changes(query.get("since")))
+    def changes(self, query):
+        self.send_doc(200, self.server.library.changes(query.get("since"), self.platform(query)))
 
-    def title(self, title_id, query, body):
+    # Titles (SPEC.md § 7).
+
+    def titles(self, query):
+        platform = self.platform(query)
+        ids = [i for i in (query.get("ids") or "").split(",") if i]
+        if not ids:
+            raise bad_request("ids lists the title ids, comma-separated.")
+        if len(ids) > TITLES_AT_ONCE:
+            raise bad_request(f"At most {TITLES_AT_ONCE} ids at once.")
+        if not all(CORE_ID.match(i) for i in ids):
+            raise bad_request("A title id is 1 to 128 letters, digits, '.', '_' and '-'.")
+        lib, prefs = self.server.library, self.prefs()
+        with lib.lock:
+            keys = [k for k, t in lib.titles.items() if t["title_id"] in ids and (platform is None or t["platform"] == platform)]
+            known = {lib.titles[k]["title_id"] for k in keys}
+            doc = {"schema": 1, "titles": [lib.title_doc(k, prefs) for k in sorted(keys)],
+                   "unknown": [i for i in dict.fromkeys(ids) if i not in known]}
+        self.send_doc(200, doc)
+
+    def title_changes(self, query):
+        lib = self.server.library
+        self.send_doc(200, lib.title_changes(query.get("since"), self.platform(query), self.prefs()))
+
+    def title(self, query, title_id):
+        lib = self.server.library
+        table = {(t["platform"], t["title_id"]): k for k, t in lib.titles.items()}
+        key = lib.find(table, title_id, self.platform(query))
+        self.send_doc(200, {"schema": 1, **lib.title_doc(key, self.prefs())})
+
+    # Homebrew (SPEC.md § 8).
+
+    def homebrew_view(self, entry, full):
+        doc = dict(entry["doc"])
+        if not full and "manifest" in doc["package"]:
+            doc["package"] = {k: v for k, v in doc["package"].items() if k != "manifest"}
+        language = None
+        for k, value in entry["texts"].items():
+            doc[k], lang = localized(value, self.prefs())
+            language = language or lang
+        if language:
+            doc["language"] = language
+        return doc
+
+    def homebrew_list(self, query):
+        platform = self.platform(query)
+        q, category = query.get("q"), query.get("category")
+        if category is not None and category not in CATEGORIES:
+            raise bad_request("category is " + ", ".join(CATEGORIES) + ".")
+        _, size, cursor = self.listing_args(query, ("name",))
         lib = self.server.library
         with lib.lock:
-            mine = [e for e in lib.apps.values() if e["doc"]["title_id"] == title_id]
-        if not mine:
-            raise Problem(404, "not_found", "Not found", "No such title here.")
-        main = min(mine, key=lambda e: (e["doc"]["type"] != "base", e["keys"]["name"]))
-        doc = {"schema": 1, "title_id": title_id, "name": main["doc"]["name"]}
-        release = min((e["keys"]["release"] for e in mine), default=(True,))
-        if not release[0]:
-            doc["release"] = date.fromordinal(-release[1]).isoformat()
-        self.send_doc(200, doc)
+            entries = [e for (p, _), e in lib.homebrew.items()
+                       if (platform is None or p == platform) and (category is None or e["doc"]["category"] == category)
+                       and (not q or q.casefold() in e["doc"]["name"].casefold())]
+            self.send_doc(200, lib.page(entries, "name", size, cursor, ("homebrew", platform, q, category),
+                                        lambda e: self.homebrew_view(e, False)))
+
+    def homebrew_entry(self, query, hid):
+        entry = self.server.library.find(self.server.library.homebrew, hid, self.platform(query))
+        self.send_doc(200, {"schema": 1, **self.homebrew_view(entry, True)})
+
+    def homebrew_updates(self, query):
+        doc = self.request_document(self.body())
+        platform = self.platform(query, required=True)
+        installed = doc.get("installed")
+        if not (isinstance(installed, list) and all(
+                isinstance(i, dict) and HOMEBREW_ID.match(str(i.get("id", ""))) and is_int(i.get("build"))
+                for i in installed)):
+            raise bad_request("installed is a list of {id, build}.")
+        _, size, cursor = self.listing_args(query, ("name",))
+        builds = {}
+        for i in installed:
+            builds[i["id"]] = max(builds.get(i["id"], -1), i["build"])
+        lib = self.server.library
+        scope = ("updates", platform, hashlib.sha256(json.dumps(sorted(builds.items())).encode()).hexdigest())
+        with lib.lock:
+            newer = [e for (p, hid), e in lib.homebrew.items()
+                     if p == platform and hid in builds and e["doc"]["build"] > builds[hid]]
+            self.send_doc(200, lib.page(newer, "name", size, cursor, scope, lambda e: self.homebrew_view(e, False)))
+
+    # Save backups (SPEC.md § 9).
+
+    def save_target(self, query, title_id):
+        platform = self.platform(query, required=True)
+        if not title_id_ok(platform, title_id):
+            raise bad_request(f"Not a title id of {platform}.")
+        return platform
+
+    def text_header(self, name, limit):
+        raw = self.headers.get(name)
+        if raw is None:
+            return None
+        try:
+            value = unquote(raw, errors="strict")
+        except UnicodeDecodeError:
+            raise bad_request(f"{name} is UTF-8, percent-encoded.") from None
+        if len(value.encode()) > limit or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise bad_request(f"{name}: {limit} bytes at most, without control characters.")
+        return value or None
+
+    def save_fields(self, platform, title_id, kind, version, profile, note):
+        if kind is not None and kind not in SAVE_KINDS:
+            raise bad_request("kind is " + ", ".join(SAVE_KINDS) + ".")
+        if version is not None and not is_int(version):
+            raise bad_request("game_version_code is an integer.")
+        for value, limit, what in ((profile, 64, "profile"), (note, 120, "note")):
+            if value is not None and (not isinstance(value, str) or len(value.encode()) > limit
+                                      or any(ord(c) < 32 or ord(c) == 127 for c in value)):
+                raise bad_request(f"{what}: {limit} bytes at most, without control characters.")
+        fields = {"platform": platform, "title_id": title_id, "kind": kind, "game_version_code": version,
+                  "profile": profile or None, "note": note or None, "device": (self.record or {}).get("device")}
+        return {k: v for k, v in fields.items() if v is not None}
+
+    def saves_list(self, query):
+        title_id = query.get("title_id")
+        if title_id is not None and not CORE_ID.match(title_id):
+            raise bad_request("title_id is 1 to 128 letters, digits, '.', '_' and '-'.")
+        docs = self.server.saves.list(self.account["name"], self.platform(query), title_id)
+        self.send_doc(200, {"schema": 1, "saves": docs})
+
+    def save_post(self, query, title_id):
+        platform = self.save_target(query, title_id)
+        saves = self.server.saves
+        digest = content_digest(self.headers.get("Content-Digest"))
+        if digest is None:
+            raise bad_request("Content-Digest: sha-256=:<base64>: is required (SPEC.md § 9.2).")
+        version = self.headers.get("Lantern-Game-Version")
+        if version is not None and not version.isdigit():
+            raise bad_request("Lantern-Game-Version is an integer.")
+        fields = self.save_fields(platform, title_id, self.headers.get("Lantern-Save-Kind"),
+                                  int(version) if version is not None else None,
+                                  self.text_header("Lantern-Profile", 64), self.text_header("Lantern-Note", 120))
+        data = self.body(saves.body)
+        if not hmac.compare_digest(hashlib.sha256(data).digest(), digest):
+            raise digest_mismatch("The body's SHA-256 is not the one Content-Digest gives.")
+        saves.folder.mkdir(parents=True, exist_ok=True)
+        tmp = saves.folder / f".post-{secrets.token_hex(8)}"
+        tmp.write_bytes(data)
+        try:
+            if not zipfile.is_zipfile(tmp):
+                raise bad_request("A save is a zip archive.")
+            entry = saves.add(self.account["name"], tmp, hashlib.sha256(data).hexdigest(), len(data), fields)
+        finally:
+            if tmp.exists():
+                tmp.unlink()
+        self.send_doc(201, {"schema": 1, **entry})
+
+    def upload_open(self, query, title_id):
+        doc = self.request_document(self.body())
+        platform = self.save_target(query, title_id)
+        saves = self.server.saves
+        size, sha = doc.get("size"), doc.get("sha256")
+        if not is_int(size) or not (isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{64}", sha)):
+            raise bad_request("size is an integer and sha256 a lower-case hex SHA-256.")
+        if size > saves.size:
+            raise Problem(413, "too_large", "Too large", f"A save is {saves.size} bytes at most here.")
+        fields = self.save_fields(platform, title_id, doc.get("kind"), doc.get("game_version_code"),
+                                  doc.get("profile"), doc.get("note"))
+        uid, expires = saves.open(self.account["name"], fields, size, sha)
+        self.send_doc(201, {"schema": 1, "upload": f"{BASE}/v1/uploads/{uid}", "chunk_size": saves.chunk,
+                            "offset": 0, "expires": expires}, {"Location": f"{BASE}/v1/uploads/{uid}"})
+
+    def upload(self, query, uid):
+        saves = self.server.saves
+        s = saves.session(uid, self.account["name"])
+        if s is None:
+            raise not_found("No such upload: it finished, expired or was abandoned.")
+        if self.method == "HEAD":
+            return self.send_head(204, None, {"Upload-Offset": str(saves.offset(uid)),
+                                              "Upload-Length": str(s["size"]), "Cache-Control": "no-store"})
+        if self.method == "DELETE":
+            saves.abandon(uid)
+            return self.send_head(204, None, {})
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/offset+octet-stream":
+            raise bad_request("A chunk is application/offset+octet-stream.")
+        offset = self.headers.get("Upload-Offset") or ""
+        if not offset.isdigit():
+            raise bad_request("Upload-Offset is the chunk's offset, an integer.")
+        digest = content_digest(self.headers.get("Content-Digest"))
+        data = self.body(saves.chunk)
+        if digest is not None and not hmac.compare_digest(hashlib.sha256(data).digest(), digest):
+            raise digest_mismatch("The chunk's SHA-256 is not the one Content-Digest gives; it was not kept.")
+        at = saves.append(uid, int(offset), data)
+        if at < s["size"]:
+            return self.send_head(204, None, {"Upload-Offset": str(at), "Cache-Control": "no-store"})
+        entry = saves.finish(uid)
+        self.send_doc(201, {"schema": 1, **entry}, {"Upload-Offset": str(at)})
+
+    def save_one(self, query, title_id, save_id):
+        saves = self.server.saves
+        entry = saves.find(self.account["name"], title_id, save_id, self.platform(query))
+        if entry is None:
+            raise not_found("No such save backup.")
+        if self.method == "DELETE":
+            saves.delete(entry)
+            return self.send_head(204, None, {})
+        self.send_file(saves.archive(save_id), entry["size"], entry["sha256"], "application/zip")
+
+    # Cheats (SPEC.md § 10).
+
+    def cheats_list(self, query):
+        platform = self.platform(query)
+        title_id, build_id = query.get("title_id"), query.get("build_id")
+        if title_id is not None and not CORE_ID.match(title_id):
+            raise bad_request("title_id is 1 to 128 letters, digits, '.', '_' and '-'.")
+        if build_id is not None and not BUILD_ID.match(build_id):
+            raise bad_request("build_id is 1 to 64 letters, digits, '.', '_' and '-'.")
+        lib = self.server.library
+        with lib.lock:
+            sets = [e["doc"] for e in lib.cheats.values()
+                    if (platform is None or e["doc"]["platform"] == platform)
+                    and (title_id is None or e["doc"]["title_id"] == title_id)
+                    and (build_id is None or e["doc"]["build_id"] == build_id)]
+        sets.sort(key=lambda d: (d["platform"], d["title_id"], d["build_id"], d["source"].casefold(), d["id"]))
+        self.send_doc(200, {"schema": 1, "cheats": sets})
+
+    def cheat_text(self, query, cid):
+        platform = self.platform(query)
+        lib = self.server.library
+        with lib.lock:
+            entry = lib.cheats.get(cid)
+        if entry is None or (platform is not None and entry["doc"]["platform"] != platform):
+            raise not_found("No such cheat set.")
+        self.send_file(entry["path"], entry["doc"]["size"], entry["doc"]["sha256"], "text/plain; charset=utf-8")
 
     # Pairing (SPEC.md § 5.2).
 
@@ -899,8 +1900,8 @@ class Handler(BaseHTTPRequestHandler):
             host = f"{self.server.server_address[0]}:{self.server.server_address[1]}"
         return f"{'https' if self.server.tls else 'http'}://{host}"
 
-    def pair_start(self, query, body):
-        doc = self.request_document(body)
+    def pair_start(self, query):
+        doc = self.request_document(self.body())
         device, scopes = doc.get("device"), doc.get("scopes")
         if not (isinstance(device, str) and device.strip() and len(device.encode()) <= 512
                 and not any(ord(c) < 32 or ord(c) == 127 for c in device)):
@@ -918,18 +1919,18 @@ class Handler(BaseHTTPRequestHandler):
                             "poll": f"{BASE}/v1/pairing/{entry['pid']}", "interval": entry["interval"],
                             "expires": int(self.server.pairing.expires)}, {"Cache-Control": "no-store"})
 
-    def pair_poll(self, pid, query, body):
+    def pair_poll(self, query, pid):
         doc = self.server.pairing.poll(pid)
         if doc is None:
             self.send_head(202, 0, {"Cache-Control": "no-store"})
         else:
             self.send_doc(200, doc, {"Cache-Control": "no-store"})
 
-    def pair_page(self, method, body):
+    def pair_page(self, method):
         """/pair: where a user signs in, enters the console's code and approves it.
         A password is typed here only, never on the console (SPEC.md § 5.2)."""
         if not self.server.accounts.pairing:
-            raise Problem(404, "not_found", "Not found", "This server does not pair.")
+            raise not_found("This server does not pair.")
         if method not in ("GET", "HEAD", "POST"):
             raise Problem(405, "bad_request", "Method not allowed", None, {"Allow": "GET, HEAD, POST"})
         if method != "POST":
@@ -939,6 +1940,7 @@ class Handler(BaseHTTPRequestHandler):
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         if ctype != "application/x-www-form-urlencoded":
             return self.send_page(400, self.pair_form("The form was not sent as a form."))
+        body = self.body()
         form = {k: v[-1] for k, v in parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True).items()}
         pairing = self.server.pairing
         if "nonce" in form:
@@ -1012,16 +2014,18 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
         if not self.head:
             self.wfile.write(body)
 
-    # Files (SPEC.md § 6.7).
+    # Files (SPEC.md § 6.6): packages, homebrew, save backups and cheat sets alike.
 
-    def file(self, fid, query, body):
+    def file(self, query, fid):
         lib = self.server.library
         with lib.lock:
-            entry = lib.apps.get(lib.files.get(fid, ""))
+            entry = lib.files.get(fid)
         if entry is None:
-            raise Problem(404, "not_found", "Not found", "No such file; read the app again.")
-        doc, size = entry["doc"], entry["doc"]["size"]
-        etag = f'"{doc["sha256"][:32]}"'
+            raise not_found("No such file; read the app again.")
+        self.send_file(entry["path"], entry["size"], entry["sha256"], "application/octet-stream")
+
+    def send_file(self, path, size, sha256, ctype):
+        etag = f'"{sha256[:32]}"'
         start, end = 0, size - 1
         status = 200
         rng = self.headers.get("Range")
@@ -1034,15 +2038,15 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
             if parsed:
                 start, end = parsed
                 status = 206
-        headers = {"Content-Type": "application/octet-stream", "Accept-Ranges": "bytes", "ETag": etag,
-                   "Repr-Digest": f"sha-256=:{base64.b64encode(bytes.fromhex(doc['sha256'])).decode()}:"}
+        headers = {"Content-Type": ctype, "Accept-Ranges": "bytes", "ETag": etag,
+                   "Repr-Digest": f"sha-256=:{base64.b64encode(bytes.fromhex(sha256)).decode()}:"}
         if status == 206:
             headers["Content-Range"] = f"bytes {start}-{end}/{size}"
         length = end - start + 1 if size else 0
         self.send_head(status, length, headers)
         if self.head or not length:
             return
-        with entry["path"].open("rb") as f:
+        with Path(path).open("rb") as f:
             f.seek(start)
             while length > 0:
                 chunk = f.read(min(CHUNK, length))
@@ -1059,8 +2063,9 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
         self.send_response(status)
         for k, v in headers.items():
             self.send_header(k, v)
-        self.send_header("Content-Length", str(length))
-        self.send_header("Vary", "Authorization")
+        if length is not None:
+            self.send_header("Content-Length", str(length))
+        self.send_header("Vary", "Authorization, Lantern-Platform, Accept-Language")
         if "Cache-Control" not in headers:
             self.send_header("Cache-Control", "private" if self.authenticated else "no-cache")
         self.end_headers()
@@ -1101,9 +2106,10 @@ class LanternServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, address, library, accounts, name="Lantern reference server", rescan=30.0,
-                 quiet=False, handler=Handler, tls=None, spki=None, token_lifetime=None):
+                 quiet=False, handler=Handler, tls=None, spki=None, token_lifetime=None, saves=None):
         """`tls`: an ssl.SSLContext; without it, only a loopback address (SPEC.md § 2).
-        `spki`: the SHA-256 of the certificate's key, for /pair (SPEC.md § 5.3)."""
+        `spki`: the SHA-256 of the certificate's key, for /pair (SPEC.md § 5.3).
+        `saves`: a Saves, by default in the library's .lantern-saves/."""
         if tls is None and not is_loopback(address[0]):
             raise ValueError(f"plain HTTP only on a loopback address, not {address[0] or 'every address'}: "
                              "give --tls-cert and --tls-key (SPEC.md § 2)")
@@ -1115,6 +2121,7 @@ class LanternServer(ThreadingHTTPServer):
             self.socket = tls.wrap_socket(self.socket, server_side=True, do_handshake_on_connect=False)
         self.tls, self.spki = tls is not None, spki
         self.library, self.accounts, self.name = library, accounts, name
+        self.saves = saves if saves is not None else Saves(library.root / ".lantern-saves")
         self.rescan, self.quiet = rescan, quiet
         self.tokens = Tokens(library)
         self.pairing = Pairing(self.tokens, accounts, lifetime=token_lifetime)
@@ -1186,9 +2193,7 @@ def tokens_command(state_path, revoke):
         sys.exit(f"--revoke {revoke}: {'no' if not found else 'more than one'} token with this id")
     del tokens[found[0]]
     doc["tokens"] = tokens
-    tmp = Path(state_path).with_suffix(".tmp")
-    tmp.write_text(json.dumps(doc, indent=1), encoding="utf-8")
-    tmp.replace(state_path)
+    write_json(Path(state_path), doc)
     print(f"revoked {found[0][:12]}")
     return 0
 
@@ -1202,6 +2207,7 @@ def main(argv=None):
     p.add_argument("--name", default="Lantern reference server", help="the name the handshake shows")
     p.add_argument("--users", help="accounts file; without it the server is public and does not pair")
     p.add_argument("--state", help="state file (default <library>/.lantern-state.json)")
+    p.add_argument("--saves", help="where save backups are kept (default <library>/.lantern-saves/)")
     p.add_argument("--rescan", type=float, default=30.0, help="seconds between library scans (0: every request)")
     p.add_argument("--tls-cert", help="certificate chain (PEM); with --tls-key, HTTPS")
     p.add_argument("--tls-key", help="private key (PEM)")
@@ -1232,17 +2238,20 @@ def main(argv=None):
         tls.load_cert_chain(args.tls_cert, args.tls_key)
         spki = spki_sha256(Path(args.tls_cert).read_text(encoding="ascii"))
     library = Library(args.library, args.state or Path(args.library) / ".lantern-state.json")
+    saves = Saves(args.saves or Path(args.library) / ".lantern-saves")
+    if not saves.available:
+        log(f"{saves.path}: save backups unavailable (an index this server cannot read or write)")
     lifetime = args.token_days * 86400 if args.token_days else None
     try:
         server = LanternServer((args.host, args.port), library, Accounts(args.users), args.name, args.rescan,
-                               args.quiet, tls=tls, spki=spki, token_lifetime=lifetime)
+                               args.quiet, tls=tls, spki=spki, token_lifetime=lifetime, saves=saves)
     except ValueError as e:
         p.error(str(e))
     port = server.server_address[1]
     if args.discovery:
         discovery(server, args.discovery_port, port)
-    log(f"{len(library.apps)} app(s) from {library.root}, "
-        f"{'public' if server.accounts.public else 'private'}, uid {library.uid}")
+    log(f"{len(library.apps)} app(s), {len(library.homebrew)} homebrew, {len(library.cheats)} cheat set(s) "
+        f"from {library.root}, {'public' if server.accounts.public else 'private'}, uid {library.uid}")
     scheme = "https" if tls else "http"
     if tls:
         log(f"key {short_fingerprint(spki)} (SPKI SHA-256 {spki})")

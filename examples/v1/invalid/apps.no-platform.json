@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "items": [
+    {
+      "id": "a_Lw4Tq8",
+      "title_id": "org.example.frostlinetales",
+      "app_id": "org.example.frostlinetales",
+      "type": "base",
+      "version_code": 12,
+      "version_name": "1.2.0",
+      "name": "Frostline Tales",
+      "size": 98566144,
+      "format": "apk",
+      "sha256": "9f2c41aa0b7e5d3c18f6a2b4c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1",
+      "added": "2026-10-29T10:00:00Z",
+      "file": "/api/lantern/v1/files/f_Tn55Vb"
+    }
+  ],
+  "next": null
+}

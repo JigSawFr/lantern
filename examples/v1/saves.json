@@ -2,11 +2,28 @@
   "schema": 1,
   "saves": [
     {
+      "platform": "switch",
+      "title_id": "0100ABCD00010000",
+      "save_id": "s_03",
+      "created": "2026-10-30T09:12:00Z",
+      "size": 1052672,
+      "sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+      "kind": "account",
+      "game_version_code": 196608,
+      "profile": "Lea",
+      "note": "Chapter 4",
+      "device": "Lea's Switch"
+    },
+    {
+      "platform": "switch",
       "title_id": "0100ABCD00010000",
       "save_id": "s_02",
       "created": "2026-10-29T20:41:00Z",
       "size": 1048576,
       "sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+      "kind": "account",
+      "game_version_code": 131072,
+      "profile": "Lea",
       "note": "Before the ice bridge",
       "device": "Lea's Switch"
     }

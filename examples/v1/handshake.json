@@ -10,6 +10,10 @@
   "versions": [
     1
   ],
+  "platforms": [
+    "switch",
+    "android"
+  ],
   "motd": "New this week: two co-op games.",
   "account": {
     "name": "lea",
@@ -21,15 +25,19 @@
   },
   "features": {
     "library": 1,
-    "media": 1,
+    "titles": 1,
     "changes": 1,
     "sections": 1,
+    "homebrew": 1,
     "saves": 1,
     "cheats": 1,
     "requests": 0,
     "pairing": 1
   },
   "limits": {
-    "page_size": 500
+    "page_size": 500,
+    "save_body": 8388608,
+    "save_size": 1073741824,
+    "saves_kept_per_title": 10
   }
 }

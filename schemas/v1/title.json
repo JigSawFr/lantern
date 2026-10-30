@@ -2,85 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lantern.boreale.dev/schemas/v1/title.json",
   "title": "Title",
-  "description": "GET <base>/v1/titles/{title_id} (SPEC.md § 6.6).",
-  "type": "object",
-  "properties": {
-    "schema": {
-      "$ref": "common.json#/$defs/schema1"
+  "description": "GET <base>/v1/titles/{title_id} (SPEC.md § 7.1).",
+  "allOf": [
+    {
+      "$ref": "common.json#/$defs/title"
     },
-    "title_id": {
-      "$ref": "common.json#/$defs/id16"
-    },
-    "language": {
-      "type": "string",
-      "maxLength": 35
-    },
-    "name": {
-      "$ref": "common.json#/$defs/name"
-    },
-    "publisher": {
-      "$ref": "common.json#/$defs/name"
-    },
-    "release": {
-      "type": "string",
-      "format": "date"
-    },
-    "players": {
+    {
       "type": "object",
       "properties": {
-        "min": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "max": {
-          "type": "integer",
-          "minimum": 1
+        "schema": {
+          "$ref": "common.json#/$defs/schema1"
         }
-      }
-    },
-    "languages": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "maxLength": 35
-      }
-    },
-    "age": {
-      "type": "object",
-      "properties": {
-        "system": {
-          "$ref": "common.json#/$defs/name"
-        },
-        "rating": {
-          "type": "integer",
-          "minimum": 0
-        }
-      }
-    },
-    "description": {
-      "$ref": "common.json#/$defs/text"
-    },
-    "media": {
-      "type": "object",
-      "properties": {
-        "icon": {
-          "$ref": "common.json#/$defs/image"
-        },
-        "banner": {
-          "$ref": "common.json#/$defs/image"
-        },
-        "screenshots": {
-          "type": "array",
-          "items": {
-            "$ref": "common.json#/$defs/image"
-          }
-        }
-      }
+      },
+      "required": [
+        "schema"
+      ]
     }
-  },
-  "required": [
-    "schema",
-    "title_id",
-    "name"
   ]
 }
