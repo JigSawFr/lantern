@@ -10,29 +10,20 @@
       <p>{{solid_lede}}</p>
     </div>
     <ul class="points">
+      <li class="new">{{covers_platforms}}</li>
+      <li class="new">{{covers_homebrew}}</li>
+      <li class="new">{{covers_titles}}</li>
+      <li class="new">{{covers_saves}}</li>
+      <li class="new">{{covers_cheats}}</li>
       <li>{{solid_versions}}</li>
       <li>{{solid_tokens}}</li>
       <li>{{solid_https}}</li>
       <li>{{solid_content}}</li>
       <li>{{solid_features}}</li>
+      <li>{{solid_pages}}</li>
+      <li>{{solid_errors}}</li>
+      <li>{{solid_nothing}}</li>
       <li>{{solid_suite}}</li>
-    </ul>
-  </section>
-
-  <section id="adds">
-    <div class="section-head">
-      <span class="eyebrow">{{adds_eyebrow}}</span>
-      <h2>{{adds_title}}</h2>
-      <p>{{adds_lede}}</p>
-    </div>
-    <ul class="points new">
-      <li>{{add_sha}}</li>
-      <li>{{add_versions}}</li>
-      <li>{{add_features}}</li>
-      <li>{{add_pages}}</li>
-      <li>{{add_pairing}}</li>
-      <li>{{add_errors}}</li>
-      <li>{{add_nothing}}</li>
     </ul>
   </section>
 
@@ -53,6 +44,7 @@ GET /api/lantern/v1/apps?sort=added</code></pre>
         <h3>{{client_title}}</h3>
         <p>{{client_text}}</p>
         <pre tabindex="0"><code>User-Agent: ExampleClient/0.1
+Lantern-Platform: switch
 Range: bytes=0-1048575</code></pre>
       </article>
       <article class="way">
