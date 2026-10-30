@@ -21,7 +21,14 @@ decides.
 - ed25519-refused.json: Ed25519 signatures a verifier refuses whatever the
   equation says (§ 8.4, § 5.4): keys and R of small order (each pair of the
   8, with S = 0, which the cofactorless equation accepts for about one
-  message in 8), encodings that are not canonical, S >= L.
+  message in 8), encodings that are not canonical, S >= L;
+- encrypted-saves.json: end-to-end encrypted backups (§ 9.4): HKDF,
+  HChaCha20 and XChaCha20-Poly1305 cases, save keys with their id, phrase
+  and QR text, backups whole, and those a reader refuses;
+- grants.json: grants (§ 19.3), and what a peer decides of each (§ 19.4);
+- sync-merge.json: sync's merge rule (§ 20.4), item by item;
+- static-layout.json: each read route's file in a static library, and the
+  paths a document may point at (§ 21.1).
 
 Everything is computed by the reference (conformance/lantern_client.py and
 server/), deterministically: the keys are RFC 8032's first test key and
@@ -31,6 +38,7 @@ fingerprints are computed again. tests/test_v04.py checks the vectors
 against the reference, both ways. Standard library only.
 """
 import base64
+import hashlib
 import json
 import subprocess
 import sys
@@ -41,8 +49,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "conformance"))
 import lantern_client as client
+import lantern_e2e as e2e
 
+from server import ed25519 as server_ed25519
 from server import lantern_server as ls
+from server import static
 
 OUT = ROOT / "vectors"
 SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")    # RFC 8032 § 7.1, test 1
@@ -331,10 +342,210 @@ def ed25519_vectors():
                small_order=SMALL_ORDER, messages=messages, small_order_pairs_verify=False, cases=cases)
 
 
+def pattern(size):
+    """The bytes of a vector's archive given by its size: byte i is i % 251."""
+    return bytes(i % 251 for i in range(size))
+
+
+def chunk_tags(data, size):
+    """The 16-byte tag of each chunk of an encrypted backup of an archive of `size` bytes, hex."""
+    tags, pos = [], e2e.HEADER
+    for i in range(max(1, -(-size // e2e.CHUNK))):
+        pos += min(e2e.CHUNK, size - i * e2e.CHUNK) + e2e.TAG
+        tags.append(data[pos - e2e.TAG:pos].hex())
+    return tags
+
+
+def e2e_vectors():
+    keys = [hashlib.sha256(b"Lea's fictional save key").digest(), bytes(range(32))]
+    file_key, wrap_nonce = hashlib.sha256(b"a fictional file key").digest(), bytes(range(100, 124))
+    primitives = {
+        "hkdf_sha256": [{"ikm": keys[0].hex(), "salt": "", "info": "lantern-save-e2e-1 key id", "length": 8,
+                         "okm": e2e.hkdf_sha256(keys[0], b"lantern-save-e2e-1 key id", 8).hex()}],
+        "hchacha20": [{"key": keys[1].hex(), "nonce": bytes(range(16)).hex(),
+                       "subkey": e2e.hchacha20(keys[1], bytes(range(16))).hex()}],
+        "xchacha20poly1305": [
+            {"key": keys[1].hex(), "nonce": wrap_nonce.hex(), "aad": "4c616e7465726e", "plaintext": b"Frostline".hex(),
+             "sealed": e2e.xchacha20poly1305_seal(keys[1], wrap_nonce, b"Frostline", b"Lantern").hex()},
+            {"key": file_key.hex(), "nonce": e2e.chunk_nonce(0, True).hex(), "aad": "", "plaintext": "",
+             "sealed": e2e.xchacha20poly1305_seal(file_key, e2e.chunk_nonce(0, True), b"").hex()}]}
+    key_docs = [{"save_key": k.hex(), "key_id": e2e.key_id(k), "wrapping_key": e2e.wrapping_key(k).hex(),
+                 "phrase": e2e.phrase(k), "qr": e2e.qr_text(k)} for k in keys]
+    empty_zip = b"PK\x05\x06" + bytes(18)
+    cases = [("An empty zip: one chunk", empty_zip), ("An empty archive: one empty chunk", b""),
+             ("Exactly one chunk of 65,536 bytes", pattern(65536)), ("Two chunks: 65,536 and 100 bytes", pattern(65636))]
+    backups = []
+    for name, archive in cases:
+        data = e2e.encrypt(keys[0], archive, file_key, wrap_nonce)
+        assert e2e.decrypt(keys[0], data) == archive and len(data) == e2e.encrypted_size(len(archive))
+        case = {"name": name, "save_key": keys[0].hex(), "file_key": file_key.hex(), "wrap_nonce": wrap_nonce.hex(),
+                "archive": archive.hex() if len(archive) <= 64 else {"size": len(archive), "byte_i": "i % 251"},
+                "header": data[:e2e.HEADER].hex(), "size": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+                "chunk_tags": chunk_tags(data, len(archive))}
+        if len(data) <= 256:
+            case["encrypted"] = data.hex()
+        backups.append(case)
+    small = e2e.encrypt(keys[0], empty_zip, file_key, wrap_nonce)
+    two = e2e.encrypt(keys[0], pattern(65636), file_key, wrap_nonce)
+
+    def flip(data, at):
+        return data[:at] + bytes([data[at] ^ 1]) + data[at + 1:]
+
+    refused = [
+        ("A byte of the chunk changed", cases[0][0], "flip bit 0 of byte 90", flip(small, 90), keys[0]),
+        ("A byte of the tag changed", cases[0][0], "flip bit 0 of the last byte", flip(small, len(small) - 1), keys[0]),
+        ("The key id changed", cases[0][0], "flip bit 0 of byte 8", flip(small, 8), keys[0]),
+        ("The wrapped file key changed", cases[0][0], "flip bit 0 of byte 40", flip(small, 40), keys[0]),
+        ("Another save key", cases[0][0], "read with the second key", small, keys[1]),
+        ("The last chunk cut short", cases[3][0], "drop the last byte", two[:-1], keys[0]),
+        ("The last chunk dropped", cases[3][0], "keep the first 88 + 65552 bytes", two[:e2e.HEADER + e2e.CHUNK + e2e.TAG],
+         keys[0]),
+        ("Bytes after the last chunk", cases[0][0], "append 16 zero bytes", small + bytes(16), keys[0]),
+        ("Chunks swapped", cases[3][0], "swap the two chunks",
+         two[:e2e.HEADER] + two[e2e.HEADER + e2e.CHUNK + e2e.TAG:] + two[e2e.HEADER:e2e.HEADER + e2e.CHUNK + e2e.TAG], keys[0]),
+        ("Not an encrypted backup", None, "a zip in clear", empty_zip, keys[0]),
+    ]
+    refused_docs = []
+    for name, of, operation, data, key in refused:
+        try:
+            e2e.decrypt(key, data)
+            raise AssertionError(name)
+        except e2e.Refused:
+            pass
+        refused_docs.append({"name": name, "backup": of, "operation": operation, "save_key": key.hex(),
+                             "sha256": hashlib.sha256(data).hexdigest(), "opens": False})
+    good = key_docs[0]["phrase"]
+    phrases = [("As shown", good, True), ("Lower case, spaces for dashes", good.lower().replace("-", " "), True),
+               ("One symbol changed", ("3" if good[0] != "3" else "4") + good[1:], False),
+               ("A symbol missing", good[:-1], False), ("An O, outside the alphabet", "O" + good[1:], False)]
+    phrase_docs = []
+    for name, text, ok in phrases:
+        try:
+            got = e2e.key_from_phrase(text) == keys[0]
+        except e2e.Refused:
+            got = False
+        assert got == ok, name
+        phrase_docs.append({"name": name, "phrase": text, "accepted": ok})
+    return doc("encrypted-saves", "End-to-end encrypted backups, scheme lantern-save-e2e-1 (SPEC.md § 9.4): the "
+               "primitives (HKDF-SHA-256, HChaCha20, XChaCha20-Poly1305), save keys with their id, wrapping key, "
+               "recovery phrase and QR text, backups made with the file key and wrap nonce given (archive bytes in "
+               "hex, or of the size given, byte i being i % 251), each chunk's tag, then backups a reader refuses "
+               "(an operation on a backup above) and phrases. Fictional keys; hex.",
+               chunk=e2e.CHUNK, header=e2e.HEADER, primitives=primitives, keys=key_docs, backups=backups,
+               refused=refused_docs, phrases=phrase_docs)
+
+
+GRANT_SEED = hashlib.sha256(b"Lantern vectors' fictional grant key").digest()
+GRANT_UID = "6f1c2a8e-4b7d-4e2a-9c31-8d5e2f0a7b14"
+
+
+def grant_vectors():
+    public = server_ed25519.public_key(GRANT_SEED)
+    sha, size, exp = "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817", 734003200, CREATED + 600
+    grant = ls.make_grant(GRANT_SEED, GRANT_UID, sha, size, exp)
+    signature = grant.split(".")[1]
+    forged = client.b64url(ls.grant_payload(GRANT_UID, sha, size + 1, exp)) + "." + signature
+    other = ls.make_grant(bytes(32), GRANT_UID, sha, size, exp)
+    keys = {GRANT_UID: public}
+    cases = [("Valid, before exp", grant, sha, CREATED, keys, True),
+             ("Expired", grant, sha, exp + 1, keys, False),
+             ("For another file than the path's", grant, "0" * 64, CREATED, keys, False),
+             ("The payload changed (size), the signature kept", forged, sha, CREATED, keys, False),
+             ("Signed by another key", other, sha, CREATED, keys, False),
+             ("A server the peer did not pair with", grant, sha, CREATED, {"00000000-0000-4000-8000-000000000000": public},
+              False),
+             ("Not a grant", "not-a-grant", sha, CREATED, keys, False)]
+    out = []
+    for name, g, path_sha, now, known, ok in cases:
+        doc_ = ls.read_grant(g, known, now)
+        got = doc_ is not None and doc_["sha256"] == path_sha
+        assert got == ok, name
+        out.append({"name": name, "grant": g, "path_sha256": path_sha, "peer_time": now,
+                    "servers": {u: b64(k) for u, k in known.items()}, "serves": ok})
+    return doc("grants", "Grants (SPEC.md § 19.3) and what a peer decides of each (§ 19.4): a grant is the base64url "
+               "payload, a dot, and the base64url Ed25519 signature of the payload's bytes by the server's grant key.",
+               key={"seed": GRANT_SEED.hex(), "public_key": b64(public)},
+               payload=ls.grant_payload(GRANT_UID, sha, size, exp).decode(), grant=grant, cases=out)
+
+
+def sync_vectors():
+    server_now = "2026-10-30T09:30:00.000Z"
+    now = ls.datetime.fromisoformat("2026-10-30T09:30:00+00:00")
+    wish = {"platform": "switch", "title_id": "0100ABCD00010000"}
+    noted = {**wish, "note": "For the holidays"}
+    cases = [
+        ("Nothing kept: the item sent is kept", None, {"value": wish, "updated": "2026-10-30T09:00:00.000Z"}),
+        ("A later updated wins", {"value": wish, "updated": "2026-10-30T09:00:00.000Z"},
+         {"value": noted, "updated": "2026-10-30T09:00:00.001Z"}),
+        ("An earlier updated loses", {"value": noted, "updated": "2026-10-30T09:10:00.000Z"},
+         {"value": wish, "updated": "2026-10-30T09:05:00.000Z"}),
+        ("The same updated: a deletion wins", {"value": wish, "updated": "2026-10-30T09:00:00.000Z"},
+         {"deleted": True, "updated": "2026-10-30T09:00:00.000Z"}),
+        ("The same updated: a value loses to the deletion kept", {"deleted": True, "updated": "2026-10-30T09:00:00.000Z"},
+         {"value": wish, "updated": "2026-10-30T09:00:00.000Z"}),
+        ("The same updated: the greater canonical JSON wins", {"value": wish, "updated": "2026-10-30T09:00:00.000Z"},
+         {"value": noted, "updated": "2026-10-30T09:00:00.000Z"}),
+        ("The same updated: the smaller canonical JSON loses", {"value": noted, "updated": "2026-10-30T09:00:00.000Z"},
+         {"value": wish, "updated": "2026-10-30T09:00:00.000Z"}),
+        ("The same item again: nothing changes", {"value": wish, "updated": "2026-10-30T09:00:00.000Z"},
+         {"value": wish, "updated": "2026-10-30T09:00:00.000Z"}),
+        ("A time without milliseconds reads as .000", {"value": wish, "updated": "2026-10-30T09:00:00.000Z"},
+         {"value": noted, "updated": "2026-10-30T09:00:01Z"}),
+        ("An updated an hour ahead is the server's time", {"value": wish, "updated": "2026-10-30T09:29:00.000Z"},
+         {"value": noted, "updated": "2026-10-30T10:30:00.000Z"}),
+    ]
+    out = []
+    for name, have, sent in cases:
+        sent_n = dict(sent, key="switch/0100ABCD00010000")
+        sent_n["updated"] = ls.sync_time(sent["updated"], now, SKEW)
+        have_n = dict(have, key="switch/0100ABCD00010000") if have else None
+        wins = ls.sync_wins(sent_n, have_n)
+        kept = {k: v for k, v in (sent_n if wins else have_n).items() if k != "key"}
+        case = {"name": name, "have": have, "sent": sent, "replaced": wins, "kept": kept}
+        if have and "value" in have and "value" in sent:
+            case["canonical"] = {"have": ls.canonical(have["value"]).decode(), "sent": ls.canonical(sent["value"]).decode()}
+        out.append(case)
+    return doc("sync-merge", "Sync's merge rule (SPEC.md § 20.4), item by item: the item a server keeps of the one "
+               "it has (have) and the one sent, at the server's time below, with auth.skew 300 seconds; replaced "
+               "says whether the item sent is the one kept (and takes the next rev).",
+               server_time=server_now, skew=SKEW, cases=out)
+
+
+def static_vectors():
+    routes = [
+        ("The handshake", "GET /.well-known/lantern", static.layout_path("handshake")),
+        ("Apps of the Switch, page 1", "GET <base>/v1/apps?platform=switch", static.layout_path("apps", "switch", page=1)),
+        ("Apps of the Switch, the page after cursor 2", "GET <base>/v1/apps?platform=switch&cursor=2",
+         static.layout_path("apps", "switch", page=2)),
+        ("A title", "GET <base>/v1/titles/0100ABCD00010000 (switch)", static.layout_path("title", "switch", "0100ABCD00010000")),
+        ("Every title of Android, page 1", "titles of android", static.layout_path("titles", "android", page=1)),
+        ("Homebrew of Linux, page 1", "GET <base>/v1/homebrew?platform=linux", static.layout_path("homebrew", "linux", page=1)),
+        ("A homebrew entry", "GET <base>/v1/homebrew/org.example.frostline (switch)",
+         static.layout_path("entry", "switch", "org.example.frostline")),
+        ("A title's cheat sets", "GET <base>/v1/cheats?platform=switch&title_id=0100ABCD00010000",
+         static.layout_path("cheats", "switch", "0100ABCD00010000")),
+        ("A cheat set's text", "GET <base>/v1/cheats/cs_Jt3Vx0", static.layout_path("cheat", ident="cs_Jt3Vx0")),
+        ("A file", "GET <file> of sha256 3a7b…", static.layout_path("blob", ident="3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817")),
+    ]
+    paths = [("v1/blobs/sha256/3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817", True),
+             ("media/icons/frostline.png", True), ("/v1/blobs/sha256/3a7b", False),
+             ("https://lea.example.org/library/v1/blobs/sha256/3a7b", False), ("../library/v1/blobs/sha256/3a7b", False),
+             ("v1/blobs/../../secrets", False), ("v1\\blobs\\3a7b", False), ("v1/blobs/sha256/3a7b?download=1", False),
+             ("file:v1/blobs", False)]
+    for p_, ok in paths:
+        assert static.relative_ok(p_) == ok, p_
+    return doc("static-layout", "A static library's layout (SPEC.md § 21.1): each read route's file, relative to the "
+               "library's root, and the paths a document's file or image url may hold (relative: no scheme, no "
+               "leading /, no .. part, no backslash, no query).",
+               routes=[{"name": n, "route": r, "file": f} for n, r, f in routes],
+               paths=[{"path": p_, "accepted": ok} for p_, ok in paths])
+
+
 def everything():
     return {"signatures": signature_vectors(), "homebrew-signatures": homebrew_vectors(), "spki": spki_vectors(),
             "paths": path_vectors(), "version-codes": version_vectors(), "requires": requires_vectors(),
-            "rating-caps": cap_vectors(), "ed25519-refused": ed25519_vectors()}
+            "rating-caps": cap_vectors(), "ed25519-refused": ed25519_vectors(), "encrypted-saves": e2e_vectors(),
+            "grants": grant_vectors(), "sync-merge": sync_vectors(), "static-layout": static_vectors()}
 
 
 def text(doc):

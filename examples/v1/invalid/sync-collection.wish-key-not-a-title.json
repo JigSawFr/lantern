@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "collection": "wishes",
+  "generation": "g_4Rz1",
+  "rev": 42,
+  "items": [
+    {
+      "key": "Frostline Tales",
+      "value": {
+        "platform": "switch",
+        "title_id": "0100ABCD00010000",
+        "name": "Frostline Tales",
+        "note": "For the winter holidays"
+      },
+      "updated": "2026-10-30T09:12:03.250Z",
+      "rev": 41
+    }
+  ],
+  "next": null
+}

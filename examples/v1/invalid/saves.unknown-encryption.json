@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "saves": [
+    {
+      "platform": "switch",
+      "title_id": "0100ABCD00010000",
+      "save_id": "s_03",
+      "created": "2026-10-30T09:12:00Z",
+      "size": 1052672,
+      "sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+      "kind": "account",
+      "game_version_code": 196608,
+      "profile": "Lea",
+      "note": "Chapter 4",
+      "device": "Lea's Switch"
+    },
+    {
+      "platform": "switch",
+      "title_id": "0100ABCD00010000",
+      "save_id": "s_02",
+      "created": "2026-10-29T20:41:00Z",
+      "size": 1048576,
+      "sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+      "kind": "account",
+      "game_version_code": 131072,
+      "profile": "Lea",
+      "note": "Before the ice bridge",
+      "device": "Lea's Switch"
+    },
+    {
+      "platform": "switch",
+      "title_id": "0100EFEF00020000",
+      "save_id": "s_05",
+      "created": "2026-10-29T21:02:00Z",
+      "size": 1048824,
+      "sha256": "9c3f5e1a7b2d4c6e8f0a1b3c5d7e9f1a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d0e",
+      "kind": "account",
+      "game_version_code": 131072,
+      "device": "Lea's Switch",
+      "encryption": {
+        "scheme": "aes-gcm-1",
+        "key_id": "0a1b2c3d4e5f6071"
+      }
+    },
+    {
+      "platform": "ps4",
+      "title_id": "CUSA00000",
+      "save_id": "s_07",
+      "created": "2026-10-29T20:40:00Z",
+      "size": 2097152,
+      "sha256": "ffeab80f92459bbf173159f2ba45a2e5388a76f3fd34ec4dba4054314b888297",
+      "slot": "SAVEDATA00",
+      "kind": "account",
+      "game_version_code": 103,
+      "profile": "Noor",
+      "device": "Noor's PS4"
+    }
+  ]
+}

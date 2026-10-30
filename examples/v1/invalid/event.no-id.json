@@ -1,0 +1,7 @@
+{
+  "event": "shutdown",
+  "data": {
+    "schema": 1,
+    "retry": 30
+  }
+}

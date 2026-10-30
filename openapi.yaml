@@ -5,13 +5,16 @@
 # Authentication is a bearer token from pairing (SPEC.md § 5), nothing else,
 # signed per RFC 9421 when it is bound to the device's key (SPEC.md § 5.4:
 # the Signature-Input and Signature headers, described once below);
-# discovery (UDP 47115, SPEC.md § 4.1) is not HTTP and is not described here.
+# discovery (UDP 47115, SPEC.md § 4.1, § 19.5) and DNS-SD are not HTTP and are
+# not described here. A peer's one route (§ 19.4) is, tagged peer: it is served
+# by a console, under its own base, not by the server. A static library
+# (§ 21) serves the read routes as files, by the layout of § 21.1.
 # A client names its platform with Lantern-Platform on every call (SPEC.md
 # § 4.3); it is described once, as a parameter, on the routes it filters.
 openapi: 3.1.0
 info:
   title: Lantern protocol
-  version: 0.4.0
+  version: 0.5.0
   summary: An open protocol between homebrews and apps on every platform and self-hosted game library servers.
   license:
     name: MIT
@@ -214,11 +217,90 @@ paths:
         default: { $ref: "#/components/responses/Problem" }
   /v1/changes:
     get:
-      summary: What changed since a token (§ 6.4)
-      parameters: [ { $ref: "#/components/parameters/Platform" }, { $ref: "#/components/parameters/PlatformQuery" }, { $ref: "#/components/parameters/Since" } ]
+      summary: What changed since a token (§ 6.4); with wait, a long poll of events (§ 18.3)
+      parameters:
+        - { $ref: "#/components/parameters/Platform" }
+        - { $ref: "#/components/parameters/PlatformQuery" }
+        - { $ref: "#/components/parameters/Since" }
+        - { name: wait, in: query, description: "Seconds to wait for an event after since, lowered to limits.wait; with since only (§ 18.3).", schema: { type: integer, minimum: 0 } }
       responses:
-        "200": { description: "Added and removed apps, and the next token.", content: { application/json: { schema: { $ref: "schemas/v1/changes.json" } } } }
+        "200": { description: "Added and removed apps, the next token, and with wait the events after since.", content: { application/json: { schema: { $ref: "schemas/v1/changes.json" } } } }
         "410": { $ref: "#/components/responses/Problem" }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/events:
+    get:
+      summary: Events, as Server-Sent Events (§ 18)
+      description: "Each event's id is a token of /v1/changes; the stream begins with retry and an event ready, carries a heartbeat at least every limits.heartbeat seconds, and only the events the caller may see (§ 18.2). Its data is one line of JSON, as schemas/v1/event.json gives it, its id and event the fields of the same names."
+      parameters:
+        - { $ref: "#/components/parameters/Platform" }
+        - { $ref: "#/components/parameters/PlatformQuery" }
+        - { name: Last-Event-ID, in: header, description: "Resume after this token.", schema: { type: string } }
+        - { name: since, in: query, description: "Resume after this token, for a client that cannot set Last-Event-ID; it wins.", schema: { type: string } }
+      responses:
+        "200": { description: "The stream, never compressed.", content: { text/event-stream: { schema: { type: string } } } }
+        "400": { $ref: "#/components/responses/Problem" }
+        "410": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/grants/sha256/{hex}:
+    get:
+      summary: A grant for a file, which a peer takes (§ 19.3)
+      parameters: [ { name: hex, in: path, required: true, schema: { $ref: "schemas/v1/common.json#/$defs/sha256" } }, { $ref: "#/components/parameters/Platform" } ]
+      responses:
+        "200": { description: "The grant, signed by the server's grant key.", content: { application/json: { schema: { $ref: "schemas/v1/grant.json" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/blobs/sha256/{hex}:
+    get:
+      tags: [ peer ]
+      summary: A file a peer holds, by its SHA-256 (§ 19.4), served by a console under its own base
+      security: []
+      parameters:
+        - { name: hex, in: path, required: true, schema: { $ref: "schemas/v1/common.json#/$defs/sha256" } }
+        - { name: Lantern-Grant, in: header, required: true, description: "A grant of the peer's server, for this file (§ 19.3).", schema: { type: string, maxLength: 1024 } }
+        - { $ref: "#/components/parameters/Range" }
+      responses:
+        "200": { $ref: "#/components/responses/File" }
+        "206": { $ref: "#/components/responses/FileRange" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/sync:
+    get:
+      summary: What the account keeps for sync, and the caller's device id (§ 20.3; scope sync.read)
+      responses:
+        "200": { description: "Generation and collections.", content: { application/json: { schema: { $ref: "schemas/v1/sync.json" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      summary: Erase all the account's sync data (§ 20.5; scope sync.write)
+      responses:
+        "204": { description: "Erased: a new generation." }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/sync/{collection}:
+    parameters: [ { name: collection, in: path, required: true, schema: { $ref: "schemas/v1/common.json#/$defs/collection" } } ]
+    get:
+      summary: A collection's items, all or since a revision (§ 20.3)
+      parameters: [ { name: since, in: query, schema: { type: integer, minimum: 0 } }, { $ref: "#/components/parameters/PageSize" }, { $ref: "#/components/parameters/Cursor" } ]
+      responses:
+        "200": { description: "Items, a page at a time.", content: { application/json: { schema: { $ref: "schemas/v1/sync-collection.json" } } } }
+        "410": { $ref: "#/components/responses/Problem" }
+        default: { $ref: "#/components/responses/Problem" }
+    patch:
+      summary: Write items, merged item by item (§ 20.4; scope sync.write)
+      parameters: [ { name: If-Match, in: header, description: "\"<generation>-<rev>\": all or nothing (412 when the collection changed).", schema: { type: string } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/sync-write.json" } } } }
+      responses:
+        "200": { description: "Each item sent, as the server keeps it.", content: { application/json: { schema: { $ref: "schemas/v1/sync-collection.json" } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "413": { $ref: "#/components/responses/Problem" }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      summary: Erase a collection (§ 20.5; scope sync.write)
+      responses:
+        "204": { description: "Erased: a new generation." }
         default: { $ref: "#/components/responses/Problem" }
   /v1/sections:
     get:
@@ -314,7 +396,8 @@ paths:
         - { name: Lantern-Game-Version, in: header, description: "The game's version_code.", schema: { type: integer, minimum: 0 } }
         - { name: Lantern-Profile, in: header, description: "UTF-8, percent-encoded, 64 bytes at most.", schema: { type: string } }
         - { name: Lantern-Note, in: header, description: "UTF-8, percent-encoded, 120 bytes at most.", schema: { type: string } }
-      requestBody: { required: true, content: { application/zip: {} } }
+        - { name: Lantern-Save-Encryption, in: header, description: "An encrypted backup's metadata (§ 9.4): lantern-save-e2e-1; key_id=<16 hex digits>.", schema: { type: string, pattern: "^lantern-save-e2e-1; ?key_id=[0-9a-f]{16}$" } }
+      requestBody: { required: true, description: "The zip archive, or its encrypted form (§ 9.4).", content: { application/zip: {}, application/octet-stream: {} } }
       responses:
         "201": { $ref: "#/components/responses/Save" }
         "400": { $ref: "#/components/responses/Problem" }
@@ -446,6 +529,17 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/admin-user-update.json" } } } }
       responses:
         "200": { description: "The account.", content: { application/json: { schema: { $ref: "schemas/v1/admin-user.json" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      summary: Delete an account, its devices and its data (§ 5.7)
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string, pattern: "^[A-Za-z0-9._-]{1,64}$" } }
+        - { name: confirm, in: query, required: true, description: "The account's name again.", schema: { type: string } }
+      responses:
+        "204": { description: "Deleted: its tokens give 401, its invitations 410, its data is erased." }
+        "400": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
         default: { $ref: "#/components/responses/Problem" }
   /v1/admin/devices:
     get:

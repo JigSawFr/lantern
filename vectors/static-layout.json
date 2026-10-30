@@ -1,0 +1,96 @@
+{
+ "schema": 1,
+ "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
+ "vectors": "static-layout",
+ "description": "A static library's layout (SPEC.md § 21.1): each read route's file, relative to the library's root, and the paths a document's file or image url may hold (relative: no scheme, no leading /, no .. part, no backslash, no query).",
+ "routes": [
+  {
+   "name": "The handshake",
+   "route": "GET /.well-known/lantern",
+   "file": "lantern.json"
+  },
+  {
+   "name": "Apps of the Switch, page 1",
+   "route": "GET <base>/v1/apps?platform=switch",
+   "file": "v1/apps/switch/pages/1.json"
+  },
+  {
+   "name": "Apps of the Switch, the page after cursor 2",
+   "route": "GET <base>/v1/apps?platform=switch&cursor=2",
+   "file": "v1/apps/switch/pages/2.json"
+  },
+  {
+   "name": "A title",
+   "route": "GET <base>/v1/titles/0100ABCD00010000 (switch)",
+   "file": "v1/titles/switch/0100ABCD00010000.json"
+  },
+  {
+   "name": "Every title of Android, page 1",
+   "route": "titles of android",
+   "file": "v1/titles/android/pages/1.json"
+  },
+  {
+   "name": "Homebrew of Linux, page 1",
+   "route": "GET <base>/v1/homebrew?platform=linux",
+   "file": "v1/homebrew/linux/pages/1.json"
+  },
+  {
+   "name": "A homebrew entry",
+   "route": "GET <base>/v1/homebrew/org.example.frostline (switch)",
+   "file": "v1/homebrew/switch/org.example.frostline.json"
+  },
+  {
+   "name": "A title's cheat sets",
+   "route": "GET <base>/v1/cheats?platform=switch&title_id=0100ABCD00010000",
+   "file": "v1/cheats/switch/0100ABCD00010000.json"
+  },
+  {
+   "name": "A cheat set's text",
+   "route": "GET <base>/v1/cheats/cs_Jt3Vx0",
+   "file": "v1/cheats/cs_Jt3Vx0.txt"
+  },
+  {
+   "name": "A file",
+   "route": "GET <file> of sha256 3a7b…",
+   "file": "v1/blobs/sha256/3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817"
+  }
+ ],
+ "paths": [
+  {
+   "path": "v1/blobs/sha256/3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+   "accepted": true
+  },
+  {
+   "path": "media/icons/frostline.png",
+   "accepted": true
+  },
+  {
+   "path": "/v1/blobs/sha256/3a7b",
+   "accepted": false
+  },
+  {
+   "path": "https://lea.example.org/library/v1/blobs/sha256/3a7b",
+   "accepted": false
+  },
+  {
+   "path": "../library/v1/blobs/sha256/3a7b",
+   "accepted": false
+  },
+  {
+   "path": "v1/blobs/../../secrets",
+   "accepted": false
+  },
+  {
+   "path": "v1\\blobs\\3a7b",
+   "accepted": false
+  },
+  {
+   "path": "v1/blobs/sha256/3a7b?download=1",
+   "accepted": false
+  },
+  {
+   "path": "file:v1/blobs",
+   "accepted": false
+  }
+ ]
+}

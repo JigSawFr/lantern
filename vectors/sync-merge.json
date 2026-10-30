@@ -1,0 +1,280 @@
+{
+ "schema": 1,
+ "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
+ "vectors": "sync-merge",
+ "description": "Sync's merge rule (SPEC.md § 20.4), item by item: the item a server keeps of the one it has (have) and the one sent, at the server's time below, with auth.skew 300 seconds; replaced says whether the item sent is the one kept (and takes the next rev).",
+ "server_time": "2026-10-30T09:30:00.000Z",
+ "skew": 300,
+ "cases": [
+  {
+   "name": "Nothing kept: the item sent is kept",
+   "have": null,
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "replaced": true,
+   "kept": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   }
+  },
+  {
+   "name": "A later updated wins",
+   "have": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "note": "For the holidays"
+    },
+    "updated": "2026-10-30T09:00:00.001Z"
+   },
+   "replaced": true,
+   "kept": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "note": "For the holidays"
+    },
+    "updated": "2026-10-30T09:00:00.001Z"
+   },
+   "canonical": {
+    "have": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}",
+    "sent": "{\"note\":\"For the holidays\",\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}"
+   }
+  },
+  {
+   "name": "An earlier updated loses",
+   "have": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "note": "For the holidays"
+    },
+    "updated": "2026-10-30T09:10:00.000Z"
+   },
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:05:00.000Z"
+   },
+   "replaced": false,
+   "kept": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "note": "For the holidays"
+    },
+    "updated": "2026-10-30T09:10:00.000Z"
+   },
+   "canonical": {
+    "have": "{\"note\":\"For the holidays\",\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}",
+    "sent": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}"
+   }
+  },
+  {
+   "name": "The same updated: a deletion wins",
+   "have": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "sent": {
+    "deleted": true,
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "replaced": true,
+   "kept": {
+    "deleted": true,
+    "updated": "2026-10-30T09:00:00.000Z"
+   }
+  },
+  {
+   "name": "The same updated: a value loses to the deletion kept",
+   "have": {
+    "deleted": true,
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "replaced": false,
+   "kept": {
+    "deleted": true,
+    "updated": "2026-10-30T09:00:00.000Z"
+   }
+  },
+  {
+   "name": "The same updated: the greater canonical JSON wins",
+   "have": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "note": "For the holidays"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "replaced": false,
+   "kept": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "canonical": {
+    "have": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}",
+    "sent": "{\"note\":\"For the holidays\",\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}"
+   }
+  },
+  {
+   "name": "The same updated: the smaller canonical JSON loses",
+   "have": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "note": "For the holidays"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "replaced": true,
+   "kept": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "canonical": {
+    "have": "{\"note\":\"For the holidays\",\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}",
+    "sent": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}"
+   }
+  },
+  {
+   "name": "The same item again: nothing changes",
+   "have": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "replaced": false,
+   "kept": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "canonical": {
+    "have": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}",
+    "sent": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}"
+   }
+  },
+  {
+   "name": "A time without milliseconds reads as .000",
+   "have": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:00:00.000Z"
+   },
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "note": "For the holidays"
+    },
+    "updated": "2026-10-30T09:00:01Z"
+   },
+   "replaced": true,
+   "kept": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "note": "For the holidays"
+    },
+    "updated": "2026-10-30T09:00:01.000Z"
+   },
+   "canonical": {
+    "have": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}",
+    "sent": "{\"note\":\"For the holidays\",\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}"
+   }
+  },
+  {
+   "name": "An updated an hour ahead is the server's time",
+   "have": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000"
+    },
+    "updated": "2026-10-30T09:29:00.000Z"
+   },
+   "sent": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "note": "For the holidays"
+    },
+    "updated": "2026-10-30T10:30:00.000Z"
+   },
+   "replaced": true,
+   "kept": {
+    "value": {
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "note": "For the holidays"
+    },
+    "updated": "2026-10-30T09:30:00.000Z"
+   },
+   "canonical": {
+    "have": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}",
+    "sent": "{\"note\":\"For the holidays\",\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}"
+   }
+  }
+ ]
+}
