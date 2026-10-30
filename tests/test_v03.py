@@ -1,7 +1,9 @@
 """Draft 0.3's additions, unit by unit: the NRO reader, manifests and port
-data a server refuses, kinds and arches, signatures and pinning, the
-platform filter, titles, homebrew updates, cheats, resumable uploads, and
-the `schema` rule on every state file.
+data a server refuses, kinds, genres and arches, Linux homebrew with a
+package per architecture, requirements and a client's decision, signatures
+and pinning, the platform filter, titles, homebrew updates, cheats and
+their writing, requests, resumable uploads, and the `schema` rule on every
+state file.
 
     python3 -m unittest discover -s tests
 
@@ -19,8 +21,10 @@ import sys
 import tempfile
 import time
 import unittest
+import zipfile
 import zlib
 from pathlib import Path
+from typing import ClassVar
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -316,7 +320,8 @@ class Homebrew(unittest.TestCase):
         self.assertEqual(len(music["one_of"]), 2)
         self.assertTrue(bonus["optional"])
         self.assertNotIn("arch", doc["package"])                       # one architecture on a Switch
-        self.assertEqual(doc["package"]["assets_license"], "CC-BY-4.0")
+        self.assertEqual(doc["assets_license"], "CC-BY-4.0")
+        self.assertEqual(doc["genres"], ["adventure"])
         self.assertEqual(doc["requires"]["homebrew"], [{"id": "org.example.lanternlight-runtime", "min_build": 200}])
         self.assertEqual(client.port_problems(doc), [])
         manifest = {m["path"] for m in doc["package"]["manifest"]}
@@ -422,7 +427,22 @@ class Homebrew(unittest.TestCase):
 
     def test_listing_filters(self):
         _, _, body = self.srv.request(f"{API}/homebrew?kind=port")
-        self.assertEqual([e["id"] for e in json.loads(body)["items"]], [library.PORT])
+        self.assertEqual([e["id"] for e in json.loads(body)["items"]], [library.PORT, library.HARBOR])
+        _, _, body = self.srv.request(f"{API}/homebrew?kind=port", headers={"Lantern-Platform": "linux"})
+        self.assertEqual([e["id"] for e in json.loads(body)["items"]], [library.HARBOR])
+        _, _, body = self.srv.request(f"{API}/homebrew?kind=widget")       # served as an app
+        self.assertEqual(json.loads(body)["items"], [])
+        _, _, body = self.srv.request(f"{API}/homebrew?genre=puzzle")
+        self.assertEqual([e["id"] for e in json.loads(body)["items"]], [library.PAPERLAMP])
+        _, _, body = self.srv.request(f"{API}/homebrew?genre=adventure&kind=port")
+        self.assertEqual([e["id"] for e in json.loads(body)["items"]], [library.PORT, library.HARBOR])
+        _, _, body = self.srv.request(f"{API}/homebrew?genre=roguelite")    # well formed, unknown: empty
+        self.assertEqual(json.loads(body)["items"], [])
+        for bad in ("genre=Puzzle", "genre=a%20b", "kind=Port", "kind=" + "x" * 33):
+            status, _, body = self.srv.request(f"{API}/homebrew?{bad}")
+            self.assertEqual((status, json.loads(body)["code"]), (400, "bad_request"), bad)
+        status, _, body = self.srv.request(f"{API}/homebrew?category=tool")    # gone: not a filter any more
+        self.assertEqual((status, len(json.loads(body)["items"])), (200, library.SERVED_HOMEBREW))
         _, _, body = self.srv.request(f"{API}/homebrew?platform=3ds")
         self.assertEqual([e["platform"] for e in json.loads(body)["items"]], ["3ds"])
         _, _, body = self.srv.request(f"{API}/homebrew?q=lamp")
@@ -496,7 +516,7 @@ class Platforms(unittest.TestCase):
 
     def test_handshake_lists_them(self):
         _, _, hello = self.get("/.well-known/lantern")
-        self.assertEqual(hello["platforms"], ["3ds", "android", "switch"])
+        self.assertEqual(hello["platforms"], ["3ds", "android", "linux", "switch"])
         self.assertEqual(hello["limits"]["saves_kept_per_title"], ls.SAVES_KEPT)
 
     def test_filter(self):
@@ -603,7 +623,9 @@ class Cheats(unittest.TestCase):
         self.assertEqual((status, hashlib.sha256(text).hexdigest(), len(text)), (200, sets[0]["sha256"], sets[0]["size"]))
         self.assertIn("Repr-Digest", headers)
         self.assertEqual(self.srv.request(f"{API}/cheats/cs_nope", token=self.token)[0], 404)
-        self.assertEqual(self.srv.request(f"{API}/cheats", token=self.token, method="POST", data={"schema": 1})[0], 405)
+        self.assertEqual(self.srv.request(f"{API}/cheats", token=self.token, method="POST", data={"schema": 1})[0], 400)
+        status, headers, _ = self.srv.request(f"{API}/cheats", token=self.token, method="PATCH", data={"schema": 1})
+        self.assertEqual((status, headers["Allow"]), (405, "GET, HEAD, POST"))
         self.assertEqual(self.srv.request(f"{API}/cheats?build_id=no%20build", token=self.token)[0], 400)
 
     def test_scope(self):
@@ -791,6 +813,300 @@ class StateFiles(unittest.TestCase):
         _, _, body = srv.request(f"{API}/apps?platform=android")
         self.assertEqual(json.loads(body)["items"], [])     # the Android app is known only from library.json
         self.assertEqual(json.loads((srv.root / "library.json").read_text()), newer)
+
+
+class LinuxHomebrew(unittest.TestCase):
+    """A Linux port (Annex A.6): a package per architecture, each signed, and its requirements (SPEC.md § 8.7)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.srv = Running()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.close()
+
+    def entry(self, listing=False):
+        path = f"{API}/homebrew?platform=linux" if listing else f"{API}/homebrew/{library.HARBOR}"
+        status, _, body = self.srv.request(path, headers={"Lantern-Platform": "linux"})
+        self.assertEqual(status, 200, body)
+        return json.loads(body)["items"][0] if listing else json.loads(body)
+
+    def test_port_for_arm_with_glibc(self):
+        doc = self.entry()
+        self.assertEqual((doc["platform"], doc["kind"], doc["package"]["format"]), ("linux", "port", "zip"))
+        self.assertEqual(doc["package"]["arch"], ["aarch64", "armhf"])
+        self.assertEqual(doc["requires"]["min"]["glibc"], "2.30")
+        self.assertEqual(doc["genres"], ["adventure", "simulation"])
+        self.assertNotIn("system_id", doc)
+        self.assertEqual(client.port_problems(doc), [])
+        self.assertEqual(client.requires_problems(doc), [])
+        plan = client.install_plan(doc)
+        self.assertEqual(plan, {"free": [f"/{library.HARBOR}/harbor.aarch64", f"/{library.HARBOR}/harbor.armhf"],
+                                "consent": ["/Harbor Lights.sh"]})
+
+    def test_packages_per_arch(self):
+        doc = self.entry()
+        self.assertEqual([p["arch"] for p in doc["packages"]], [["x86_64"], ["riscv64"]])
+        for package in [doc["package"], *doc["packages"]]:
+            self.assertEqual(client.manifest_sha256(package["manifest"]), package["manifest_sha256"])
+            status, _, data = self.srv.request(package["file"])
+            self.assertEqual((status, hashlib.sha256(data).hexdigest()), (200, package["sha256"]))
+        self.assertTrue(client.verify_signature(doc))
+        for extra in doc["packages"]:
+            self.assertEqual(extra["signature"]["public_key"], doc["signature"]["public_key"])
+            self.assertTrue(client.verify_signature({**doc, "package": extra, "signature": extra["signature"]}))
+        self.assertEqual(client.pick_package(doc, "armhf")["arch"], ["aarch64", "armhf"])
+        self.assertEqual(client.pick_package(doc, "riscv64")["arch"], ["riscv64"])
+        self.assertIsNone(client.pick_package(doc, "x86"))
+        self.assertIsNone(client.pick_package(doc, "loongarch64"))     # an arch it does not know is never its own
+        listed = self.entry(listing=True)
+        self.assertNotIn("manifest", listed["package"])
+        self.assertFalse(any("manifest" in p for p in listed["packages"]))
+        self.assertEqual([p["sha256"] for p in listed["packages"]], [p["sha256"] for p in doc["packages"]])
+
+    def test_unknown_requires_served_untouched(self):
+        requires = self.entry()["requires"]
+        self.assertEqual(requires, library.HARBOR_REQUIRES)
+        self.assertEqual((requires["vram_mb"], requires["min"]["kernel"]), (256, "5.10"))
+
+    def test_packages_refused(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name) / "library"
+        cases = {
+            "unsigned-second": lambda m: m["packages"][1].pop("signature"),
+            "another-key": lambda m: m["packages"][1].update(signature=library.signature(
+                library.INES_KEY, library.zip_message(library.HARBOR, "linux", 20100, library.HARBOR_ZIPS["x86_64"]))),
+            "no-arch": lambda m: m["packages"][1].pop("arch"),
+            "missing-file": lambda m: m["packages"][1].update(file="nowhere.zip"),
+            "twice": lambda m: m["packages"][1].update(file=m["packages"][0]["file"]),
+            "glibc-text": lambda m: m["requires"]["min"].update(glibc="new enough"),
+            "screen-star": lambda m: m["requires"]["min"].update(screen="640*480"),
+            "ram-text": lambda m: m["requires"]["min"].update(ram_mb="1 GiB"),
+            "gpu-metal": lambda m: m["requires"].update(gpu=["metal"]),
+            "genre": lambda m: m.update(genres=["roguelite"]),
+        }
+        for name, change in cases.items():
+            folder = root / "homebrew" / name
+            folder.mkdir(parents=True)
+            for arch, data in library.HARBOR_ZIPS.items():
+                (folder / f"harbor-{arch}.zip").write_bytes(data)
+            meta = json.loads(json.dumps(library.HARBOR_META))
+            meta["id"] = library.HARBOR + "-" + name
+            change(meta)
+            (folder / "homebrew.json").write_text(json.dumps(meta))
+        served = ls.Library(root, Path(tmp.name) / "state.json").homebrew
+        self.assertEqual(served, {})
+
+    def test_links_refused(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        folder = Path(tmp.name) / "library" / "homebrew" / "link"
+        folder.mkdir(parents=True)
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w") as z:
+            info = zipfile.ZipInfo("org.example.linky/data")
+            info.external_attr = 0o120777 << 16     # a symbolic link
+            z.writestr(info, "/etc")
+        (folder / "l.zip").write_bytes(out.getvalue())
+        (folder / "homebrew.json").write_text(json.dumps({"schema": 1, "id": "org.example.linky", "platform": "linux",
+                                                          "build": 1}))
+        self.assertEqual(ls.Library(Path(tmp.name) / "library", Path(tmp.name) / "s.json").homebrew, {})
+
+    def test_category_is_not_served(self):
+        for hid in (library.FROSTLINE,):
+            status, _, body = self.srv.request(f"{API}/homebrew/{hid}?platform=switch")
+            self.assertNotIn("category", json.loads(body))
+        status, _, _ = self.srv.request(f"{API}/homebrew/org.example.ember-rogue?platform=switch")
+        self.assertEqual(status, 404)                                   # a genre not of the list
+        status, _, _ = self.srv.request(f"{API}/homebrew/org.example.moss-metal?platform=switch")
+        self.assertEqual(status, 404)                                   # a gpu not of the list
+
+
+class Requirements(unittest.TestCase):
+    """What a client decides from requires (SPEC.md § 8.7): offer, offer with a warning, or refuse."""
+
+    HANDHELD: ClassVar[dict] = {"glibc": "2.31", "ram_mb": 1024, "screen": "640x480", "gpu": ["gles2"]}
+
+    def decide(self, requires, device=None):
+        return client.offer({"requires": {"text": "…", **requires}}, self.HANDHELD if device is None else device)
+
+    def test_offer(self):
+        self.assertEqual(client.offer({}, {}), ("offer", []))
+        self.assertEqual(self.decide({"min": {"glibc": "2.30", "ram_mb": 512, "screen": "640x480"},
+                                      "gpu": ["gles2", "vulkan"]}), ("offer", []))
+        self.assertEqual(self.decide({"min": {"glibc": "2.31.0"}}), ("offer", []))     # missing parts are 0
+        self.assertEqual(self.decide({"x-example-badge": "gold"}), ("offer", []))      # a vendor's: ignored
+        self.assertEqual(self.decide({"homebrew": [{"id": "org.example.runtime", "min_build": 1}]}), ("offer", []))
+
+    def test_refuse(self):
+        for requires, why in (({"min": {"glibc": "2.35"}}, "glibc"),
+                              ({"min": {"glibc": "2.4"}}, None),          # 2.4 is below 2.31: offered
+                              ({"min": {"ram_mb": 2048}}, "ram_mb"),
+                              ({"min": {"screen": "1280x720"}}, "screen"),
+                              ({"min": {"screen": "480x640"}}, "screen"),  # each side counts
+                              ({"gpu": ["vulkan", "gl"]}, "gpu")):
+            decision, reasons = self.decide(requires)
+            if why is None:
+                self.assertEqual(decision, "offer", requires)
+                continue
+            self.assertEqual(decision, "refuse", requires)
+            self.assertTrue(reasons[0].startswith(why), reasons)
+        decision, reasons = self.decide({"min": {"glibc": "2.35", "kernel": "5.10"}})
+        self.assertEqual((decision, len(reasons)), ("refuse", 1))      # a refusal wins over a warning
+
+    def test_warn(self):
+        for requires, device in (({"min": {"kernel": "5.10"}}, None),            # a key it does not know
+                                 ({"vram_mb": 256}, None),                         # nor this one
+                                 ({"gpu": ["metal"]}, None),                       # a name it does not know
+                                 ({"gpu": ["vulkan", "metal"]}, None),             # a known one fails, the other unknown
+                                 ({"min": {"glibc": "2.30"}}, {"gpu": ["gles2"]}),  # its glibc is unknown
+                                 ({"gpu": ["gles2"]}, {"glibc": "2.31"}),          # its graphics are unknown
+                                 ({"min": {"screen": "640 by 480"}}, None),        # a value of another form
+                                 ({"min": {"ram_mb": 512}}, {})):
+            decision, reasons = self.decide(requires, device)
+            self.assertEqual(decision, "warn", (requires, device))
+            self.assertTrue(reasons)
+        self.assertEqual(client.offer(library.HARBOR_META, self.HANDHELD)[0], "warn")    # kernel and vram_mb
+        self.assertEqual(client.offer(library.HARBOR_META, {**self.HANDHELD, "glibc": "2.28"})[0], "refuse")
+
+    def test_shapes(self):
+        self.assertEqual(client.requires_problems({"requires": library.HARBOR_REQUIRES}), [])
+        for requires in ({"min": {}}, {"text": "x", "min": {"ram_mb": "1"}}, {"text": "x", "min": {"screen": "640"}},
+                         {"text": "x", "min": {"glibc": "2.x"}}, {"text": "x", "gpu": "gles2"}, {"text": "x", "gpu": []}):
+            self.assertTrue(client.requires_problems({"requires": requires}), requires)
+
+
+class CheatWriting(unittest.TestCase):
+    """POST, PUT and DELETE of cheat sets, with cheats.write (SPEC.md § 10)."""
+
+    SET: ClassVar[dict] = {"schema": 1, "platform": "switch", "title_id": "0100ABCD00010000", "build_id": "4A1B2C3D4E5F6071",
+                           "source": "Lea's notes", "note": "Lamp oil", "text": "[Endless lamp oil]\n04000000 0123A4B0 00000063\n"}
+
+    def setUp(self):
+        self.srv = Running(USERS)
+        self.addCleanup(self.srv.close)
+        self.token = self.srv.pair("mila", EVERY_SCOPE)
+
+    def call(self, path, method="GET", data=None, token=None):
+        status, headers, body = self.srv.request(f"{API}{path}", token=token or self.token, method=method, data=data)
+        return status, (json.loads(body) if body and headers.get("Content-Type", "").endswith("json") else body)
+
+    def test_cycle(self):
+        status, doc = self.call("/cheats", "POST", self.SET)
+        self.assertEqual(status, 201, doc)
+        self.assertEqual((doc["source"], doc["note"], doc["size"]), ("Lea's notes", "Lamp oil", len(self.SET["text"])))
+        stored = self.srv.root / "cheats/switch/0100ABCD00010000/4A1B2C3D4E5F6071/Lea's_notes.txt"
+        self.assertEqual(stored.read_text(), self.SET["text"])
+        index = json.loads((self.srv.root / "cheats/index.json").read_text())
+        self.assertEqual(index, {"schema": 1, "notes": {
+            "switch/0100ABCD00010000/4A1B2C3D4E5F6071/Lea's_notes.txt": "Lamp oil"}})
+        _, listed = self.call("/cheats?title_id=0100ABCD00010000&build_id=4A1B2C3D4E5F6071")
+        self.assertEqual([s["source"] for s in listed["cheats"]], ["Community list", "Lea's notes", "Noor"])
+        self.assertEqual(self.call("/cheats", "POST", self.SET)[0], 409)          # the same set again
+        new = {**self.SET, "text": self.SET["text"] + "[Thin ice]\n04000000 0123A4C8 00000001\n", "note": None}
+        status, _ = self.call(f"/cheats/{doc['id']}", "PUT", new)
+        self.assertEqual(status, 204)
+        status, text = self.call(f"/cheats/{doc['id']}")
+        self.assertEqual(text.decode(), new["text"])
+        self.assertEqual(json.loads((self.srv.root / "cheats/index.json").read_text())["notes"], {})
+        status, problem = self.call(f"/cheats/{doc['id']}", "PUT", {**new, "source": "Someone else"})
+        self.assertEqual((status, problem["code"]), (400, "bad_request"))         # a PUT does not move a set
+        self.assertEqual(self.call(f"/cheats/{doc['id']}", "DELETE")[0], 204)
+        self.assertFalse(stored.exists())
+        self.assertFalse((self.srv.root / "cheats/switch").exists())              # its empty folders go too
+        self.assertEqual(self.call(f"/cheats/{doc['id']}")[0], 404)
+        self.assertEqual(self.call(f"/cheats/{doc['id']}", "DELETE")[0], 404)
+
+    def test_refusals(self):
+        for change, status in (({"text": "not a cheat"}, 400),
+                               ({"text": "[x]\n04000000 0123\n"}, 400),
+                               ({"text": "[x]\x00\n"}, 400),
+                               ({"text": "[x]\n" + "04000000 0123A4B0 00000063\n" * 40000}, 413),
+                               ({"title_id": "0100ABCD00010800"}, 400),        # an update's id, not a title's
+                               ({"build_id": None}, 400),
+                               ({"source": "../escape"}, 400),
+                               ({"source": "under_score"}, 400),
+                               ({"note": "x" * 121}, 400),
+                               ({"platform": "android", "title_id": "org.example.frostlinetales"}, 400),
+                               ({"schema": 2}, 422)):
+            body = {k: v for k, v in {**self.SET, **change}.items() if v is not None}
+            got, problem = self.call("/cheats", "POST", body)
+            self.assertEqual(got, status, (change, problem))
+        lea = self.srv.pair("lea")
+        self.assertEqual(self.call("/cheats", "POST", self.SET, token=lea)[0], 403)
+        self.assertFalse((self.srv.root / "cheats/switch").exists())
+
+    def test_newer_index_is_never_written(self):
+        index = self.srv.root / "cheats/index.json"
+        index.write_text(json.dumps({"schema": 2, "notes": "elsewhere"}))
+        status, problem = self.call("/cheats", "POST", self.SET)
+        self.assertEqual((status, problem["code"]), (503, "unavailable"))
+        self.assertEqual(json.loads(index.read_text()), {"schema": 2, "notes": "elsewhere"})
+        index.write_text(json.dumps({"schema": 1, "x-example": "kept"}))
+        self.assertEqual(self.call("/cheats", "POST", self.SET)[0], 201)
+        self.assertEqual(json.loads(index.read_text())["x-example"], "kept")
+
+
+class Requests(unittest.TestCase):
+    """Requests for a game (SPEC.md § 11), each account's, kept in the state file."""
+
+    def setUp(self):
+        self.srv = Running(USERS)
+        self.addCleanup(self.srv.close)
+        self.token = self.srv.pair("mila", EVERY_SCOPE)
+
+    def call(self, method="GET", data=None, token=None, platform=None, query=""):
+        status, _, body = self.srv.request(f"{API}/requests{query}", token=token or self.token, method=method,
+                                           data=data, headers={"Lantern-Platform": platform} if platform else {})
+        return status, json.loads(body)
+
+    def test_create_list_and_keep(self):
+        status, first = self.call("POST", {"schema": 1, "platform": "switch", "title_id": "0100EFEF00020000"})
+        self.assertEqual(status, 201, first)
+        self.assertEqual((first["status"], first["name"]), ("open", "Moss & Ember"))     # named from the library
+        status, again = self.call("POST", {"schema": 1, "title_id": "0100EFEF00020000"}, platform="switch")
+        self.assertEqual((status, again["id"]), (200, first["id"]))
+        status, other = self.call("POST", {"schema": 1, "title_id": "org.example.harborlights"}, platform="android")
+        self.assertEqual(status, 201)
+        self.assertNotIn("name", other)
+        _, every = self.call()
+        self.assertEqual({r["id"] for r in every["requests"]}, {first["id"], other["id"]})
+        _, phone = self.call(platform="android")
+        self.assertEqual([r["id"] for r in phone["requests"]], [other["id"]])
+        state = json.loads(self.srv.state.read_text())
+        self.assertEqual(state["schema"], 1)
+        self.assertEqual({r["user"] for r in state["requests"]}, {"mila"})
+        later = ls.Library(self.srv.root, self.srv.state)                 # kept across a restart
+        self.assertEqual(len(later.requests()), 2)
+
+    def test_each_account_its_own(self):
+        users = json.loads(json.dumps(USERS))
+        users["users"].append({"name": "lea2", "password": users["users"][0]["password"],
+                               "scopes": ["library", "requests"], "state": "active"})
+        srv = Running(users)
+        self.addCleanup(srv.close)
+        mila = srv.pair("mila", EVERY_SCOPE)
+        other = srv.pair("lea2", {"schema": 1, "device": "Lea's phone", "scopes": ["library", "requests"]})
+        body = {"schema": 1, "platform": "switch", "title_id": "0100EFEF00020000"}
+        first = json.loads(srv.request(f"{API}/requests", token=mila, data=body)[2])
+        status, _, mine = srv.request(f"{API}/requests", token=other, data=body)
+        self.assertEqual(status, 201)                                     # not mila's request
+        self.assertNotEqual(json.loads(mine)["id"], first["id"])
+        listed = json.loads(srv.request(f"{API}/requests", token=other)[2])["requests"]
+        self.assertEqual([r["id"] for r in listed], [json.loads(mine)["id"]])
+        self.assertEqual(self.call(token=self.srv.pair("lea"))[0], 403)  # lea's account lacks the scope
+
+    def test_refusals(self):
+        for body, platform, status in (({"schema": 1, "title_id": "0100EFEF00020000"}, None, 400),   # no platform
+                                       ({"schema": 1, "platform": "switch", "title_id": "0100EFEF00020800"}, None, 400),
+                                       ({"schema": 1, "platform": "Switch", "title_id": "0100EFEF00020000"}, None, 400),
+                                       ({"schema": 1, "platform": "3ds", "title_id": "0004000E00ABCD00"}, None, 400),
+                                       ({"schema": 2, "platform": "switch", "title_id": "0100EFEF00020000"}, None, 422)):
+            got, problem = self.call("POST", body, platform=platform)
+            self.assertEqual(got, status, (body, problem))
+        self.assertEqual(json.loads(self.srv.state.read_text()).get("requests", []), [])
 
 
 if __name__ == "__main__":

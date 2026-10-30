@@ -17,10 +17,14 @@ for the conformance suite to apply to what a server serves.
   under the profile's areas, its requires_data relative to it, never in the
   package), and launch_check(): what a client checks of that data before it
   starts the port, alternatives (one_of) and accepted hashes included
-  (§ 8.1).
+  (§ 8.1);
+- requires_problems() and offer(): the shapes of an entry's requirements,
+  and whether a device offers its package, with a warning, or refuses it
+  (§ 8.7).
 
-The roots are those of the profiles this text settles: the Switch's. A
-client installs nothing of a platform it has no profile for (§ 6.1).
+The roots are those of the Switch's profile, and of the draft Linux one
+(Annex A.6). A client installs nothing of a platform it has no profile for
+(§ 4.3).
 """
 import base64
 import hashlib
@@ -32,12 +36,24 @@ import re
 ROOTS = {
     "switch": {"free": ("/switch/{id}/", "/config/{id}/"), "consent": ("/atmosphere/", "/switch/.overlays/"),
                "areas": ("/switch/", "/config/")},
+    # "/" is the folder the client chose (a handheld's ports folder, $XDG_DATA_HOME on a computer).
+    "linux": {"free": ("/{id}/",), "consent": ("/",), "areas": ("/",)},
 }
-# A package's arch: a list of these names, or later ones of the same form;
-# a profile of one architecture has none (Annex A).
-ARCH_NAMES = ("aarch64", "armhf", "x86", "x86_64")
+# A package's arch: a list of these names, or later ones of the same form,
+# which a client never takes for its own; a profile of one architecture has
+# none (Annex A).
+ARCH_NAMES = ("aarch64", "armhf", "x86", "x86_64", "riscv64")
 ARCH = re.compile(r"^[a-z0-9_]{1,32}$")
-ONE_ARCH = ("switch", "3ds")
+ONE_ARCH = ("switch", "3ds", "vita", "ps4")
+GENRES = ("action", "adventure", "rpg", "strategy", "simulation", "sports", "racing", "puzzle", "platformer",
+          "shooter", "fighting", "music", "party", "education", "other")
+TAGS_LIMIT = 32
+# Requirements (SPEC.md § 8.7): requires.min's keys this client reads, and requires.gpu's names.
+DOTTED_KEYS = ("glibc", "firmware", "atmosphere", "luma", "goldhen", "sdk")
+GPU = ("gles2", "gles3", "gl", "vulkan")
+REQUIRES_KEYS = ("text", "min", "gpu", "homebrew")
+DOTTED = re.compile(r"^[0-9]+(\.[0-9]+){0,3}$")
+SCREEN = re.compile(r"^([1-9][0-9]{0,5})x([1-9][0-9]{0,5})$")
 ASSETS = ("included", "demo_included", "free_external", "user_owned")
 DATA_LIMIT, ACCEPT_LIMIT, PACKAGES_LIMIT = 256, 32, 16     # SPEC.md § 13
 HASH_FORMS = {"sha256": 64, "sha1": 40, "md5": 32}
@@ -407,3 +423,94 @@ def launch_check(entry, present):
         else:
             check([d], out)
     return out
+
+
+# Requirements (SPEC.md § 8.7).
+
+def requires_problems(entry):
+    """Every way an entry's requires breaks SPEC.md § 8.7's shapes (the keys
+    this client knows; the others are a later version's, or a vendor's)."""
+    requires = entry.get("requires")
+    if requires is None:
+        return []
+    if not isinstance(requires, dict):
+        return ["requires is not an object"]
+    out = []
+    if not isinstance(requires.get("text"), str) or not requires["text"]:
+        out.append("requires has no text")
+    low = requires.get("min", {})
+    if not isinstance(low, dict):
+        out.append("requires.min is not an object")
+        low = {}
+    for k, v in low.items():
+        if k == "ram_mb" and not (isinstance(v, int) and not isinstance(v, bool) and v >= 1):
+            out.append(f"requires.min.ram_mb {v!r} is not a positive integer")
+        elif k == "screen" and not (isinstance(v, str) and SCREEN.match(v)):
+            out.append(f"requires.min.screen {v!r} is not <width>x<height>")
+        elif k in DOTTED_KEYS and not (isinstance(v, str) and DOTTED.match(v)):
+            out.append(f"requires.min.{k} {v!r} is not a dotted version")
+    gpu = requires.get("gpu")
+    if gpu is not None and not (isinstance(gpu, list) and gpu and all(isinstance(g, str) and g for g in gpu)):
+        out.append("requires.gpu is not a list of names")
+    return out
+
+
+def _dotted(value):
+    parts = [int(p) for p in value.split(".")]
+    return parts + [0] * (4 - len(parts))
+
+
+def offer(entry, device):
+    """Whether a client offers an entry's package on `device` (SPEC.md § 8.7):
+    ("offer", []), ("warn", [conditions it cannot read]) or ("refuse",
+    [conditions that fail, and why]). `device` says what the client knows of
+    itself, each key absent when it does not know: {"glibc": "2.31",
+    "ram_mb": 1024, "screen": "1280x720", "gpu": ["gles2", "gles3"], and the
+    profile's keys, such as "firmware": "18.0.0"}. A refusal wins over a
+    warning; requires.homebrew is not a condition (the client installs it
+    first)."""
+    requires = entry.get("requires") or {}
+    if not isinstance(requires, dict):
+        return "warn", ["requires is not an object"]
+    fails, unknown = [], []
+    low = requires.get("min") if isinstance(requires.get("min"), dict) else {}
+    if "min" in requires and not isinstance(requires["min"], dict):
+        unknown.append("min")
+    for k, v in low.items():
+        mine = device.get(k)
+        if k == "ram_mb" and isinstance(v, int) and not isinstance(v, bool):
+            if not isinstance(mine, int):
+                unknown.append(f"ram_mb {v} (this device's memory is unknown)")
+            elif mine < v:
+                fails.append(f"ram_mb: {v} MiB or more; this device has {mine}")
+        elif k == "screen" and isinstance(v, str) and SCREEN.match(v):
+            want = tuple(map(int, SCREEN.match(v).groups()))
+            have = SCREEN.match(mine) if isinstance(mine, str) else None
+            if have is None:
+                unknown.append(f"screen {v} (this device's screen is unknown)")
+            elif any(h < w for h, w in zip(map(int, have.groups()), want)):
+                fails.append(f"screen: {v} or larger; this device's is {mine}")
+        elif k in DOTTED_KEYS and isinstance(v, str) and DOTTED.match(v):
+            if not (isinstance(mine, str) and DOTTED.match(mine)):
+                unknown.append(f"{k} {v} (this device's is unknown)")
+            elif _dotted(mine) < _dotted(v):
+                fails.append(f"{k}: {v} or later; this device has {mine}")
+        else:
+            unknown.append(f"min.{k} {v!r}")
+    if "gpu" in requires:
+        gpu = requires["gpu"] if isinstance(requires["gpu"], list) else []
+        known = [g for g in gpu if g in GPU]
+        mine = device.get("gpu")
+        if not isinstance(mine, list):
+            unknown.append("gpu " + ", ".join(map(str, gpu)) + " (this device's graphics are unknown)")
+        elif not any(g in mine for g in known):
+            if known and len(known) == len(gpu):
+                fails.append("gpu: one of " + ", ".join(gpu) + "; this device has " + (", ".join(mine) or "none"))
+            else:
+                unknown.append("gpu " + ", ".join(str(g) for g in gpu if g not in GPU))
+    for k in requires:
+        if k not in REQUIRES_KEYS and not (isinstance(k, str) and k.startswith("x-")):
+            unknown.append(k)
+    if fails:
+        return "refuse", fails
+    return ("warn", unknown) if unknown else ("offer", [])

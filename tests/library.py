@@ -114,12 +114,29 @@ def signature(seed, message):
     return {"alg": "ed25519", "public_key": base64.b64encode(public).decode(), "value": base64.b64encode(value).decode()}
 
 
-def zipped(files):
+def zipped(files, executable=()):
+    """A zip of `files` (name: bytes); the names in `executable` get mode 0755, the others 0644."""
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for name, data in files.items():
-            z.writestr(name, data)
+            info = zipfile.ZipInfo(name, (2026, 10, 30, 12, 0, 0))
+            info.external_attr = (0o100755 if name in executable else 0o100644) << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, data)
     return out.getvalue()
+
+
+def zip_message(hid, platform, build, data):
+    """SPEC.md § 8.4's bytes for a zip package `data`, its manifest its files at "/" + their names."""
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        manifest = sorted(({"path": "/" + i.filename, "sha256": hashlib.sha256(z.read(i)).hexdigest(),
+                            "size": i.file_size} for i in z.infolist() if not i.is_dir()),
+                          key=lambda e: e["path"].encode())
+    canonical = "[" + ",".join('{"path":%s,"sha256":"%s","size":%d}' % (  # noqa: UP031 - the canonical bytes, spelled out
+        json.dumps(e["path"], ensure_ascii=False), e["sha256"], e["size"]) for e in manifest) + "]"
+    return ('{"build":%d,"id":"%s","manifest_sha256":"%s","platform":"%s","purpose":"lantern-homebrew-1",'  # noqa: UP031 - the canonical bytes, spelled out
+            '"sha256":"%s"}' % (build, hid, hashlib.sha256(canonical.encode()).hexdigest(), platform,
+                                hashlib.sha256(data).hexdigest())).encode()
 
 
 FROSTLINE_ZIP = {
@@ -156,10 +173,37 @@ PORT_OBJECT = {
                "license": "GPL-2.0-or-later"},
     "data_root": PORT_DATA_ROOT, "assets": "user_owned", "requires_data": PORT_DATA}
 PORT_META = {"schema": 1, "id": PORT, "name": "Frostline Port", "author": "Lea", "version": "0.3.0", "build": 300,
-             "kind": "port", "license": "GPL-2.0-or-later", "assets_license": "CC-BY-4.0",
+             "kind": "port", "genres": ["adventure"], "license": "GPL-2.0-or-later", "assets_license": "CC-BY-4.0",
              "requires": {"text": "Lanternlight runtime 2 or later",
                           "homebrew": [{"id": "org.example.lanternlight-runtime", "min_build": 200}]},
              "port": PORT_OBJECT}
+# A Linux port (Annex A.6), PortMaster's layout: a launcher next to its
+# folder, a package per architecture, each signed by Lea, and requirements a
+# client checks (SPEC.md § 8.7), two of which it does not know.
+HARBOR = "org.example.harborlights"
+LEA_KEY = hashlib.sha256(b"Lea's fictional signing key").digest()      # a seed, for the tests only
+HARBOR_LAUNCHER = b"#!/bin/sh\n# Harbor Lights, a fictional port\nexec ./org.example.harborlights/harbor\n"
+HARBOR_ZIPS = {arch: zipped({"Harbor Lights.sh": HARBOR_LAUNCHER,
+                             **{f"{HARBOR}/harbor.{a}": os.urandom(400) for a in names}},
+                            executable=("Harbor Lights.sh", *(f"{HARBOR}/harbor.{a}" for a in names)))
+               for arch, names in (("arm", ("aarch64", "armhf")), ("x86_64", ("x86_64",)), ("riscv64", ("riscv64",)))}
+HARBOR_PAK = b"HARBOR fictional data, version 1.0\n" * 8
+HARBOR_REQUIRES = {"text": "glibc 2.30, OpenGL ES 2 or Vulkan, 512 MiB of memory, a 640x480 screen",
+                   "min": {"glibc": "2.30", "ram_mb": 512, "screen": "640x480", "kernel": "5.10"},
+                   "gpu": ["gles2", "vulkan"], "vram_mb": 256}
+HARBOR_META = {
+    "schema": 1, "id": HARBOR, "platform": "linux", "name": "Harbor Lights", "author": "Lea", "version": "2.1.0",
+    "build": 20100, "kind": "port", "genres": ["adventure", "simulation"], "tags": ["lighthouse", "classic"],
+    "license": "GPL-2.0-or-later", "requires": HARBOR_REQUIRES,
+    "packages": [{"file": f"harbor-{arch}.zip", "arch": names,
+                  "signature": signature(LEA_KEY, zip_message(HARBOR, "linux", 20100, HARBOR_ZIPS[arch]))}
+                 for arch, names in (("arm", ["aarch64", "armhf"]), ("x86_64", ["x86_64"]), ("riscv64", ["riscv64"]))],
+    "port": {"original": {"name": "Harbor Lights", "year": 1998, "developer": "Fjord Works"},
+             "engine": {"name": "Lighthouse", "version": "2.1.0"},
+             "data_root": f"/{HARBOR}/data/", "assets": "user_owned",
+             "requires_data": [{"path": "HARBOR.PAK", "size": len(HARBOR_PAK),
+                                "accept": [{"label": "1.0", "sha256": hashlib.sha256(HARBOR_PAK).hexdigest()}],
+                                "hint": "HARBOR.PAK, in the folder where Harbor Lights is installed."}]}}
 
 
 def port(**changes):
@@ -186,7 +230,7 @@ HOMEBREW = {
     "homebrew/frostline/frostline.zip": zipped(FROSTLINE_ZIP),
     "homebrew/frostline/homebrew.json": json.dumps({
         "schema": 1, "id": FROSTLINE, "name": "Frostline", "author": "Noor", "version": "1.4.0", "build": 10400,
-        "category": "tool", "kind": "tool", "license": "MIT", "source": "https://code.example.org/noor/frostline",
+        "kind": "tool", "tags": ["journal", "night mode"], "license": "MIT", "source": "https://code.example.org/noor/frostline",
         "summary": {"en": "A pocket journal for long nights.", "fr": "Un carnet de poche pour les longues nuits."},
         "requires": {"text": "Atmosphère 1.7 or later", "min": {"atmosphere": "1.7.0"}},
         "x-example-shelf": "unknown fields are ignored"}).encode(),
@@ -194,7 +238,7 @@ HOMEBREW = {
     # Signed by its author (SPEC.md § 8.4).
     "homebrew/paperlamp/paperlamp.nro": PAPERLAMP_NRO,
     "homebrew/paperlamp/homebrew.json": json.dumps({
-        "schema": 1, "id": PAPERLAMP, "build": 902, "category": "game", "kind": "game",
+        "schema": 1, "id": PAPERLAMP, "build": 902, "kind": "game", "genres": ["puzzle"],
         "license": "GPL-3.0-or-later", "icon": "https://media.example.org/paperlamp/icon.jpg",
         "signature": PAPERLAMP_SIGNATURE}).encode(),
     # A port: the user brings the original game's data (SPEC.md § 8.1).
@@ -204,9 +248,12 @@ HOMEBREW = {
     "homebrew/ember-overlay/ember.ovl": os.urandom(256),
     "homebrew/ember-overlay/homebrew.json": json.dumps({
         "schema": 1, "id": "org.example.ember-overlay", "name": "Ember Overlay", "author": "Noor", "version": "1.2.0",
-        "build": 120, "kind": "overlay", "category": "tool",
+        "build": 120, "kind": "overlay",
         "requires": {"text": "An overlay loader", "homebrew": [{"id": "org.example.overlay-loader", "min_build": 1}]}
     }).encode(),
+    # The Linux port, a package per architecture.
+    **{f"homebrew/harbor-linux/harbor-{arch}.zip": data for arch, data in HARBOR_ZIPS.items()},
+    "homebrew/harbor-linux/homebrew.json": json.dumps(HARBOR_META).encode(),
     # An Android app, installed by the system: its own id, its arches, its signing certificate.
     "homebrew/moss-remote/moss-remote.apk": os.urandom(300),
     "homebrew/moss-remote/homebrew.json": json.dumps({
@@ -259,9 +306,17 @@ HOMEBREW = {
         "schema": 1, "id": "org.example.forged", "build": 903, "signature": PAPERLAMP_SIGNATURE}).encode(),
     "homebrew/future/future.nro": nro("Future Lamp", "Ines", "9.0.0"),
     "homebrew/future/homebrew.json": json.dumps({"schema": 2, "id": "org.example.future", "build": 1}).encode(),
+    # A genre not of the list, and a condition not of its form: not served (SPEC.md § 8.1, § 8.7).
+    "homebrew/roguelite/roguelite.nro": nro("Ember Rogue", "Noor", "1.0.0"),
+    "homebrew/roguelite/homebrew.json": json.dumps({
+        "schema": 1, "id": "org.example.ember-rogue", "build": 100, "kind": "game", "genres": ["roguelite"]}).encode(),
+    "homebrew/metal/metal.nro": nro("Moss Metal", "Noor", "1.0.0"),
+    "homebrew/metal/homebrew.json": json.dumps({
+        "schema": 1, "id": "org.example.moss-metal", "build": 100,
+        "requires": {"text": "Metal", "gpu": ["metal"]}}).encode(),
 }
-SERVED_HOMEBREW = 8     # frostline (switch and 3ds), paperlamp, moss-clock, frostline-port, ember-widget,
-#                         ember-overlay, moss-remote (android)
+SERVED_HOMEBREW = 9     # frostline (switch and 3ds), paperlamp, moss-clock, frostline-port, ember-widget,
+#                         ember-overlay, moss-remote (android), harborlights (linux)
 CHEATS = {
     "cheats/0100ABCD00010000/4A1B2C3D4E5F6071/Community_list.txt":
         "[Endless lamp oil]\n04000000 0123A4B0 00000063\n",

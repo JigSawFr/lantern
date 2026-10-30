@@ -9,8 +9,9 @@ the features a server declares against the routes it answers, platforms and
 their filter, the bearer token's challenge (and that no Basic one is ever
 sent), pairing's shapes, cursor pages, what a console is missing, every
 app's sha256, ranges and Repr-Digest on every file response, titles one by
-one and in bulk, homebrew (manifests, kinds, arches, ports and their data,
-signatures, updates), cheat sets, save backups, errors, limits, and LAN
+one and in bulk, homebrew (manifests, kinds, genres and tags, arches and
+packages, requirements, the kind and genre filters, ports and their data,
+signatures, updates), cheat sets, requests, save backups, errors, limits, and LAN
 discovery when asked for (--discover). Each check prints PASS, FAIL, WARN (a
 SHOULD not met) or SKIP, with the SPEC.md section it comes from; the exit
 code is 1 when one fails.
@@ -21,7 +22,12 @@ few pairing codes (feature `pairing`), which the server may show to its
 users until they expire on their own. With a token that holds `saves`, it
 sends save backups for a title id of its own (none of the library's, so
 that no backup of the user's is dropped for them), in one request and by
-resumable upload, and deletes them before it ends. It changes nothing else.
+resumable upload, and deletes them before it ends. With `cheats.write`, it
+writes a cheat set for such a title, replaces it and deletes it. With
+`requests`, it asks for such a title twice (the second answer is the same
+request): SPEC.md has no route to delete a request, so that one request
+stays on the server, open, for a title id of no game. It changes nothing
+else.
 Rules that only a client can keep (ignoring unknown fields, pinning, asking
 before a path that needs consent, checking a port's data before launch…)
 are listed as skipped.
@@ -378,8 +384,11 @@ class Suite:
                        self.c_homebrew_entries)
             self.check("homebrew.manifests", "8.2", "Manifests: sane paths, their digest, the profile's roots",
                        self.c_homebrew_manifests)
-            self.check("homebrew.kinds", "8.1", "Kinds and arches of the lists, of the profile; system ids unique",
-                       self.c_homebrew_kinds)
+            self.check("homebrew.kinds", "8.1", "Kinds, genres, tags and arches of the lists, of the profile; "
+                       "system ids unique", self.c_homebrew_kinds)
+            self.check("homebrew.filters", "8.5", "The kind and genre filters: those entries, no others; a malformed "
+                       "one gives 400", self.c_homebrew_filters)
+            self.check("homebrew.requires", "8.7", "Requirements: text, min's and gpu's shapes", self.c_homebrew_requires)
             self.check("homebrew.ports", "8.1", "Ports: original, engine, data_root in the areas, relative data "
                        "paths, never served", self.c_homebrew_ports)
             self.check("homebrew.packages", "8.2", "Packages: sha256, Repr-Digest, an archive as its manifest says",
@@ -397,6 +406,13 @@ class Suite:
                        self.c_cheat_text)
             self.check("cheats.unknown", "10", "An unknown set gives 404", self.c_cheat_unknown)
             self.check("cheats.write", "10", "Without cheats.write, writing is refused", self.c_cheat_write)
+            self.check("cheats.write-cycle", "10", "With cheats.write: a set posted (201), listed, read, replaced "
+                       "(204), deleted (204), then gone", self.c_cheat_write_cycle)
+        if mine["requests"]:
+            self.check("requests.list", "11", "The account's requests: valid, of the platform asked",
+                       self.c_requests)
+            self.check("requests.create", "11", "A request: 201, then 200 with the same open request, listed",
+                       self.c_request_create)
         if mine["saves"]:
             self.check("saves.limits", "4.2", "limits: save_body, save_size and saves_kept_per_title",
                        self.c_save_limits)
@@ -1095,12 +1111,24 @@ class Suite:
         return out
 
     def c_homebrew_kinds(self):
-        problems, kinds, systems, unknown = [], {}, {}, set()
+        problems, kinds, systems, unknown, unknown_genres = [], {}, {}, set(), set()
         for e in self.all_homebrew():
             kind = e.get("kind")
             if kind is not None and kind not in client.KINDS:
                 problems.append(f"{e['platform']}/{e['id']}: kind {kind!r} is not one of {', '.join(client.KINDS)}")
             kinds[client.kind_of(e)] = kinds.get(client.kind_of(e), 0) + 1
+            genres = e.get("genres", [])
+            if not (isinstance(genres, list) and all(isinstance(g, str) for g in genres)):
+                problems.append(f"{e['platform']}/{e['id']}: genres is not a list of names")
+            else:
+                unknown_genres.update(g for g in genres if g not in client.GENRES)
+            tags = e.get("tags", [])
+            if not (isinstance(tags, list) and len(tags) <= client.TAGS_LIMIT and all(
+                    isinstance(t, str) and 1 <= len(t.encode()) <= 64 for t in tags)):
+                problems.append(f"{e['platform']}/{e['id']}: tags: {client.TAGS_LIMIT} words at most, "
+                                "each 64 bytes at most (SPEC.md § 13)")
+            if "category" in e:
+                problems.append(f"{e['platform']}/{e['id']}: category, gone in 0.3 (shelves come from kind and genres)")
             packages = [e["package"]] + list(e.get("packages") or [])
             if e.get("packages") and (e["platform"] in client.ONE_ARCH or len(e["packages"]) > client.PACKAGES_LIMIT):
                 problems.append(f"{e['platform']}/{e['id']}: packages on a platform of one architecture, or above "
@@ -1120,9 +1148,41 @@ class Suite:
                 if other != e["id"]:
                     problems.append(f"{e['platform']}: {e['id']} and {other} have the same system_id")
         expect(not problems, "\n".join(problems[:8]))
-        if unknown:
-            raise Warn(f"arches this suite does not know (a later version's?): {', '.join(sorted(unknown))}")
+        if unknown or unknown_genres:
+            raise Warn("names this suite does not know (a later version's?); a client never takes such an arch "
+                       "for its own (SPEC.md § 8.2) and shows such a genre as other: "
+                       + ", ".join(sorted(unknown | unknown_genres)))
         return ", ".join(f"{k}: {n}" for k, n in sorted(kinds.items())) or "no homebrew"
+
+    def c_homebrew_filters(self):
+        entries = self.all_homebrew()
+        checked = []
+        for key, values in (("kind", {client.kind_of(e) for e in entries}),
+                            ("genre", {g for e in entries for g in e.get("genres", []) if isinstance(g, str)})):
+            for value in sorted(values)[:8]:
+                got, _, _ = self.walk(self.api(f"/v1/homebrew?{key}={quote(value, safe='')}"), self.limit(),
+                                      schema="homebrew-page")
+                want = {(e["platform"], e["id"]) for e in entries
+                        if (client.kind_of(e) == value if key == "kind" else value in e.get("genres", []))}
+                expect({(e["platform"], e["id"]) for e in got} == want, f"{key}={value}: not those entries")
+                checked.append(f"{key}={value}")
+            r = self.http.request("GET", self.api(f"/v1/homebrew?{key}=Not%20a%20{key}"))
+            self.expect_problem(r, [400], {"bad_request"})
+            _, none = self.get_json(self.api(f"/v1/homebrew?{key}=lanternconformance"), "homebrew-page")
+            expect(none["items"] == [], f"{key}=lanternconformance: entries, where the server knows no such {key}")
+        return ", ".join(checked) or "no kind or genre to filter by"
+
+    def c_homebrew_requires(self):
+        problems, conditions, unread = [], 0, set()
+        for e in self.all_homebrew():
+            problems += [f"{e['platform']}/{e['id']}: {p}" for p in client.requires_problems(e)]
+            requires = e.get("requires") if isinstance(e.get("requires"), dict) else {}
+            conditions += len(requires.get("min") or {}) + ("gpu" in requires)
+            _, unknown = client.offer(e, {})
+            unread.update(u.split(" ")[0] for u in unknown if "unknown)" not in u)
+        expect(not problems, "\n".join(problems[:8]))
+        note = f"; a client warns for {', '.join(sorted(unread))}, which it cannot read" if unread else ""
+        return f"{conditions} condition(s){note}"
 
     def c_homebrew_ports(self):
         ports = {k: d for k, d in self.read_entries().items() if d.get("kind") == "port"}
@@ -1140,18 +1200,28 @@ class Suite:
 
     def c_homebrew_packages(self):
         budget, read = self.args.max_download, 0
-        for (platform, hid), doc in self.read_entries().items():
-            package = doc["package"]
-            if package["size"] > budget or read >= self.args.max_files:
-                continue
-            data = self.fetch(package["file"], package["size"], package["sha256"], platform)
-            budget -= package["size"]
-            read += 1
-            if "manifest" in package:
-                check_archive(f"{platform}/{hid}", data, package["manifest"])
+        arches, entries = 0, 0
+        # Entries with a package per architecture first; --max-files counts entries, each read whole.
+        for (platform, hid), doc in sorted(self.read_entries().items(), key=lambda kv: not kv[1].get("packages")):
+            if entries >= self.args.max_files:
+                break
+            entries += 1
+            for package in [doc["package"]] + list(doc.get("packages") or []):
+                if package["size"] > budget:
+                    continue
+                where = f"{platform}/{hid}" + (f" ({', '.join(package['arch'])})" if package.get("arch") else "")
+                data = self.fetch(package["file"], package["size"], package["sha256"], platform)
+                budget -= package["size"]
+                read += 1
+                arches += package is not doc["package"]
+                if "manifest" in package:
+                    check_archive(where, data, package["manifest"])
+                elif package.get("format") == "zip":
+                    raise Fail(f"{where}: an archive without its manifest")
         if not read:
             raise Skip(f"every package is above --max-download {self.args.max_download}")
-        return f"{read} package(s)"
+        return f"{read} package(s) of {entries} entr{'y' if entries == 1 else 'ies'}" + (
+            f", {arches} of them for another architecture" if arches else "")
 
     def c_homebrew_signatures(self):
         signed = {k: d for k, d in self.read_entries().items() if "signature" in d}
@@ -1245,12 +1315,92 @@ class Suite:
 
     def c_cheat_write(self):
         if "cheats.write" in self.scopes():
-            raise Skip("the token holds cheats.write: the suite writes no cheat set")
+            raise Skip("the token holds cheats.write: cheats.write-cycle writes a set instead")
         body = {"schema": 1, "platform": "switch", "title_id": "0100ABCD00010000", "build_id": "0123456789ABCDEF",
                 "source": "Lantern conformance", "text": "[Nothing]\n"}
         r = self.http.request("POST", self.api("/v1/cheats"), body=body)
         self.expect_problem(r, [401, 403, 405])
         return f"{r.status}"
+
+    def c_cheat_write_cycle(self):
+        if "cheats.write" not in self.scopes():
+            raise Skip("the token lacks cheats.write")
+        # A platform with cheats: one of a set the server has, else one it serves (Annex A).
+        served = [c["platform"] for c in self.cheats or []] + self.platforms()
+        platform = next((p for p in served if p not in ("android", "linux")), None)
+        if platform is None:
+            raise Skip("no platform with cheats on this server (Annex A)")
+        platform, tid = self.own_title(platform)
+        text = "[Lantern conformance]\n04000000 00000000 00000000\n"
+        body = {"schema": 1, "platform": platform, "title_id": tid, "build_id": "0123456789ABCDEF",
+                "source": "Lantern conformance", "note": "Lantern conformance", "text": text}
+        r = self.http.request("POST", self.api("/v1/cheats"), body=body, platform=platform)
+        expect(r.status == 201, f"{r}, expected 201" + problem_detail(r))
+        doc = r.json()
+        self.validate(doc, "cheat", str(r))
+        sid = doc["id"]
+        path = self.api(f"/v1/cheats/{quote(sid, safe='')}")
+        try:
+            for key in ("platform", "title_id", "build_id", "source"):
+                expect(doc.get(key) == body[key], f"{r}: {key} {doc.get(key)!r}, sent {body[key]!r}")
+            expect(doc["size"] == len(text.encode()) and doc["sha256"] == hashlib.sha256(text.encode()).hexdigest(),
+                   f"{r}: size and sha256 are not those of the text sent")
+            query = f"title_id={quote(tid, safe='')}&build_id=0123456789ABCDEF"
+            _, listed = self.get_json(self.api(f"/v1/cheats?{query}"), "cheats", platform=platform)
+            expect([c["id"] for c in listed["cheats"]] == [sid], f"{query}: not the set posted, alone")
+            self.fetch(path, doc["size"], doc["sha256"], platform)
+            again = self.http.request("POST", self.api("/v1/cheats"), body=body, platform=platform)
+            expect(again.status in (200, 201, 409), f"{again}: the same set posted twice" + problem_detail(again))
+            if again.status in (200, 201) and again.json().get("id") not in (None, sid):
+                self.http.request("DELETE", self.api(f"/v1/cheats/{quote(again.json()['id'], safe='')}"),
+                                  platform=platform)
+            new = text + "[Lantern conformance, again]\n04000000 00000004 00000001\n"
+            r = self.http.request("PUT", path, body={**body, "text": new}, platform=platform)
+            expect(r.status == 204, f"{r}, expected 204" + problem_detail(r))
+            _, listed = self.get_json(self.api(f"/v1/cheats?{query}"), "cheats", platform=platform)
+            now = next((c for c in listed["cheats"] if c["id"] == sid), None)
+            expect(now is not None and now["sha256"] == hashlib.sha256(new.encode()).hexdigest(),
+                   "after PUT, the set is not listed with the new text's sha256")
+            self.fetch(path, now["size"], now["sha256"], platform)
+        finally:
+            r = self.http.request("DELETE", path, platform=platform)
+        expect(r.status == 204, f"{r}, expected 204" + problem_detail(r))
+        gone = self.http.request("GET", path, platform=platform, raw=True)
+        expect(gone.status in (404, 410), f"{gone} after DELETE, expected 404")
+        return f"set {sid} for {platform}/{tid} posted, replaced and deleted"
+
+    # Requests (SPEC.md § 11).
+
+    def c_requests(self):
+        if "requests" not in self.scopes():
+            raise Skip("the token lacks the scope requests")
+        _, doc = self.get_json(self.api("/v1/requests"), "requests")
+        platform = self.sample_platform()
+        _, mine = self.get_json(self.api("/v1/requests"), "requests", platform=platform)
+        expect(all(q["platform"] == platform for q in mine["requests"]), f"Lantern-Platform {platform}: "
+               "requests of another platform")
+        return f"{len(doc['requests'])} request(s), {len(mine['requests'])} for {platform}"
+
+    def c_request_create(self):
+        if "requests" not in self.scopes():
+            raise Skip("the token lacks the scope requests")
+        platform, tid = self.save_title()
+        body = {"schema": 1, "platform": platform, "title_id": tid}
+        r = self.http.request("POST", self.api("/v1/requests"), body=body, platform=platform)
+        expect(r.status in (200, 201), f"{r}, expected 201" + problem_detail(r))
+        first = r.json()
+        self.validate(first, "request", str(r))
+        expect((first["platform"], first["title_id"], first["status"]) == (platform, tid, "open"),
+               f"{r}: not an open request for {platform}/{tid}")
+        r = self.http.request("POST", self.api("/v1/requests"), body=body, platform=platform)
+        expect(r.status == 200, f"{r}: the same title asked again, expected 200 with the open request"
+               + problem_detail(r))
+        self.validate(r.json(), "request", str(r))
+        expect(r.json()["id"] == first["id"], f"{r}: another request, {r.json()['id']}, not {first['id']}")
+        _, listed = self.get_json(self.api("/v1/requests"), "requests", platform=platform)
+        expect(first["id"] in {q["id"] for q in listed["requests"]}, "the request is not listed")
+        return (f"request {first['id']} for {platform}/{tid}, left on the server: SPEC.md has no route to "
+                "delete one")
 
     # Save backups (SPEC.md § 9), with a token that holds `saves`.
 
@@ -1277,9 +1427,12 @@ class Suite:
         """(platform, title_id) for the suite's own backups: a title id of the
         platform's form that is none of the library's, so that no backup of the
         user's is dropped for it (limits.saves_kept_per_title)."""
-        if getattr(self, "_save_title", None):
-            return self._save_title
-        platform = self.sample_platform()
+        if not getattr(self, "_save_title", None):
+            self._save_title = self.own_title(self.sample_platform())
+        return self._save_title
+
+    def own_title(self, platform):
+        """(platform, title_id): a title id of the platform's form that is none of the library's."""
         known = {a["title_id"] for a in (self.apps or [])}
         while True:
             if platform in ("switch",):
@@ -1293,8 +1446,7 @@ class Suite:
             else:
                 tid = "lantern-conformance-" + secrets.token_hex(4)
             if tid not in known:
-                self._save_title = (platform, tid)
-                return self._save_title
+                return platform, tid
 
     def save_archive(self, size=3000):
         """A small zip, as a save archive (fictional bytes)."""
@@ -1688,7 +1840,7 @@ def main(argv=None, out=None):
     p.add_argument("--max-items", type=int, default=20000, help="read every page up to this many apps")
     p.add_argument("--max-entries", type=int, default=200, help="homebrew entries read on their own route at most")
     p.add_argument("--max-download", type=int, default=64 << 20, help="bytes downloaded at most (default 64 MiB)")
-    p.add_argument("--max-files", type=int, default=3, help="files downloaded whole at most, per family")
+    p.add_argument("--max-files", type=int, default=3, help="files downloaded whole at most, per family (homebrew: entries, each with every package)")
     p.add_argument("--discover", metavar="ADDRESS", help="also send LAN discovery to this address")
     p.add_argument("--discover-port", type=int, default=DISCOVERY_PORT)
     p.add_argument("--schemas", default=str(Path(__file__).resolve().parent.parent / "schemas" / "v1"))

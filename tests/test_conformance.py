@@ -181,8 +181,15 @@ class SuiteAgainstReference(unittest.TestCase):
                                      "saves.cleanup", "schema.refused.saves", "schema.refused.homebrew",
                                      "cheats.sets", "cheats.text", "titles.bulk", "titles.bulk-limit",
                                      "homebrew.ports", "homebrew.signatures", "homebrew.updates",
-                                     "platforms.filter", "missing.no-platform"])
+                                     "homebrew.filters", "homebrew.requires", "homebrew.packages",
+                                     "cheats.write-cycle", "requests.list", "requests.create",
+                                     "schema.refused.requests", "platforms.filter", "missing.no-platform"])
         self.assertIn("2 backup(s) deleted", report)
+        self.assertIn("for another architecture", report)                # the Linux port's packages, read
+        self.assertIn("posted, replaced and deleted", report)
+        self.assertFalse((srv.root / "cheats" / "switch").exists())         # nor a cheat set
+        self.assertEqual(json.loads((srv.root / "cheats" / "index.json").read_text())["notes"], {})
+        self.assertEqual(len(srv.lib.requests()), 1)                         # the one request it cannot delete
         self.assertEqual(srv.server.saves.index["saves"], [])         # the suite left nothing behind
         self.assertEqual(srv.server.saves.index["uploads"], {})
 
@@ -211,6 +218,34 @@ class SuiteAgainstReference(unittest.TestCase):
                              expect=["transport.https", "pairing.code", "files.ranges", "saves.upload",
                                      "homebrew.packages"])
         self.assertNotIn("WARN  § 2 ", report)
+
+
+class PairForCI(unittest.TestCase):
+    """tools/pair_for_ci.py: a private server, paired with as a user would, and its token."""
+
+    def test_token_holds_every_scope(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = library.make(Path(tmp.name) / "library")
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        work = Path(tmp.name) / "work"
+        run = subprocess.run([sys.executable, str(ROOT / "tools" / "pair_for_ci.py"), "--library", str(root),
+                              "--workdir", str(work), "--port", str(port)], capture_output=True, text=True,
+                             timeout=120, check=False)
+        pid = int((work / "server.pid").read_text())
+        self.addCleanup(lambda: subprocess.run(["kill", str(pid)], check=False))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        token = run.stdout.strip()
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/.well-known/lantern",
+                                     headers={"Authorization": "Bearer " + token})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            hello = json.loads(r.read())
+        self.assertEqual((hello["account"]["state"], hello["account"]["scopes"]), ("active", list(ls.SCOPES)))
+        self.assertEqual(hello["features"]["requests"], 1)
+        users = json.loads((work / "users.json").read_text())
+        self.assertTrue(users["users"][0]["password"].startswith("pbkdf2-sha256$"))     # only its hash is kept
 
 
 class SuiteCatchesFaults(unittest.TestCase):
@@ -251,8 +286,44 @@ class SuiteCatchesFaults(unittest.TestCase):
                 change(doc)
                 if not full:
                     doc["package"] = {k: v for k, v in doc["package"].items() if k != "manifest"}
+                    if "packages" in doc:
+                        doc["packages"] = [{k: v for k, v in p.items() if k != "manifest"} for p in doc["packages"]]
                 return doc
         return Edited
+
+    def test_kind_filter_ignored(self):
+        class Unfiltered(ls.Handler):
+            def homebrew_list(self, query):
+                super().homebrew_list({k: v for k, v in query.items() if k != "kind"})
+        self.fails(Unfiltered, "homebrew.filters")
+
+    def test_category_served(self):
+        def category(doc):
+            doc["category"] = "tool"
+        self.fails(self.edit_entry(category), "homebrew.pages")             # the schema refuses it
+
+    def test_unknown_arch_warns(self):
+        def loong(doc):
+            if doc["id"] == library.HARBOR:
+                doc["packages"] = [{**doc["packages"][0], "arch": ["loongarch64"]}]
+        self.fails(self.edit_entry(loong), "homebrew.kinds", level="WARN")
+
+    def test_cheat_set_not_kept(self):
+        class Forgetful(ls.Handler):
+            def cheat_post(self, query):
+                fields = self.cheat_fields(query)
+                self.send_doc(201, {"schema": 1, "id": "cs_forgotten", "platform": fields["platform"],
+                                    "title_id": fields["title_id"], "build_id": fields["build_id"],
+                                    "source": fields["source"], "size": len(fields["text"].encode()),
+                                    "sha256": hashlib.sha256(fields["text"].encode()).hexdigest()})
+        self.fails(Forgetful, "cheats.write-cycle", USERS, ("mila", EVERY_SCOPE))
+
+    def test_request_asked_twice(self):
+        class Twice(ls.Handler):
+            def request_post(self, query):
+                self.server.library.state["requests"] = []          # forgets the open one
+                super().request_post(query)
+        self.fails(Twice, "requests.create", USERS, ("mila", EVERY_SCOPE))
 
     def test_manifest_outside_the_roots(self):
         def outside(doc):
