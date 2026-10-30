@@ -9,7 +9,7 @@
   "version": "2.1.0",
   "build": 20100,
   "license": "GPL-2.0-or-later",
-  "source": "https://code.example.org/lea/harborlights",
+  "source": "https://code.example.org/lea/lighthouse",
   "language": "en",
   "summary": "The lighthouse-keeping classic, on the Switch. Needs your own copy of the game.",
   "updated": "2026-10-30T08:00:00Z",
@@ -18,20 +18,35 @@
     "file": "/api/lantern/v1/files/f_Hl3Qw7",
     "size": 3145728,
     "sha256": "1a938f454b492bc4468cbe305b2ad9970800fcb35b0d492622b9614315c523f2",
-    "manifest_sha256": "6dcd5259ef9a33f85b81e0a8c70fe6726f5b24d360be86eb3ac057566bb06940",
-    "path": "/switch/org.example.harborlights/harborlights.nro",
+    "manifest_sha256": "bcfc65c55d35b6341e7465e3ea7084bc845e477bf08a279e05f846b647de7486",
+    "path": "/switch/harborlights/harborlights.nro",
     "manifest": [
       {
-        "path": "/switch/org.example.harborlights/harborlights.nro",
+        "path": "/switch/harborlights/harborlights.nro",
         "size": 3145728,
         "sha256": "1a938f454b492bc4468cbe305b2ad9970800fcb35b0d492622b9614315c523f2"
       }
     ]
   },
-  "original": {
-    "title": "Harbor Lights",
-    "platform": "windows",
-    "atlas_id": "harbor-lights"
-  },
-  "engine": "Lighthouse, a recreation of the original engine"
+  "port": {
+    "original": {
+      "name": "Harbor Lights",
+      "year": 1998,
+      "developer": "Fjord Works",
+      "stores": [
+        {
+          "store": "gog",
+          "id": "1207658000",
+          "url": "https://store.example.org/harbor-lights"
+        }
+      ]
+    },
+    "engine": {
+      "name": "Lighthouse",
+      "version": "2.1.0",
+      "source": "https://code.example.org/lea/lighthouse"
+    },
+    "data_root": "/switch/harborlights/",
+    "assets": "user_owned"
+  }
 }

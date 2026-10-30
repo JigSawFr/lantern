@@ -269,6 +269,7 @@ paths:
         - { $ref: "#/components/parameters/PlatformQuery" }
         - { name: Content-Digest, in: header, required: true, description: "sha-256=:<base64>: (RFC 9530), checked by the server.", schema: { type: string } }
         - { name: Lantern-Save-Kind, in: header, schema: { enum: [account, device, bcat, cache, other] } }
+        - { name: Lantern-Save-Slot, in: header, description: "Which of the title's save folders, where it has several (SPEC.md § 9.1).", schema: { type: string, pattern: "^[A-Za-z0-9._-]{1,64}$" } }
         - { name: Lantern-Game-Version, in: header, description: "The game's version_code.", schema: { type: integer, minimum: 0 } }
         - { name: Lantern-Profile, in: header, description: "UTF-8, percent-encoded, 64 bytes at most.", schema: { type: string } }
         - { name: Lantern-Note, in: header, description: "UTF-8, percent-encoded, 120 bytes at most.", schema: { type: string } }

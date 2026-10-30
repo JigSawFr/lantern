@@ -17,6 +17,9 @@
     "kind": {
       "$ref": "common.json#/$defs/save_kind"
     },
+    "slot": {
+      "$ref": "common.json#/$defs/slot"
+    },
     "game_version_code": {
       "$ref": "common.json#/$defs/uint64"
     },
