@@ -34,7 +34,10 @@ The **[conformance suite](conformance/run.py)** checks a server from
 outside, against every MUST it can see: handshake and declared features,
 documents against the schemas, cursor pages, what a console is missing,
 ranges, digests, errors, limits. Each check says PASS, FAIL, WARN (a SHOULD)
-or SKIP, with its SPEC.md section; the exit code is 1 when one fails.
+or SKIP, with its SPEC.md section; the exit code is 1 when one fails. It
+changes nothing on the server, but on a server that offers pairing it asks
+for one real pairing code, which the server may show to its users until it
+expires on its own.
 
 ```sh
 pip install -r tools/requirements.txt   # jsonschema, for the schema checks

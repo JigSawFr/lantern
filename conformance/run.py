@@ -11,7 +11,8 @@ prints PASS, FAIL, WARN (a SHOULD not met) or SKIP, with the SPEC.md section
 it comes from; the exit code is 1 when one fails.
 
 It changes nothing on the server, but for a pairing code it may ask for
-(feature `pairing`), which expires on its own. Rules that only a client can
+(feature `pairing`): a real code, which the server may show to its users
+until it expires on its own. Rules that only a client can
 keep (ignoring unknown fields, pinning, checking a download) are listed as
 skipped.
 
@@ -40,7 +41,7 @@ JSON_LIMIT = 32 << 20
 CODES = {400: {"bad_request"}, 401: {"unauthorized"}, 403: {"forbidden", "account_frozen"},
          404: {"not_found"}, 405: {"bad_request"}, 409: {"conflict"}, 410: {"gone"},
          413: {"too_large"}, 416: {"bad_request"}, 422: {"unsupported_schema"},
-         429: {"slow_down"}, 503: {"unavailable"}}
+         429: {"slow_down"}, 500: {"internal"}, 503: {"unavailable"}}
 # A route per family, to see whether the server honours what it declares (SPEC.md § 4.2).
 PROBES = {
     "library": ("GET", "/v1/apps?page_size=1", None, "apps"),
@@ -271,7 +272,7 @@ class Suite:
             self.check("missing.malformed", "10", "A malformed body gives 400 bad_request", self.c_malformed)
             self.check("files.whole", "6.7", "Whole files: length, ETag, sha256 and Repr-Digest", self.c_files)
             self.check("files.ranges", "6.7", "Ranges: 206 with the right slice", self.c_ranges)
-            self.check("files.unsatisfiable", "6.7", "A range outside the file gives 416", self.c_416)
+            self.check("files.unsatisfiable", "6.7", "A range outside the file gives 416 with Content-Range", self.c_416)
             self.check("files.unknown", "6.7", "An unknown file id gives 404 or 410", self.c_unknown_file)
         if mine["changes"]:
             self.check("changes.token", "6.4", "Changes: no apps and a token, then from it", self.c_changes)
@@ -625,8 +626,7 @@ class Suite:
         r = self.http.request("GET", path, headers={"Range": f"bytes={app['size']}-"}, limit=1 << 16)
         expect(r.status == 416, f"{r} for bytes={app['size']}-, expected 416")
         cr = r.header("Content-Range")
-        if cr != f"bytes */{app['size']}":
-            raise Warn(f"{r}: Content-Range {cr}, RFC 9110 asks for bytes */{app['size']}")
+        expect(cr == f"bytes */{app['size']}", f"{r}: Content-Range {cr}, expected bytes */{app['size']}")
 
     def c_unknown_file(self):
         r = self.http.request("GET", self.api("/v1/files/f_lantern-conformance-" + secrets.token_hex(8)))

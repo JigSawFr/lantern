@@ -54,6 +54,7 @@ import ssl
 import sys
 import threading
 import time
+import traceback
 import uuid
 from collections import OrderedDict
 from datetime import date, datetime, timezone
@@ -432,7 +433,7 @@ class Handler(BaseHTTPRequestHandler):
     # Dispatch. Every route's family decides who may call it.
 
     def handle_any(self, method):
-        self.method, self.head = method, method == "HEAD"
+        self.method, self.head, self.began = method, method == "HEAD", False
         self.authenticated = bool(self.headers.get("Authorization"))
         try:
             body = self.read_body()
@@ -445,6 +446,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_doc(p.status, p.document(), p.headers, problem=True)
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
+        except Exception:  # noqa: BLE001 - any bug of this server answers 500
+            # A bug of this server: logged, answered as SPEC.md § 10 wants,
+            # unless the reply had already begun.
+            self.log_error("%s", traceback.format_exc())
+            self.close_connection = True
+            if not self.began:
+                problem = Problem(500, "internal", "Internal error", "The server failed; try again later.")
+                self.send_doc(500, problem.document(), problem=True)
 
     def do_GET(self):
         self.handle_any("GET")
@@ -642,6 +651,7 @@ class Handler(BaseHTTPRequestHandler):
     # Responses.
 
     def send_head(self, status, length, headers):
+        self.began = True
         self.send_response(status)
         for k, v in headers.items():
             self.send_header(k, v)
