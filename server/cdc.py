@@ -28,7 +28,10 @@ def number(x):
     """A number as ECMAScript writes it (RFC 8785 § 3.2.2.3)."""
     if isinstance(x, int) and abs(x) <= INT_LIMIT:
         return str(x)
-    x = float(x)
+    try:
+        x = float(x)
+    except OverflowError:
+        raise ValueError("a number beyond a double's range is not I-JSON") from None
     if x != x or x in (float("inf"), float("-inf")):
         raise ValueError("JSON has no NaN nor infinity")
     if x == 0:

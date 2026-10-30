@@ -96,6 +96,13 @@ class Vectors(unittest.TestCase):
             self.assertEqual(cdc.canonical(value).decode(), case["canonical"], case["name"])
             self.assertEqual(client.canonical(value).decode(), case["canonical"], case["name"])
 
+    def test_canonical_number_out_of_range(self):
+        """L-2.3-1: an integer beyond a double's range is not I-JSON: both references refuse it, neither crashes."""
+        value = json.loads('{"size":1' + "0" * 400 + "}")
+        for writer in (cdc.canonical, client.canonical):
+            with self.assertRaises(ValueError):
+                writer(value)
+
     def test_sync_numbers(self):
         """L-20.4-1: the merge rule over values with numbers: 1.0 and 1 the same, the server's kept."""
         for case in vector("sync-merge")["cases"]:

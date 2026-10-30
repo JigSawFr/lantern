@@ -764,7 +764,10 @@ def es_number(x):
     if isinstance(x, bool) or not isinstance(x, (int, float)):
         raise TypeError("not a number")
     if isinstance(x, int):
-        x = float(x) if abs(x) > (1 << 53) - 1 else x
+        try:
+            x = float(x) if abs(x) > (1 << 53) - 1 else x
+        except OverflowError:
+            raise ValueError("a number beyond a double's range is not I-JSON") from None
         if isinstance(x, int):
             return str(x)
     if x != x or x in (float("inf"), float("-inf")):
