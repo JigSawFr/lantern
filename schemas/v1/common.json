@@ -23,6 +23,16 @@
       "type": "string",
       "pattern": "^[0-9A-F]{16}$"
     },
+    "switch_title_id": {
+      "description": "A Switch game's title id (SPEC.md Annex A.1): 16 upper-case hex digits, its lowest 13 bits zero.",
+      "type": "string",
+      "pattern": "^[0-9A-F]{12}[02468ACE]000$"
+    },
+    "switch_update_id": {
+      "description": "A Switch update's app id (SPEC.md Annex A.1): its game's title id plus 800 (hex).",
+      "type": "string",
+      "pattern": "^[0-9A-F]{12}[02468ACE]800$"
+    },
     "app_type": {
       "description": "An app's type, from its profile's list (SPEC.md § 6.1).",
       "type": "string",
@@ -173,7 +183,7 @@
           "then": {
             "properties": {
               "title_id": {
-                "$ref": "common.json#/$defs/id16"
+                "$ref": "common.json#/$defs/switch_title_id"
               },
               "app_id": {
                 "$ref": "common.json#/$defs/id16"
@@ -196,7 +206,47 @@
               "version_code": {
                 "$ref": "common.json#/$defs/uint32"
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "base"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "app_id": {
+                      "$ref": "common.json#/$defs/switch_title_id"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "update"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "app_id": {
+                      "$ref": "common.json#/$defs/switch_update_id"
+                    }
+                  }
+                }
+              }
+            ]
           }
         }
       ]
@@ -428,7 +478,7 @@
           "then": {
             "properties": {
               "title_id": {
-                "$ref": "common.json#/$defs/id16"
+                "$ref": "common.json#/$defs/switch_title_id"
               }
             }
           }
@@ -471,6 +521,142 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9+/]*={0,2}$"
     },
+    "arch": {
+      "description": "A package's architecture (SPEC.md § 8.2): aarch64, armhf, x86, x86_64, or a later one of the same form.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]{1,32}$"
+    },
+    "data_path": {
+      "description": "Where a port's required file goes, relative to the port's root (SPEC.md § 8.6): parts separated by /, none empty, . or ..; no leading /, no drive letter, backslash, colon, quote or control character.",
+      "type": "string",
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!(?:.*/)?\\.\\.?(?:/|$))[^/\\\\:\"\\u0000-\\u001f\\u007f]{1,255}(?:/[^/\\\\:\"\\u0000-\\u001f\\u007f]{1,255})*$"
+    },
+    "required_data": {
+      "description": "A file a port needs from the user's own copy, or a group of alternatives (SPEC.md § 8.6); never served.",
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "common.json#/$defs/required_file"
+            },
+            {
+              "not": {
+                "required": [
+                  "one_of"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "one_of": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 16,
+              "items": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 64,
+                "items": {
+                  "$ref": "common.json#/$defs/required_file"
+                }
+              }
+            },
+            "optional": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "one_of"
+          ]
+        }
+      ]
+    },
+    "package": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "$ref": "common.json#/$defs/format"
+        },
+        "file": {
+          "$ref": "common.json#/$defs/url"
+        },
+        "size": {
+          "$ref": "common.json#/$defs/uint64"
+        },
+        "sha256": {
+          "$ref": "common.json#/$defs/sha256"
+        },
+        "manifest_sha256": {
+          "$ref": "common.json#/$defs/sha256",
+          "description": "The SHA-256 of the manifest's canonical form (SPEC.md § 8.2)."
+        },
+        "path": {
+          "$ref": "common.json#/$defs/device_path",
+          "description": "A single file's place on the device; absent when the system's installer installs it."
+        },
+        "manifest": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "$ref": "common.json#/$defs/manifest_entry"
+          }
+        },
+        "arch": {
+          "description": "The architectures it runs on (SPEC.md § 8.2); absent: every one of its platform.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.json#/$defs/arch"
+          }
+        },
+        "signature": {
+          "$ref": "common.json#/$defs/signature",
+          "description": "In packages only: this package's own signature (SPEC.md § 8.4)."
+        },
+        "signer_sha256": {
+          "$ref": "common.json#/$defs/sha256",
+          "description": "The SHA-256 of the platform's own signing certificate, where the profile has one (SPEC.md § 8.2, Annex A.5)."
+        }
+      },
+      "required": [
+        "format",
+        "file",
+        "size",
+        "sha256",
+        "manifest_sha256"
+      ],
+      "description": "A homebrew's package (SPEC.md § 8.2). A listing leaves manifest out."
+    },
+    "signature": {
+      "type": "object",
+      "properties": {
+        "alg": {
+          "const": "ed25519"
+        },
+        "public_key": {
+          "$ref": "common.json#/$defs/base64",
+          "minLength": 44,
+          "maxLength": 44
+        },
+        "value": {
+          "$ref": "common.json#/$defs/base64",
+          "minLength": 88,
+          "maxLength": 88
+        }
+      },
+      "required": [
+        "alg",
+        "public_key",
+        "value"
+      ],
+      "description": "An author's ed25519 signature (SPEC.md § 8.4)."
+    },
     "homebrew": {
       "description": "A homebrew (SPEC.md § 8.1). A listing leaves package.manifest out (§ 8.2).",
       "type": "object",
@@ -478,8 +664,19 @@
         "id": {
           "$ref": "common.json#/$defs/homebrew_id"
         },
+        "system_id": {
+          "description": "The platform's own id of the installed software, where it has one (SPEC.md § 8.1, Annex A).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
         "platform": {
           "$ref": "common.json#/$defs/platform"
+        },
+        "kind": {
+          "description": "What it is (SPEC.md § 8.1): app, game, port, emulator, tool, overlay, sysmodule or theme. A reader reads one it does not know as app.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,31}$"
         },
         "name": {
           "$ref": "common.json#/$defs/name"
@@ -505,6 +702,11 @@
         },
         "license": {
           "description": "An SPDX licence expression.",
+          "type": "string",
+          "maxLength": 256
+        },
+        "assets_license": {
+          "description": "The licence of the assets it bundles, when it differs (SPDX, LicenseRef- allowed).",
           "type": "string",
           "maxLength": 256
         },
@@ -542,6 +744,25 @@
                 "type": "string",
                 "pattern": "^[0-9]+(\\.[0-9]+){0,3}$"
               }
+            },
+            "homebrew": {
+              "type": "array",
+              "maxItems": 32,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "common.json#/$defs/homebrew_id"
+                  },
+                  "min_build": {
+                    "$ref": "common.json#/$defs/uint64"
+                  }
+                },
+                "required": [
+                  "id",
+                  "min_build"
+                ]
+              }
             }
           },
           "required": [
@@ -552,71 +773,36 @@
           "$ref": "common.json#/$defs/time"
         },
         "package": {
-          "type": "object",
-          "properties": {
-            "format": {
-              "$ref": "common.json#/$defs/format"
-            },
-            "file": {
-              "$ref": "common.json#/$defs/url"
-            },
-            "size": {
-              "$ref": "common.json#/$defs/uint64"
-            },
-            "sha256": {
-              "$ref": "common.json#/$defs/sha256"
-            },
-            "manifest_sha256": {
-              "$ref": "common.json#/$defs/sha256",
-              "description": "The SHA-256 of the manifest's canonical form (SPEC.md § 8.2)."
-            },
-            "path": {
-              "$ref": "common.json#/$defs/device_path",
-              "description": "A single file's place on the device; absent when the system's installer installs it."
-            },
-            "manifest": {
-              "type": "array",
-              "maxItems": 4096,
-              "items": {
-                "$ref": "common.json#/$defs/manifest_entry"
+          "$ref": "common.json#/$defs/package"
+        },
+        "packages": {
+          "description": "More packages of the same build, each for its arch (SPEC.md § 8.2).",
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "common.json#/$defs/package"
+              },
+              {
+                "required": [
+                  "arch"
+                ]
               }
-            }
-          },
-          "required": [
-            "format",
-            "file",
-            "size",
-            "sha256",
-            "manifest_sha256"
-          ]
+            ]
+          }
         },
         "signature": {
-          "type": "object",
-          "properties": {
-            "alg": {
-              "const": "ed25519"
-            },
-            "public_key": {
-              "$ref": "common.json#/$defs/base64",
-              "minLength": 44,
-              "maxLength": 44
-            },
-            "value": {
-              "$ref": "common.json#/$defs/base64",
-              "minLength": 88,
-              "maxLength": 88
-            }
-          },
-          "required": [
-            "alg",
-            "public_key",
-            "value"
-          ]
+          "$ref": "common.json#/$defs/signature"
+        },
+        "port": {
+          "$ref": "common.json#/$defs/port"
         }
       },
       "required": [
         "id",
         "platform",
+        "kind",
         "name",
         "version",
         "build",
@@ -641,12 +827,33 @@
                   "format": {
                     "enum": [
                       "nro",
+                      "ovl",
                       "zip"
                     ]
                   }
                 }
+              },
+              "packages": {
+                "maxItems": 0
               }
             }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "port"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "port"
+            ]
           }
         }
       ]
@@ -682,6 +889,9 @@
         "sha256": {
           "$ref": "common.json#/$defs/sha256"
         },
+        "slot": {
+          "$ref": "common.json#/$defs/slot"
+        },
         "kind": {
           "$ref": "common.json#/$defs/save_kind"
         },
@@ -705,6 +915,27 @@
         "created",
         "size",
         "sha256"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "switch"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
+          "then": {
+            "properties": {
+              "title_id": {
+                "$ref": "common.json#/$defs/switch_title_id"
+              }
+            }
+          }
+        }
       ]
     },
     "cheat_set": {
@@ -764,7 +995,7 @@
           "then": {
             "properties": {
               "title_id": {
-                "$ref": "common.json#/$defs/id16"
+                "$ref": "common.json#/$defs/switch_title_id"
               },
               "build_id": {
                 "type": "string",
@@ -776,6 +1007,222 @@
             ]
           }
         }
+      ]
+    },
+    "request": {
+      "description": "A request for a game (SPEC.md § 11).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/opaque"
+        },
+        "platform": {
+          "$ref": "common.json#/$defs/platform"
+        },
+        "title_id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/name"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "done",
+            "declined"
+          ]
+        },
+        "created": {
+          "$ref": "common.json#/$defs/time"
+        }
+      },
+      "required": [
+        "id",
+        "platform",
+        "title_id",
+        "status",
+        "created"
+      ]
+    },
+    "slot": {
+      "description": "One of a title's save folders (SPEC.md § 9.1), as the platform names it.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "required_file": {
+      "description": "A file a port needs from the user (SPEC.md § 8.6).",
+      "type": "object",
+      "properties": {
+        "path": {
+          "$ref": "common.json#/$defs/data_path"
+        },
+        "size": {
+          "$ref": "common.json#/$defs/uint64"
+        },
+        "accept": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "sha256": {
+                "$ref": "common.json#/$defs/sha256"
+              },
+              "sha1": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              },
+              "md5": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              "label": {
+                "$ref": "common.json#/$defs/name"
+              }
+            },
+            "required": [
+              "label"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "sha256"
+                ]
+              },
+              {
+                "required": [
+                  "sha1"
+                ]
+              },
+              {
+                "required": [
+                  "md5"
+                ]
+              }
+            ]
+          }
+        },
+        "hint": {
+          "$ref": "common.json#/$defs/text"
+        },
+        "optional": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "hint"
+      ]
+    },
+    "port": {
+      "description": "A game port's original game, engine and data (SPEC.md § 8.6).",
+      "type": "object",
+      "properties": {
+        "original": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "common.json#/$defs/name"
+            },
+            "year": {
+              "type": "integer",
+              "minimum": 1950,
+              "maximum": 2200
+            },
+            "developer": {
+              "$ref": "common.json#/$defs/name"
+            },
+            "stores": {
+              "type": "array",
+              "maxItems": 32,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "store": {
+                    "$ref": "common.json#/$defs/platform"
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "url": {
+                    "$ref": "common.json#/$defs/url"
+                  }
+                },
+                "required": [
+                  "store",
+                  "url"
+                ]
+              }
+            },
+            "title": {
+              "type": "object",
+              "properties": {
+                "platform": {
+                  "$ref": "common.json#/$defs/platform"
+                },
+                "title_id": {
+                  "$ref": "common.json#/$defs/id"
+                }
+              },
+              "required": [
+                "platform",
+                "title_id"
+              ]
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "engine": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "common.json#/$defs/name"
+            },
+            "version": {
+              "$ref": "common.json#/$defs/name"
+            },
+            "source": {
+              "$ref": "common.json#/$defs/url"
+            },
+            "license": {
+              "description": "Only when it differs from the entry's.",
+              "type": "string",
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "data_root": {
+          "description": "An absolute folder, ending with /, under the profile's areas for ports' data (SPEC.md § 8.6): parts as in a device path.",
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?!.*/\\.\\.?/)(?:/[^/\\\\:\"\\u0000-\\u001f\\u007f]{1,255})+/$"
+        },
+        "assets": {
+          "description": "included, demo_included, free_external or user_owned; a reader reads one it does not know as user_owned.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$"
+        },
+        "requires_data": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "common.json#/$defs/required_data"
+          }
+        }
+      },
+      "required": [
+        "original",
+        "engine",
+        "data_root",
+        "assets",
+        "requires_data"
       ]
     }
   }

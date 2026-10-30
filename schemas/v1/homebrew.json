@@ -19,23 +19,35 @@
       ]
     },
     {
-      "if": {
-        "properties": {
-          "package": {
+      "properties": {
+        "package": {
+          "if": {
             "properties": {
               "format": {
                 "const": "zip"
               }
             }
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "package": {
+          },
+          "then": {
             "required": [
               "manifest"
             ]
+          }
+        },
+        "packages": {
+          "items": {
+            "if": {
+              "properties": {
+                "format": {
+                  "const": "zip"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "manifest"
+              ]
+            }
           }
         }
       }

@@ -20,7 +20,7 @@
   page still shows where visits come from;
 - UTM tags only on the links to another of Boréale's sites (utm_source=lantern);
 - no e-mail address and no mailto: link (contact goes through the issues);
-- every error type of SPEC.md's § 10 has its page (errors/<name>/), the
+- every error type of SPEC.md (its section "Errors") has its page (errors/<name>/), the
   address its `type` gives.
 """
 import json

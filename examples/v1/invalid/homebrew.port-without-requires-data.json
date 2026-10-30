@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "org.example.harborlights",
+  "platform": "switch",
+  "kind": "port",
+  "name": "Harbor Lights",
+  "author": "Lea",
+  "category": "game",
+  "version": "2.1.0",
+  "build": 20100,
+  "license": "GPL-2.0-or-later",
+  "source": "https://code.example.org/lea/lighthouse",
+  "language": "en",
+  "summary": "The lighthouse-keeping classic, on the Switch. Needs your own copy of the game.",
+  "updated": "2026-10-30T08:00:00Z",
+  "package": {
+    "format": "nro",
+    "file": "/api/lantern/v1/files/f_Hl3Qw7",
+    "size": 3145728,
+    "sha256": "1a938f454b492bc4468cbe305b2ad9970800fcb35b0d492622b9614315c523f2",
+    "manifest_sha256": "bcfc65c55d35b6341e7465e3ea7084bc845e477bf08a279e05f846b647de7486",
+    "path": "/switch/harborlights/harborlights.nro",
+    "manifest": [
+      {
+        "path": "/switch/harborlights/harborlights.nro",
+        "size": 3145728,
+        "sha256": "1a938f454b492bc4468cbe305b2ad9970800fcb35b0d492622b9614315c523f2"
+      }
+    ]
+  },
+  "port": {
+    "original": {
+      "name": "Harbor Lights",
+      "year": 1998,
+      "developer": "Fjord Works",
+      "stores": [
+        {
+          "store": "gog",
+          "id": "1207658000",
+          "url": "https://store.example.org/harbor-lights"
+        }
+      ]
+    },
+    "engine": {
+      "name": "Lighthouse",
+      "version": "2.1.0",
+      "source": "https://code.example.org/lea/lighthouse"
+    },
+    "data_root": "/switch/harborlights/",
+    "assets": "user_owned"
+  }
+}

@@ -4,6 +4,7 @@
     {
       "id": "org.example.frostline",
       "platform": "switch",
+      "kind": "app",
       "name": "Frostline",
       "author": "Noor",
       "category": "tool",
@@ -44,6 +45,7 @@
     {
       "id": "org.example.paperlamp",
       "platform": "switch",
+      "kind": "game",
       "name": "Paper Lamp",
       "author": "Ines",
       "category": "game",
@@ -59,11 +61,183 @@
         "file": "/api/lantern/v1/files/f_Pl7Mn2",
         "size": 1048576,
         "sha256": "9f2c41aa0b7e5d3c18f6a2b4c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1",
-        "manifest_sha256": "4638e8490792dd59a0912a83cad84b4ecff5a7772a8a4c53fa4e64e53342ce06",
-        "path": "/switch/org.example.paperlamp/paperlamp.nro"
+        "manifest_sha256": "a46072d2ada76f31cad0b5500b8e6a4d14563ce118386fb4ec60212827f2d7dc",
+        "path": "/switch/org.example.paperlamp/org.example.paperlamp.nro"
       }
+    },
+    {
+      "id": "org.example.harborlights",
+      "platform": "switch",
+      "kind": "port",
+      "name": "Harbor Lights",
+      "author": "Lea",
+      "category": "game",
+      "version": "2.1.0",
+      "build": 20100,
+      "license": "GPL-2.0-or-later",
+      "source": "https://code.example.org/lea/lighthouse",
+      "language": "en",
+      "summary": "The lighthouse-keeping classic, on the Switch. Needs your own copy of the game.",
+      "updated": "2026-10-30T08:00:00Z",
+      "package": {
+        "format": "nro",
+        "file": "/api/lantern/v1/files/f_Hl3Qw7",
+        "size": 3145728,
+        "sha256": "1a938f454b492bc4468cbe305b2ad9970800fcb35b0d492622b9614315c523f2",
+        "manifest_sha256": "bcfc65c55d35b6341e7465e3ea7084bc845e477bf08a279e05f846b647de7486",
+        "path": "/switch/harborlights/harborlights.nro"
+      },
+      "port": {
+        "original": {
+          "name": "Harbor Lights",
+          "year": 1998,
+          "developer": "Fjord Works",
+          "stores": [
+            {
+              "store": "gog",
+              "id": "1207658000",
+              "url": "https://store.example.org/harbor-lights"
+            }
+          ]
+        },
+        "engine": {
+          "name": "Lighthouse",
+          "version": "2.1.0",
+          "source": "https://code.example.org/lea/lighthouse"
+        },
+        "data_root": "/switch/harborlights/",
+        "assets": "user_owned",
+        "requires_data": [
+          {
+            "path": "data/HARBOR.PAK",
+            "size": 214748364,
+            "accept": [
+              {
+                "sha256": "9fed1136876db26e1ad23fc7f670877229ef6175a0ebb578156745f8e775f95e",
+                "label": "1.0"
+              },
+              {
+                "sha256": "e24786a703c9df277e543a705319fb02c4b85484dcecf396a1a8ea49f889e44e",
+                "md5": "cbfe50c4d03988e3b154e7fb5c56644f",
+                "label": "1.1"
+              }
+            ],
+            "hint": "In the folder where the game is installed on your computer."
+          },
+          {
+            "one_of": [
+              [
+                {
+                  "path": "music/THEME.OGG",
+                  "hint": "From the soundtrack edition."
+                }
+              ],
+              [
+                {
+                  "path": "data/MUSIC.PAK",
+                  "hint": "Next to HARBOR.PAK, in the editions that have it."
+                }
+              ]
+            ],
+            "optional": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "org.example.lampmeter",
+      "platform": "switch",
+      "kind": "overlay",
+      "name": "Lamp Meter",
+      "author": "Ines",
+      "category": "tool",
+      "version": "0.3.0",
+      "build": 300,
+      "license": "MIT",
+      "source": "https://code.example.org/ines/lampmeter",
+      "language": "en",
+      "summary": "The battery and the clock, over any game.",
+      "requires": {
+        "text": "Atmosphère and the overlay loader",
+        "min": {
+          "atmosphere": "1.7.0"
+        },
+        "homebrew": [
+          {
+            "id": "org.example.overlayloader",
+            "min_build": 120
+          }
+        ]
+      },
+      "updated": "2026-10-28T12:00:00Z",
+      "package": {
+        "format": "ovl",
+        "file": "/api/lantern/v1/files/f_Lm3Ov1",
+        "size": 262144,
+        "sha256": "69f47722f38785784b72e76923d3d8258ae5c6283a38e84c95f92b4702259534",
+        "manifest_sha256": "f88f00aee51a3aca554ae2deb1be5bcd6cd9277438e504df8036fd7a63ab93d1",
+        "path": "/switch/.overlays/lampmeter.ovl"
+      }
+    },
+    {
+      "id": "org.example.frostline",
+      "system_id": "org.example.frostline",
+      "platform": "android",
+      "kind": "app",
+      "name": "Frostline",
+      "author": "Noor",
+      "category": "tool",
+      "version": "1.4.0",
+      "build": 10400,
+      "license": "MIT",
+      "source": "https://code.example.org/noor/frostline",
+      "language": "en",
+      "summary": "A pocket journal for long nights.",
+      "requires": {
+        "text": "Android 8.0 or later",
+        "min": {
+          "sdk": "26"
+        }
+      },
+      "updated": "2026-10-29T08:00:00Z",
+      "package": {
+        "format": "apk",
+        "arch": [
+          "aarch64"
+        ],
+        "file": "/api/lantern/v1/files/f_Fa64Lp",
+        "size": 6291456,
+        "sha256": "ec53ddabd2c7ecc9960e23566a567a8cb97147fbf0f26c36c69767ee1f5904b6",
+        "manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "signer_sha256": "15167ef57f1836d8c6d550f5b1871c4f21a36278fe9a9d2608f90fa9728f016a"
+      },
+      "packages": [
+        {
+          "format": "apk",
+          "arch": [
+            "armhf"
+          ],
+          "file": "/api/lantern/v1/files/f_Fa32Lp",
+          "size": 5767168,
+          "sha256": "a73bf7213cd10694a8b9d82526404641b23e0f2fb5f93f9e2c8025615d7d5627",
+          "manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "signer_sha256": "15167ef57f1836d8c6d550f5b1871c4f21a36278fe9a9d2608f90fa9728f016a"
+        },
+        {
+          "format": "apk",
+          "arch": [
+            "x86",
+            "x86_64"
+          ],
+          "file": "/api/lantern/v1/files/f_Fx86Lp",
+          "size": 9437184,
+          "sha256": "acd9a17728605f44acc055d71f7803a8df97b6895e5197470e4b26c1afeb22aa",
+          "manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "signer_sha256": "15167ef57f1836d8c6d550f5b1871c4f21a36278fe9a9d2608f90fa9728f016a"
+        }
+      ]
     }
   ],
-  "total": 2,
+  "total": 5,
   "next": null
 }

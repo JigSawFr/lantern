@@ -10,7 +10,8 @@ site/i18n/<language>.json. The fifteen languages of Boréale's sites
 (LANGUAGES): English at the root, each other one in its folder (fr/, fr-ca/,
 de/ ... zh-hant/). The specification is in English in every language: only
 the page around it is translated. errors/ lists the error types of SPEC.md's
-§ 10, each at the address its `type` gives (errors/<name>/), in English.
+section "Errors" (ERRORS_HEADING), each at the address its `type` gives
+(errors/<name>/), in English.
 
 SITE_URL is the site's address (https://lantern.boreale.dev/ by default);
 the links inside the site are relative, so it works at another one too.
@@ -84,6 +85,8 @@ HERE = "lantern"
 UTM_SOURCE = "lantern"
 
 KEY = re.compile(r"\{\{([a-z0-9_]+)\}\}")
+# SPEC.md's section of errors, whatever its number: "## 12. Errors".
+ERRORS_HEADING = re.compile(r"## (\d+)\. Errors$")
 
 
 def folder(language: str) -> str:
@@ -147,7 +150,8 @@ def links_out(text: str) -> str:
 # ---- SPEC.md, rendered: the subset it is written in (headings, paragraphs,
 # lists with their continuation lines and code, fenced code, tables, `code`,
 # **strong**, [links](url)); each heading an anchor as GitHub makes it, each
-# "§ 4.2" a link to its section.
+# "§ 4.2" a link to its section, and each "Annex A" or "Annex A.1" to the
+# annex or its part.
 
 def slug(text: str) -> str:
     text = re.sub(r"<[^>]+>", "", text).lower()
@@ -159,7 +163,7 @@ def plain(text: str) -> str:
     return re.sub(r"[`*]", "", text)
 
 
-def inline(text: str, sections: dict) -> str:
+def inline(text: str, sections: dict, refs: bool = True) -> str:
     codes = []
 
     def keep(m):
@@ -180,7 +184,14 @@ def inline(text: str, sections: dict) -> str:
         number = m.group(1)
         anchor = sections.get(number)
         return f'<a href="#{anchor}">§&nbsp;{number}</a>' if anchor else m.group(0)
-    text = re.sub(r"§ (\d+(?:\.\d+)?)", section, text)
+    if refs:  # not in a heading, itself a link
+        text = re.sub(r"§ (\d+(?:\.\d+)?)", section, text)
+
+    def annex(m):
+        anchor = sections.get(m.group(1))
+        return f'<a href="#{anchor}">{m.group(0).replace(" ", "&nbsp;")}</a>' if anchor else m.group(0)
+    if refs:
+        text = re.sub(r"Annex ([A-Z](?:\.\d+)?)\b", annex, text)
     return re.sub(r"\x00(\d+)\x00", lambda m: codes[int(m.group(1))], text)
 
 
@@ -225,7 +236,7 @@ def blocks(lines: list, sections: dict, tight: bool = False) -> str:
             level, text = len(m.group(1)), m.group(2)
             heading = plain(text)
             out.append(f'<h{level} id="{slug(text)}"><a class="anchor" href="#{slug(text)}">'
-                       f'{inline(text, sections)}</a></h{level}>')
+                       f'{inline(text, sections, refs=False)}</a></h{level}>')
             i += 1
         elif line.startswith("|"):
             flush()
@@ -262,26 +273,32 @@ def blocks(lines: list, sections: dict, tight: bool = False) -> str:
 
 def read_spec() -> dict:
     """SPEC.md: its title, its first lines (status, licence), its body, its
-    table of contents, and § 10's table of errors."""
+    table of contents, and its section of errors' table (ERRORS_HEADING).
+    Numbered headings ("## 4.", "### 4.2") and the annexes' ("## Annex A —",
+    "### A.1") are the targets of "§ 4.2", "Annex A" and "Annex A.1"."""
     lines = SPEC.read_text(encoding="utf-8").split("\n")
     title = lines[0].lstrip("# ").strip()
     rest = lines[1:]
     first = next(i for i, line in enumerate(rest) if line.startswith("## "))
     sections, toc = {}, []
     for line in rest:
-        if m := re.match(r"(#{2,3}) ((\d+(?:\.\d+)?)\.? .*|.*)", line):
+        if m := re.match(r"(#{2,3}) ((\d+(?:\.\d+)?)\.? .*|Annex ([A-Z]) .*|([A-Z]\.\d+) .*|.*)", line):
             text = m.group(2)
-            if m.group(3):
-                sections[m.group(3)] = slug(text)
+            number = m.group(3) or m.group(4) or m.group(5)
+            if number:
+                sections[number] = slug(text)
             if len(m.group(1)) == 2:
                 toc.append((slug(text), plain(text), []))
             elif toc:
                 toc[-1][2].append((slug(text), plain(text)))
     errors = []
     in_errors = False
+    errors_number = ""
     for line in rest:
         if line.startswith("## "):
-            in_errors = line.startswith("## 10.")
+            m = ERRORS_HEADING.match(line)
+            in_errors = bool(m)
+            errors_number = m.group(1) if m else errors_number
         elif in_errors and re.match(r"\| \d{3} ", line):
             status, codes, when = [c.strip() for c in line.strip().strip("|").split("|")]
             names = re.findall(r"`([a-z_]+)`", codes)
@@ -292,8 +309,10 @@ def read_spec() -> dict:
             for code, case in zip(names, whens):
                 case = case[:1].upper() + case[1:]
                 errors.append({"status": int(status), "code": code, "name": code.replace("_", "-"), "when": case})
+    if not errors:
+        sys.exit("build_site: SPEC.md has no section of errors (## <n>. Errors) with its table")
     return {"title": title, "intro": blocks(rest[:first], sections), "body": blocks(rest[first:], sections),
-            "toc": toc, "sections": sections, "errors": errors}
+            "toc": toc, "sections": sections, "errors": errors, "errors_section": errors_number}
 
 
 def toc_html(spec: dict, label: str) -> str:
@@ -429,11 +448,12 @@ def errors_body(spec: dict, root: str) -> str:
     rows = "\n".join(
         f'<tr id="{e["name"]}"><td><a href="{e["name"]}/"><code>{e["name"]}</code></a></td><td class="num">{e["status"]}</td>'
         f'<td><code>{e["code"]}</code></td><td>{inline(e["when"], {}) or "—"}</td></tr>' for e in spec["errors"])
-    anchor = spec["sections"].get("10", "")
+    number = spec["errors_section"]
+    anchor = spec["sections"].get(number, "")
     return (f'<section class="prose" lang="en">\n<p>Every error a Lantern server returns is '
             f'<code>application/problem+json</code> (RFC 9457) with a real status code. Its <code>type</code> is one of '
             f'these addresses, <code>{SITE_URL}errors/&lt;name&gt;</code>; its <code>code</code> is the same name in '
-            f'snake case. <a href="{root}spec/#{anchor}">The specification, §&nbsp;10</a>.</p>\n'
+            f'snake case. <a href="{root}spec/#{anchor}">The specification, §&nbsp;{number}</a>.</p>\n'
             f'<div class="table" tabindex="0" role="region" aria-label="Error types"><table>\n'
             f'<thead><tr><th scope="col">Type</th><th scope="col" class="num">Status</th><th scope="col">code</th>'
             f'<th scope="col">When</th></tr></thead>\n<tbody>\n{rows}\n</tbody></table></div>\n'
@@ -442,7 +462,8 @@ def errors_body(spec: dict, root: str) -> str:
 
 
 def error_body(spec: dict, error: dict, root: str) -> str:
-    anchor = spec["sections"].get("10", "")
+    number = spec["errors_section"]
+    anchor = spec["sections"].get(number, "")
     when = inline(error["when"], {}) or "—"
     return (f'<section class="prose" lang="en">\n<dl class="facts">\n'
             f'<div><dt>Status</dt><dd>{error["status"]}</dd></div>\n'
@@ -452,7 +473,7 @@ def error_body(spec: dict, error: dict, root: str) -> str:
             f'<p>As a server sends it (<code>application/problem+json</code>, RFC 9457), with a <code>detail</code> '
             f'for people when it has one:</p>\n<pre tabindex="0"><code class="language-json">{problem(error)}</code></pre>\n'
             f'<p><a href="{root}errors/#{error["name"]}">Every error type</a> · '
-            f'<a href="{root}spec/#{anchor}">The specification, §&nbsp;10</a></p>\n</section>')
+            f'<a href="{root}spec/#{anchor}">The specification, §&nbsp;{number}</a></p>\n</section>')
 
 
 def page_html(template: str, language: str, catalog: dict, path: str, page: str, spec: dict, versions: dict,
@@ -510,11 +531,11 @@ def main() -> None:
     for language, _, _, _ in LANGUAGES:
         for path, page in PAGES.items():
             write(folder(language) + path, page_html(template, language, catalogs[language], path, page, spec, versions))
-    # The error types, in English: their addresses are the `type` of SPEC.md's § 10.
+    # The error types, in English: their addresses are the `type` of SPEC.md's section of errors.
     en = catalogs["en"]
     write("errors/", page_html(template, "en", en, "errors/", "errors", spec, versions, errors_body(spec, "../"), {
         "title": "Error types · Lantern", "eyebrow": "Errors · RFC 9457", "h1": "Error types",
-        "lede": "The <code>type</code> of each error a Lantern server returns, from the specification's §&nbsp;10.",
+        "lede": f"The <code>type</code> of each error a Lantern server returns, from the specification's §&nbsp;{spec['errors_section']}.",
         "description": "The error types of the Lantern protocol: each one's status, code and when a server returns it.",
         "lang_path": "spec/"}))
     for error in spec["errors"]:
