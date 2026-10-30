@@ -9,7 +9,7 @@ backups and cheats.
 
 Website: <https://lantern.boreale.dev/?utm_source=github&utm_medium=readme>.
 
-**Status: draft 0.3.** The text may still change before 1.0; comments and
+**Status: draft 0.4.** The text may still change before 1.0; comments and
 issues are welcome, from client and server authors especially.
 
 - **[The specification](SPEC.md)**: REST and JSON, versioned by path (`/v1/`)
@@ -35,6 +35,22 @@ issues are welcome, from client and server authors especially.
   - **cheats**, several sets per game version, in each platform's format.
 - **A protocol of its own**, compatible with no earlier one by design:
   nothing in it is kept for the sake of the protocols in use before it.
+- **What 0.4 adds**:
+  - **tokens bound to the device**: a key made at pairing, and every request
+    signed with it (RFC 9421), so that a token copied off a console works
+    nowhere else; pairing by **QR code**;
+  - **invitations** (a link or a code, for a few devices, for a while) and
+    a small **administration API** under the `admin` scope, to approve a
+    console from a phone; a **rating cap** carried by a token, which hides
+    what is rated above it everywhere, as a parental control on the server;
+  - an **id for every requirement** (`L-5.2-3`), which the suite's checks
+    name, a **threat model**, **conformance levels** (`Lantern Core`,
+    `+titles`, `+homebrew`, `+saves`, `+cheats`, `+requests`, `+admin`) and
+    the "Lantern compatible" badge, `Deprecation` and `Sunset` and how the
+    text changes, **test vectors** for libraries ([`vectors/`](vectors/)),
+    and guidelines for clients (Annex B);
+  - errors and the server's message in the client's language, compressed
+    JSON, Atlas ids, installed sizes, and withdrawing one's own request.
 - **What makes it solid**: versioned twice (path and `schema`); a token per
   device, approved on the server, revocable, and no password ever on the
   device; HTTPS everywhere, with the key of a server at home pinned at
@@ -56,27 +72,34 @@ client.
 ## Conformance suite and reference server
 
 The **[conformance suite](conformance/run.py)** checks a server from
-outside, against every MUST it can see: handshake and declared features,
+outside, against every requirement it can see, and prints the
+[conformance levels](https://lantern.boreale.dev/conformance/?utm_source=github&utm_medium=readme)
+it reaches: handshake and declared features,
 documents against the schemas, the bearer token's challenge (and no Basic
 one), pairing's codes, platforms and their filter, cursor pages, what a
 device is missing, every app's SHA-256, ranges and `Repr-Digest` on every
 file response, titles, homebrew manifests, packages, requirements, filters
-and signatures, cheats, requests, resumable saves, errors, limits, and LAN
-discovery. Each check says PASS, FAIL, WARN (a SHOULD) or SKIP, with its
-SPEC.md section; the exit code is 1 when one fails. It approves nothing,
-but on a server that offers pairing it asks for a few real pairing codes,
-which the server may show to its users until they expire on their own.
-With a token, it writes only for a title id of no game of the library: save
-backups and a cheat set, which it deletes, and one request, which it cannot
-delete (the protocol has no route for that).
+and signatures, cheats, requests, resumable saves, errors, limits, signed requests (bad,
+stale and replayed signatures refused), compression, languages, the cold
+start's budget, and LAN discovery; with `admin`, the administration API,
+invitations and their limits, and rating caps. Each check says PASS, FAIL,
+WARN (a SHOULD) or SKIP, with its SPEC.md section and the requirement ids it
+covers; the exit code is 1 when one fails. On a server that offers pairing
+it asks for a few real pairing codes, which the server may show to its users
+until they expire on their own. With a token, it writes only for a title id
+of no game of the library, and deletes what it writes: save backups, a cheat
+set, a request; with `admin`, it also pairs devices and makes invitations,
+then revokes them, and with `--admin-writes` makes an account of its own,
+which it leaves frozen (the protocol deletes no account).
 
 ```sh
 pip install -r tools/requirements.txt   # jsonschema, for the schema checks
-python3 conformance/run.py https://shelf.example.org/ [--token et_…] [--discover 192.168.1.255]
+python3 conformance/run.py https://shelf.example.org/ [--token et_… --key device.key] [--discover 192.168.1.255]
 ```
 
-The token is one a device got by pairing; without it, the suite calls
-anonymously. A server at home with a self-signed certificate: `--cafile`
+The token is one a device got by pairing, and `--key` the file of the
+device's private key (its 32-byte seed, base64) when the token is bound to
+it; without them, the suite calls anonymously. A server at home with a self-signed certificate: `--cafile`
 its certificate.
 
 The **[reference server](server/lantern_server.py)** serves a folder of
@@ -93,10 +116,12 @@ python3 -m server --library ~/games [--users users.json] \
 ```
 
 - With `--users`, a device pairs: it asks for a code, and the user approves
-  it on the server's page, `/pair`, signed in with their name and password,
-  after comparing the key's fingerprint the device shows. Tokens are kept
-  hashed in the state file; `--tokens` lists them, `--revoke ID` revokes
-  one.
+  it on the server's page, `/pair` (or from an admin app, through the
+  administration API), signed in with their name and password, after
+  comparing the key's fingerprint the device shows. A device that sent a key
+  gets a token bound to it; `--bound-only` refuses the others. Tokens are
+  kept hashed in the state file; `--tokens` lists them, `--revoke ID`
+  revokes one.
 - Without `--tls-cert` and `--tls-key` it speaks plain HTTP, and only on a
   loopback address, for testing.
 - `--discovery` answers Lantern's discovery datagram on UDP 47115.
@@ -105,7 +130,14 @@ python3 -m server --library ~/games [--users users.json] \
 fictional library, over plain HTTP on loopback and over TLS, as the
 `conformance` workflow does; the workflow then runs the suite against the
 server twice, anonymously and with a token holding every scope, which
-`tools/pair_for_ci.py` gets by pairing through `/pair` as a user would.
+`tools/pair_for_ci.py` gets by pairing through `/pair` as a user would,
+with a device key.
+
+**[Test vectors](vectors/)** give the bytes libraries must agree on:
+signature bases and signatures of requests, homebrew signatures, SPKI
+fingerprints, paths accepted and refused, `version_code` per profile and
+requirements' decisions; `tools/make_vectors.py` writes them, and the tests
+check them against the reference.
 
 ## Licences
 
@@ -115,8 +147,9 @@ server twice, anonymously and with a token holding every scope, which
   client, under any licence, can implement the protocol and copy its
   schemas as they are.
 
-Only an implementation that passes the conformance suite should call itself
-Lantern-compatible.
+Only an implementation that passes the conformance suite at a level may call
+itself "Lantern compatible" and show the badge, with that level (SPEC.md
+§ 17).
 
 ## Contact
 
