@@ -125,7 +125,7 @@ paths:
         "200": { description: "The whole file (Repr-Digest, ETag, Accept-Ranges).", content: { application/octet-stream: {} } }
         "206": { description: "A range of it.", content: { application/octet-stream: {} } }
         "410": { $ref: "#/components/responses/Problem" }
-        "416": { description: "The range is outside the file." }
+        "416": { $ref: "#/components/responses/Problem" }
   /v1/saves:
     get:
       summary: The account's save backups (§ 7)

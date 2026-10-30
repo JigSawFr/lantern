@@ -128,15 +128,19 @@ the same document, with or without credentials:
   `0` when it does not offer it **to this caller**.
 - An unauthenticated call to a private server returns the document with
   `account.state` `anonymous` and every feature at 0, so a client can show
-  the server's name before asking for credentials.
+  the server's name before asking for credentials. Wrong credentials give
+  `401` here as elsewhere (§ 5.1): only their absence gives that document.
+- A route of a family at 0 answers `404` (the server does not offer it) or
+  `401`/`403` (not to this caller), never `2xx`.
 
 ## 5. Authentication
 
 ### 5.1 HTTP Basic
 
-Every server MUST accept HTTP Basic over TLS. A missing or wrong password
-gives `401` with `WWW-Authenticate: Basic realm="…"`; a right password
-without the scope gives `403`.
+Every server MUST accept HTTP Basic over TLS. A missing or wrong password,
+or an unknown token (§ 5.2), gives `401` with
+`WWW-Authenticate: Basic realm="…"`; a right password without the scope
+gives `403`.
 
 ### 5.2 Pairing (feature `pairing`)
 
@@ -200,11 +204,11 @@ An app is one installable package: a base game, an update or an add-on.
 {"schema": 1, "items": [App, …], "total": 4123, "next": "c_…"}
 ```
 
-- `sort`: `name`, `added` (newest first) or `release`; ties are broken by
-  `id`, so the order is stable.
+- `sort`: `name` (the default), `added` or `release` (both newest first);
+  ties are broken by `id`, so the order is stable.
 - `cursor` is opaque; `next` is `null` on the last page. Reading with a
   cursor while the library changes neither skips nor repeats an app.
-- `page_size` is at most `limits.page_size`.
+- `page_size` is at most `limits.page_size`; a larger one is lowered to it.
 
 ### 6.3 What the console is missing
 
@@ -313,9 +317,11 @@ code, never `200`:
 | 401 | `unauthorized` | No or wrong credentials (with `WWW-Authenticate`) |
 | 403 | `forbidden`, `account_frozen` | A scope missing; a frozen account |
 | 404 | `not_found` | |
+| 405 | `bad_request` | A method the route does not take (with `Allow`) |
 | 409 | `conflict` | |
 | 410 | `gone` | An expired cursor, `since` token, pairing or file id |
 | 413 | `too_large` | A save above the server's limit |
+| 416 | `bad_request` | A range outside the file (with `Content-Range: bytes */<size>`) |
 | 422 | `unsupported_schema` | A request document of a schema the server cannot read |
 | 429 | `slow_down` | With `Retry-After` |
 | 503 | `unavailable` | Scanning, maintenance (with `Retry-After`) |
@@ -353,12 +359,16 @@ Every `GET` returning JSON SHOULD carry an `ETag` and honour
 
 ## 14. Conformance
 
-A conformance suite (`conformance/`, to come) runs against a server's URL and
-credentials and checks every MUST of this text: shapes and `schema`,
-ranges, digests, error format, limits, the refusal of an unknown request
-`schema`. A reference server (`server/`, to come) serves a folder of packages and
-passes the suite.
+A conformance suite (`conformance/`) runs against a server's URL and
+credentials and checks every MUST of this text it can see from outside:
+shapes and `schema`, ranges, digests, error format, limits, the refusal of
+an unknown request `schema`. A reference server (`server/`) serves a folder
+of packages and passes the suite.
 
 ## Changes
 
 - 0.1 (2026-10-30): first draft.
+- 0.1 (2026-10-30), from the conformance suite: wrong credentials give 401
+  on the handshake too, and so does an unknown token; a family at 0 answers
+  404, 401 or 403; `sort` defaults to `name` and `release` is newest first;
+  a `page_size` above the limit is lowered to it; codes for 405 and 416.
