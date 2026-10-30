@@ -37,5 +37,4 @@ Lantern-compatible.
 
 ## Contact
 
-Issues and pull requests on this repository; anything else:
-contact@boreale.dev.
+Issues and pull requests on this repository.
