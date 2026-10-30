@@ -2773,10 +2773,16 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks)
             raise Warn("\n".join(bad[:8]))
 
 
-checks_v05.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Response=Response, Client=Client,
-                check_repr_digest=lambda r, d: check_repr_digest(r, d), problem_detail=lambda r: problem_detail(r))
-static_check.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Client=Client)
-checks_v06.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
+def bind_checks():
+    """Gives the checks' modules this module's exceptions and helpers: again at each run, since a program may
+    load run.py twice, under two names (tools/make_demo.py does), each with classes of its own."""
+    checks_v05.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Response=Response, Client=Client,
+                    check_repr_digest=lambda r, d: check_repr_digest(r, d), problem_detail=lambda r: problem_detail(r))
+    static_check.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Client=Client)
+    checks_v06.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
+
+
+bind_checks()
 
 
 def client_rule():
@@ -2953,6 +2959,7 @@ def main(argv=None, out=None):
         p.error("the server's url, or --static")
     if args.static:
         args.url = args.url or "https://static.invalid/"
+    bind_checks()
     suite = Suite(args)
     if out is not None:
         suite.out = out
