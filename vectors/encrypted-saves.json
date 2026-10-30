@@ -1,0 +1,230 @@
+{
+ "schema": 1,
+ "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
+ "vectors": "encrypted-saves",
+ "description": "End-to-end encrypted backups, scheme lantern-save-e2e-1 (SPEC.md § 9.4): the primitives (HKDF-SHA-256, HChaCha20, XChaCha20-Poly1305), save keys with their id, wrapping key, recovery phrase and QR text, backups made with the file key and wrap nonce given (archive bytes in hex, or of the size given, byte i being i % 251), each chunk's tag, then backups a reader refuses (an operation on a backup above) and phrases. Fictional keys; hex.",
+ "chunk": 65536,
+ "header": 88,
+ "primitives": {
+  "hkdf_sha256": [
+   {
+    "ikm": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+    "salt": "",
+    "info": "lantern-save-e2e-1 key id",
+    "length": 8,
+    "okm": "15d65cfba86a1bce"
+   }
+  ],
+  "hchacha20": [
+   {
+    "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "nonce": "000102030405060708090a0b0c0d0e0f",
+    "subkey": "51e3ff45a895675c4b33b46c64f4a9ace110d34df6a2ceab486372bacbd3eff6"
+   }
+  ],
+  "xchacha20poly1305": [
+   {
+    "key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "nonce": "6465666768696a6b6c6d6e6f707172737475767778797a7b",
+    "aad": "4c616e7465726e",
+    "plaintext": "46726f73746c696e65",
+    "sealed": "3a0196c38b42e0ece23f95888ef2af0ec11d001a7f54630cf6"
+   },
+   {
+    "key": "881a2ebf667d6ec3e91c62d6678b4a5cfd9cdecb9e825a95a56f1c274e9bdf3f",
+    "nonce": "000000000000000000000000000000000000000000000001",
+    "aad": "",
+    "plaintext": "",
+    "sealed": "7604af7255e67fa17d655493fad4da0d"
+   }
+  ]
+ },
+ "keys": [
+  {
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "key_id": "15d65cfba86a1bce",
+   "wrapping_key": "3fe1d6eba696b16750b08131091ce0871c8f2c893ee0177fa1049ba7f1eebe5b",
+   "phrase": "96PA-S67D-K3MJ-9ERC-WDCA-QG3K-LNU3-73DA-MC37-H8AL-VNK7-9859-5ASN-RQCN",
+   "qr": "LANTERN-SAVE-KEY-1:96PAS67DK3MJ9ERCWDCAQG3KLNU373DAMC37H8ALVNK798595ASNRQCN"
+  },
+  {
+   "save_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "key_id": "35fc8ba7d2ac8329",
+   "wrapping_key": "f51de997197804df6a1f69e0f6e1ba0db79554471273ee02c9924cb1c7d0c552",
+   "phrase": "222J-62S6-2N52-G42B-3A7J-S5AG-3WA3-46JM-4JCK-E7SS-56F3-Q92X-5SHY-YCTL",
+   "qr": "LANTERN-SAVE-KEY-1:222J62S62N52G42B3A7JS5AG3WA346JM4JCKE7SS56F3Q92X5SHYYCTL"
+  }
+ ],
+ "backups": [
+  {
+   "name": "An empty zip: one chunk",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "file_key": "881a2ebf667d6ec3e91c62d6678b4a5cfd9cdecb9e825a95a56f1c274e9bdf3f",
+   "wrap_nonce": "6465666768696a6b6c6d6e6f707172737475767778797a7b",
+   "archive": "504b0506000000000000000000000000000000000000",
+   "header": "4c544e453245303115d65cfba86a1bce6465666768696a6b6c6d6e6f707172737475767778797a7b75ef6248e9716a3dab9287f319c3efb9fc4ec2f400063bdc669ca64c2bacdf0bf8ce8bc7042ec30915c2bb4e1571f656",
+   "size": 126,
+   "sha256": "148b59d111a1cbaea0369640ccbe30639c0858f488c2bb894565235b36dcbcb2",
+   "chunk_tags": [
+    "684b601ca91a4296f8acabc7449935f0"
+   ],
+   "encrypted": "4c544e453245303115d65cfba86a1bce6465666768696a6b6c6d6e6f707172737475767778797a7b75ef6248e9716a3dab9287f319c3efb9fc4ec2f400063bdc669ca64c2bacdf0bf8ce8bc7042ec30915c2bb4e1571f65641ca30fa7a883f2f94406eb997c0bdd6846aa404cf48684b601ca91a4296f8acabc7449935f0"
+  },
+  {
+   "name": "An empty archive: one empty chunk",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "file_key": "881a2ebf667d6ec3e91c62d6678b4a5cfd9cdecb9e825a95a56f1c274e9bdf3f",
+   "wrap_nonce": "6465666768696a6b6c6d6e6f707172737475767778797a7b",
+   "archive": "",
+   "header": "4c544e453245303115d65cfba86a1bce6465666768696a6b6c6d6e6f707172737475767778797a7b75ef6248e9716a3dab9287f319c3efb9fc4ec2f400063bdc669ca64c2bacdf0bf8ce8bc7042ec30915c2bb4e1571f656",
+   "size": 104,
+   "sha256": "d67e40784c9e5a779481726bf9fd49198e254e763c7bdcafb4e514eef6b12b41",
+   "chunk_tags": [
+    "fc9a40c4a58abf3dd58f75e309f20650"
+   ],
+   "encrypted": "4c544e453245303115d65cfba86a1bce6465666768696a6b6c6d6e6f707172737475767778797a7b75ef6248e9716a3dab9287f319c3efb9fc4ec2f400063bdc669ca64c2bacdf0bf8ce8bc7042ec30915c2bb4e1571f656fc9a40c4a58abf3dd58f75e309f20650"
+  },
+  {
+   "name": "Exactly one chunk of 65,536 bytes",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "file_key": "881a2ebf667d6ec3e91c62d6678b4a5cfd9cdecb9e825a95a56f1c274e9bdf3f",
+   "wrap_nonce": "6465666768696a6b6c6d6e6f707172737475767778797a7b",
+   "archive": {
+    "size": 65536,
+    "byte_i": "i % 251"
+   },
+   "header": "4c544e453245303115d65cfba86a1bce6465666768696a6b6c6d6e6f707172737475767778797a7b75ef6248e9716a3dab9287f319c3efb9fc4ec2f400063bdc669ca64c2bacdf0bf8ce8bc7042ec30915c2bb4e1571f656",
+   "size": 65640,
+   "sha256": "8447ea2b1b46ac765a6d96111b005d3d6020745bc5543b20d26ecb108c0442ac",
+   "chunk_tags": [
+    "d04d9f232001e8481d20889b1a6b95d7"
+   ]
+  },
+  {
+   "name": "Two chunks: 65,536 and 100 bytes",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "file_key": "881a2ebf667d6ec3e91c62d6678b4a5cfd9cdecb9e825a95a56f1c274e9bdf3f",
+   "wrap_nonce": "6465666768696a6b6c6d6e6f707172737475767778797a7b",
+   "archive": {
+    "size": 65636,
+    "byte_i": "i % 251"
+   },
+   "header": "4c544e453245303115d65cfba86a1bce6465666768696a6b6c6d6e6f707172737475767778797a7b75ef6248e9716a3dab9287f319c3efb9fc4ec2f400063bdc669ca64c2bacdf0bf8ce8bc7042ec30915c2bb4e1571f656",
+   "size": 65756,
+   "sha256": "8efc1557e95ba6131edc0fa61a386234e27aeefaff6855b189767d64981ab804",
+   "chunk_tags": [
+    "e4b35e59dbfcaf5dad2ca11f0e2a2228",
+    "051c15ce1561eeda8f6ba81a6a4f07fe"
+   ]
+  }
+ ],
+ "refused": [
+  {
+   "name": "A byte of the chunk changed",
+   "backup": "An empty zip: one chunk",
+   "operation": "flip bit 0 of byte 90",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "sha256": "44c397480c90ff8935ac8378fc454ac48ba6f53cfd8d2e258df207768efc1578",
+   "opens": false
+  },
+  {
+   "name": "A byte of the tag changed",
+   "backup": "An empty zip: one chunk",
+   "operation": "flip bit 0 of the last byte",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "sha256": "87cf70b64d6361d1981801837e5baf2cc99c27f9c6e7a719d34f7a3ec64a3a34",
+   "opens": false
+  },
+  {
+   "name": "The key id changed",
+   "backup": "An empty zip: one chunk",
+   "operation": "flip bit 0 of byte 8",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "sha256": "ceac16181f41b2e8034fc38fa0d131bf1dab93a385ad02af09889085c7ffb100",
+   "opens": false
+  },
+  {
+   "name": "The wrapped file key changed",
+   "backup": "An empty zip: one chunk",
+   "operation": "flip bit 0 of byte 40",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "sha256": "6d9bf8ed9559d7ea51e3622373109d9be230cd64411b78fc04ec6978065af360",
+   "opens": false
+  },
+  {
+   "name": "Another save key",
+   "backup": "An empty zip: one chunk",
+   "operation": "read with the second key",
+   "save_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "sha256": "148b59d111a1cbaea0369640ccbe30639c0858f488c2bb894565235b36dcbcb2",
+   "opens": false
+  },
+  {
+   "name": "The last chunk cut short",
+   "backup": "Two chunks: 65,536 and 100 bytes",
+   "operation": "drop the last byte",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "sha256": "9103f357cfc8afee7b8c208e3ccdcb6bd0b90beb8d6000c93845073e1229c656",
+   "opens": false
+  },
+  {
+   "name": "The last chunk dropped",
+   "backup": "Two chunks: 65,536 and 100 bytes",
+   "operation": "keep the first 88 + 65552 bytes",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "sha256": "1f27283027513437846ca46b2f534dbb1d072309a5193507a6f303c27a6fb8b5",
+   "opens": false
+  },
+  {
+   "name": "Bytes after the last chunk",
+   "backup": "An empty zip: one chunk",
+   "operation": "append 16 zero bytes",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "sha256": "c9a41c10eed1758110f291dcc88486846de6d6ac05f0eb197b3dc23376589bb9",
+   "opens": false
+  },
+  {
+   "name": "Chunks swapped",
+   "backup": "Two chunks: 65,536 and 100 bytes",
+   "operation": "swap the two chunks",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "sha256": "f3173b56588055b3538058a8fa0ca5b83de602c3b90cca84217bce967a3fe8de",
+   "opens": false
+  },
+  {
+   "name": "Not an encrypted backup",
+   "backup": null,
+   "operation": "a zip in clear",
+   "save_key": "392a8c10ab886703b2eae2d48b383195341285689a82579912dd225398671a31",
+   "sha256": "8739c76e681f900923b900c9df0ef75cf421d39cabb54650c4b9ad19b6a76d85",
+   "opens": false
+  }
+ ],
+ "phrases": [
+  {
+   "name": "As shown",
+   "phrase": "96PA-S67D-K3MJ-9ERC-WDCA-QG3K-LNU3-73DA-MC37-H8AL-VNK7-9859-5ASN-RQCN",
+   "accepted": true
+  },
+  {
+   "name": "Lower case, spaces for dashes",
+   "phrase": "96pa s67d k3mj 9erc wdca qg3k lnu3 73da mc37 h8al vnk7 9859 5asn rqcn",
+   "accepted": true
+  },
+  {
+   "name": "One symbol changed",
+   "phrase": "36PA-S67D-K3MJ-9ERC-WDCA-QG3K-LNU3-73DA-MC37-H8AL-VNK7-9859-5ASN-RQCN",
+   "accepted": false
+  },
+  {
+   "name": "A symbol missing",
+   "phrase": "96PA-S67D-K3MJ-9ERC-WDCA-QG3K-LNU3-73DA-MC37-H8AL-VNK7-9859-5ASN-RQC",
+   "accepted": false
+  },
+  {
+   "name": "An O, outside the alphabet",
+   "phrase": "O6PA-S67D-K3MJ-9ERC-WDCA-QG3K-LNU3-73DA-MC37-H8AL-VNK7-9859-5ASN-RQCN",
+   "accepted": false
+  }
+ ]
+}

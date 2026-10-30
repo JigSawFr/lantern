@@ -9,7 +9,7 @@ backups and cheats.
 
 Website: <https://lantern.boreale.dev/?utm_source=github&utm_medium=readme>.
 
-**Status: draft 0.4.** The text may still change before 1.0; comments and
+**Status: draft 0.5.** The text may still change before 1.0; comments and
 issues are welcome, from client and server authors especially.
 
 - **[The specification](SPEC.md)**: REST and JSON, versioned by path (`/v1/`)
@@ -51,6 +51,25 @@ issues are welcome, from client and server authors especially.
     and guidelines for clients (Annex B);
   - errors and the server's message in the client's language, compressed
     JSON, Atlas ids, installed sizes, and withdrawing one's own request.
+- **What 0.5 adds**, four optional families, each declared:
+  - **events**: what changes, pushed as Server-Sent Events whose ids are
+    `changes` tokens, so that `Last-Event-ID` resumes where `changes?since=`
+    would, each caller seeing only what it may read; long polling for a
+    console that sleeps; made for a console in the background and a home
+    automation integration;
+  - **sharing on the LAN**: a file is its SHA-256, so a mirror the server
+    names, or a paired console that holds it (a **peer**), may serve it;
+    a peer serves only to the holders of a **grant** its server signed, and
+    the client checks every byte as it does the server's;
+  - **sync** of a user's wishes and of what each console has installed,
+    only with their consent, merged item by item, and deleted at once;
+  - **end-to-end encrypted save backups**: XChaCha20-Poly1305 in chunks,
+    resumable, a key the server never sees, carried by a recovery phrase or
+    a QR code;
+  - **static libraries**: the read routes as plain files, for GitHub Pages,
+    a NAS or a USB key, which the reference server exports;
+  - deleting an account, DNS-SD on the reference server, the ids of every
+    profile in the schemas, and what 1.0 waits for (Annex C).
 - **What makes it solid**: versioned twice (path and `schema`); a token per
   device, approved on the server, revocable, and no password ever on the
   device; HTTPS everywhere, with the key of a server at home pinned at
@@ -82,19 +101,26 @@ file response, titles, homebrew manifests, packages, requirements, filters
 and signatures, cheats, requests, resumable saves, errors, limits, signed requests (bad,
 stale and replayed signatures refused), compression, languages, the cold
 start's budget, and LAN discovery; with `admin`, the administration API,
-invitations and their limits, and rating caps. Each check says PASS, FAIL,
+invitations and their limits, rating caps, and deleting an account; event
+streams and long polling, grants and mirrors, sync, encrypted backups, DNS-SD
+(`--dns-sd`), a peer (`--peer`), and the rate limits of pairing, last. Each check says PASS, FAIL,
 WARN (a SHOULD) or SKIP, with its SPEC.md section and the requirement ids it
 covers; the exit code is 1 when one fails. On a server that offers pairing
 it asks for a few real pairing codes, which the server may show to its users
 until they expire on their own. With a token, it writes only for a title id
 of no game of the library, and deletes what it writes: save backups, a cheat
-set, a request; with `admin`, it also pairs devices and makes invitations,
-then revokes them, and with `--admin-writes` makes an account of its own,
-which it leaves frozen (the protocol deletes no account).
+set, a request, sync items; with `admin`, it also pairs devices and makes
+invitations, then revokes them, and with `--admin-writes` makes an account of
+its own, which it then deletes. Last, it asks for pairing codes until the
+server answers 429, which leaves its address limited for a while. With
+`--static`, it checks a static library instead, at an address or in a
+folder, and prints `Lantern Static` when it passes.
 
 ```sh
 pip install -r tools/requirements.txt   # jsonschema, for the schema checks
-python3 conformance/run.py https://shelf.example.org/ [--token et_… --key device.key] [--discover 192.168.1.255]
+python3 conformance/run.py https://shelf.example.org/ [--token et_… --key device.key] [--discover 192.168.1.255] \
+    [--pin <SPKI SHA-256>] [--dns-sd 192.168.1.10] [--peer http://192.168.1.20:47116/lantern]
+python3 conformance/run.py --static https://lea.example.org/library/      # or a folder
 ```
 
 The token is one a device got by pairing, and `--key` the file of the
@@ -105,14 +131,16 @@ its certificate.
 The **[reference server](server/lantern_server.py)** serves a folder of
 packages and homebrew, for the platforms with a profile, with the families
 `library`, `titles`, `changes`, `homebrew`, `cheats` (writing included),
-`saves` and `requests`, and `pairing` when it has accounts; `sections`
-stays at 0. Its
+`saves` and `encrypted_saves`, `requests`, `events`, `peers` and `sync`, and
+`pairing` and `admin` when it has accounts; `sections` stays at 0. Its
 docstring says how it reads the folder. Standard library only; a
 reference, not a product:
 
 ```sh
 python3 -m server --library ~/games [--users users.json] \
-    [--host 0.0.0.0 --tls-cert cert.pem --tls-key key.pem] [--discovery]
+    [--host 0.0.0.0 --tls-cert cert.pem --tls-key key.pem] [--discovery] [--dns-sd]
+python3 -m server --library ~/games --export ~/static-library [--page-size 100]
+python3 -m server.peer --folder ~/switch-sd --server https://shelf.example.org/ --token et_… --key device.key
 ```
 
 - With `--users`, a device pairs: it asks for a code, and the user approves
@@ -124,7 +152,13 @@ python3 -m server --library ~/games [--users users.json] \
   revokes one.
 - Without `--tls-cert` and `--tls-key` it speaks plain HTTP, and only on a
   loopback address, for testing.
-- `--discovery` answers Lantern's discovery datagram on UDP 47115.
+- `--discovery` answers Lantern's discovery datagram on UDP 47115, and
+  `--dns-sd` advertises `_lantern._tcp` over multicast DNS, with the
+  standard library alone.
+- `--export DIR` writes the library as a static library (SPEC.md § 21).
+- [`server/peer.py`](server/peer.py) is a reference peer: it shares the
+  files of a folder that are its server's, by their SHA-256, with the
+  holders of a grant.
 
 `python3 -m unittest discover -s tests` runs the suite against it on a tiny
 fictional library, over plain HTTP on loopback and over TLS, as the
@@ -135,9 +169,11 @@ with a device key.
 
 **[Test vectors](vectors/)** give the bytes libraries must agree on:
 signature bases and signatures of requests, homebrew signatures, SPKI
-fingerprints, paths accepted and refused, `version_code` per profile and
-requirements' decisions; `tools/make_vectors.py` writes them, and the tests
-check them against the reference.
+fingerprints, paths accepted and refused, `version_code` per profile,
+requirements' decisions, rating caps, encrypted backups and recovery
+phrases, grants, sync's merge rule and the static layout;
+`tools/make_vectors.py` writes them, and the tests check them against the
+reference.
 
 ## Licences
 

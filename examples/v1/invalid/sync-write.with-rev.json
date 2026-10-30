@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "generation": "g_4Rz1",
+  "items": [
+    {
+      "key": "d_3f9a1c07b2e455d0",
+      "value": {
+        "device": "Lea's Switch",
+        "platform": "switch",
+        "apps": [
+          {
+            "app_id": "0100ABCD00010000",
+            "version_code": 0
+          },
+          {
+            "app_id": "0100ABCD00010800",
+            "version_code": 196608
+          }
+        ],
+        "homebrew": [
+          {
+            "id": "org.example.frostline",
+            "build": 10400
+          }
+        ]
+      },
+      "updated": "2026-10-30T09:20:00.500Z",
+      "rev": 3
+    }
+  ]
+}

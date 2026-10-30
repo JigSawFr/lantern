@@ -1,0 +1,84 @@
+{
+ "schema": 1,
+ "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
+ "vectors": "grants",
+ "description": "Grants (SPEC.md § 19.3) and what a peer decides of each (§ 19.4): a grant is the base64url payload, a dot, and the base64url Ed25519 signature of the payload's bytes by the server's grant key.",
+ "key": {
+  "seed": "475ff5a83f62d09d8c79c84a09e6a36ad8c8de356dbb33a893acd66cc32b5b82",
+  "public_key": "FkDVKwFG57y5KAWiHAahZeQ1pO2FxI5AehF/nZjLXq8="
+ },
+ "payload": "{\"exp\":1793346000,\"purpose\":\"lantern-grant-1\",\"sha256\":\"3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817\",\"size\":734003200,\"uid\":\"6f1c2a8e-4b7d-4e2a-9c31-8d5e2f0a7b14\"}",
+ "grant": "eyJleHAiOjE3OTMzNDYwMDAsInB1cnBvc2UiOiJsYW50ZXJuLWdyYW50LTEiLCJzaGEyNTYiOiIzYTdiZDNlMmI0YzFmMGE5ZThkN2M2YjVhNDkzODI3MTYwNWY0ZTNkMmMxYjBhOWY4ZTdkNmM1YjRhMzkyODE3Iiwic2l6ZSI6NzM0MDAzMjAwLCJ1aWQiOiI2ZjFjMmE4ZS00YjdkLTRlMmEtOWMzMS04ZDVlMmYwYTdiMTQifQ.-4SQt-G8QN_sjMzKfaBGDl7b7Z-tW2qHaeC8bSwe70tHH4lVsyhxnMVMrb3r4y3RVBzbhOTeWdP4d6jFjex5Bg",
+ "cases": [
+  {
+   "name": "Valid, before exp",
+   "grant": "eyJleHAiOjE3OTMzNDYwMDAsInB1cnBvc2UiOiJsYW50ZXJuLWdyYW50LTEiLCJzaGEyNTYiOiIzYTdiZDNlMmI0YzFmMGE5ZThkN2M2YjVhNDkzODI3MTYwNWY0ZTNkMmMxYjBhOWY4ZTdkNmM1YjRhMzkyODE3Iiwic2l6ZSI6NzM0MDAzMjAwLCJ1aWQiOiI2ZjFjMmE4ZS00YjdkLTRlMmEtOWMzMS04ZDVlMmYwYTdiMTQifQ.-4SQt-G8QN_sjMzKfaBGDl7b7Z-tW2qHaeC8bSwe70tHH4lVsyhxnMVMrb3r4y3RVBzbhOTeWdP4d6jFjex5Bg",
+   "path_sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+   "peer_time": 1793345400,
+   "servers": {
+    "6f1c2a8e-4b7d-4e2a-9c31-8d5e2f0a7b14": "FkDVKwFG57y5KAWiHAahZeQ1pO2FxI5AehF/nZjLXq8="
+   },
+   "serves": true
+  },
+  {
+   "name": "Expired",
+   "grant": "eyJleHAiOjE3OTMzNDYwMDAsInB1cnBvc2UiOiJsYW50ZXJuLWdyYW50LTEiLCJzaGEyNTYiOiIzYTdiZDNlMmI0YzFmMGE5ZThkN2M2YjVhNDkzODI3MTYwNWY0ZTNkMmMxYjBhOWY4ZTdkNmM1YjRhMzkyODE3Iiwic2l6ZSI6NzM0MDAzMjAwLCJ1aWQiOiI2ZjFjMmE4ZS00YjdkLTRlMmEtOWMzMS04ZDVlMmYwYTdiMTQifQ.-4SQt-G8QN_sjMzKfaBGDl7b7Z-tW2qHaeC8bSwe70tHH4lVsyhxnMVMrb3r4y3RVBzbhOTeWdP4d6jFjex5Bg",
+   "path_sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+   "peer_time": 1793346001,
+   "servers": {
+    "6f1c2a8e-4b7d-4e2a-9c31-8d5e2f0a7b14": "FkDVKwFG57y5KAWiHAahZeQ1pO2FxI5AehF/nZjLXq8="
+   },
+   "serves": false
+  },
+  {
+   "name": "For another file than the path's",
+   "grant": "eyJleHAiOjE3OTMzNDYwMDAsInB1cnBvc2UiOiJsYW50ZXJuLWdyYW50LTEiLCJzaGEyNTYiOiIzYTdiZDNlMmI0YzFmMGE5ZThkN2M2YjVhNDkzODI3MTYwNWY0ZTNkMmMxYjBhOWY4ZTdkNmM1YjRhMzkyODE3Iiwic2l6ZSI6NzM0MDAzMjAwLCJ1aWQiOiI2ZjFjMmE4ZS00YjdkLTRlMmEtOWMzMS04ZDVlMmYwYTdiMTQifQ.-4SQt-G8QN_sjMzKfaBGDl7b7Z-tW2qHaeC8bSwe70tHH4lVsyhxnMVMrb3r4y3RVBzbhOTeWdP4d6jFjex5Bg",
+   "path_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+   "peer_time": 1793345400,
+   "servers": {
+    "6f1c2a8e-4b7d-4e2a-9c31-8d5e2f0a7b14": "FkDVKwFG57y5KAWiHAahZeQ1pO2FxI5AehF/nZjLXq8="
+   },
+   "serves": false
+  },
+  {
+   "name": "The payload changed (size), the signature kept",
+   "grant": "eyJleHAiOjE3OTMzNDYwMDAsInB1cnBvc2UiOiJsYW50ZXJuLWdyYW50LTEiLCJzaGEyNTYiOiIzYTdiZDNlMmI0YzFmMGE5ZThkN2M2YjVhNDkzODI3MTYwNWY0ZTNkMmMxYjBhOWY4ZTdkNmM1YjRhMzkyODE3Iiwic2l6ZSI6NzM0MDAzMjAxLCJ1aWQiOiI2ZjFjMmE4ZS00YjdkLTRlMmEtOWMzMS04ZDVlMmYwYTdiMTQifQ.-4SQt-G8QN_sjMzKfaBGDl7b7Z-tW2qHaeC8bSwe70tHH4lVsyhxnMVMrb3r4y3RVBzbhOTeWdP4d6jFjex5Bg",
+   "path_sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+   "peer_time": 1793345400,
+   "servers": {
+    "6f1c2a8e-4b7d-4e2a-9c31-8d5e2f0a7b14": "FkDVKwFG57y5KAWiHAahZeQ1pO2FxI5AehF/nZjLXq8="
+   },
+   "serves": false
+  },
+  {
+   "name": "Signed by another key",
+   "grant": "eyJleHAiOjE3OTMzNDYwMDAsInB1cnBvc2UiOiJsYW50ZXJuLWdyYW50LTEiLCJzaGEyNTYiOiIzYTdiZDNlMmI0YzFmMGE5ZThkN2M2YjVhNDkzODI3MTYwNWY0ZTNkMmMxYjBhOWY4ZTdkNmM1YjRhMzkyODE3Iiwic2l6ZSI6NzM0MDAzMjAwLCJ1aWQiOiI2ZjFjMmE4ZS00YjdkLTRlMmEtOWMzMS04ZDVlMmYwYTdiMTQifQ.WoDhJ6vgRnfUkDlUVnQfl5EEf45XpDcupL4NGIw4BuE2-0aBPtGRZHPouwVqXTm6BAXlcYcXXNrbDmOxDtXSCg",
+   "path_sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+   "peer_time": 1793345400,
+   "servers": {
+    "6f1c2a8e-4b7d-4e2a-9c31-8d5e2f0a7b14": "FkDVKwFG57y5KAWiHAahZeQ1pO2FxI5AehF/nZjLXq8="
+   },
+   "serves": false
+  },
+  {
+   "name": "A server the peer did not pair with",
+   "grant": "eyJleHAiOjE3OTMzNDYwMDAsInB1cnBvc2UiOiJsYW50ZXJuLWdyYW50LTEiLCJzaGEyNTYiOiIzYTdiZDNlMmI0YzFmMGE5ZThkN2M2YjVhNDkzODI3MTYwNWY0ZTNkMmMxYjBhOWY4ZTdkNmM1YjRhMzkyODE3Iiwic2l6ZSI6NzM0MDAzMjAwLCJ1aWQiOiI2ZjFjMmE4ZS00YjdkLTRlMmEtOWMzMS04ZDVlMmYwYTdiMTQifQ.-4SQt-G8QN_sjMzKfaBGDl7b7Z-tW2qHaeC8bSwe70tHH4lVsyhxnMVMrb3r4y3RVBzbhOTeWdP4d6jFjex5Bg",
+   "path_sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+   "peer_time": 1793345400,
+   "servers": {
+    "00000000-0000-4000-8000-000000000000": "FkDVKwFG57y5KAWiHAahZeQ1pO2FxI5AehF/nZjLXq8="
+   },
+   "serves": false
+  },
+  {
+   "name": "Not a grant",
+   "grant": "not-a-grant",
+   "path_sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+   "peer_time": 1793345400,
+   "servers": {
+    "6f1c2a8e-4b7d-4e2a-9c31-8d5e2f0a7b14": "FkDVKwFG57y5KAWiHAahZeQ1pO2FxI5AehF/nZjLXq8="
+   },
+   "serves": false
+  }
+ ]
+}

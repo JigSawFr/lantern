@@ -16,7 +16,9 @@ the target, the seed, the iteration and the input, which replays it.
 Targets: request documents (JSON input, its bounds), manifests (a zip's),
 .nro files (NACP), homebrew.json's port and requirements, rating caps,
 signature headers (RFC 9421), Content-Digest, Range, Accept-Language and
-Accept-Encoding, and LAN discovery datagrams. Lantern has no multipart body:
+Accept-Encoding, LAN discovery datagrams (a server's and a peer's), grants,
+sync's times and merge rule, Lantern-Save-Encryption and an encrypted
+backup's header, and multicast DNS queries. Lantern has no multipart body:
 nothing of the kind to fuzz.
 """
 import argparse
@@ -24,6 +26,7 @@ import base64
 import io
 import json
 import random
+import struct
 import sys
 import tempfile
 import time
@@ -34,8 +37,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
+from server import ed25519, mdns, nro, peer, signatures
 from server import lantern_server as ls
-from server import nro, signatures
 
 ls.log = lambda msg: None
 
@@ -234,8 +237,69 @@ def t_datagram(rng):
     assert reply is None or len(reply) <= ls.DATAGRAM_LIMIT
 
 
+GRANT = {}
+
+
+def t_grant(rng):
+    if not GRANT:
+        GRANT["key"] = ed25519.public_key(SEED)
+        GRANT["grant"] = ls.make_grant(SEED, Server.uid, "0" * 64, 10, 4102444800)
+    doc = ls.read_grant(text(rng, GRANT["grant"]), {Server.uid: GRANT["key"]}, now=0)
+    assert doc is None or (doc["uid"] == Server.uid and isinstance(doc["sha256"], str))
+
+
+def t_sync(rng):
+    from datetime import datetime, timezone
+    now = datetime(2026, 10, 30, 9, 30, tzinfo=timezone.utc)
+    kept = ls.sync_time(text(rng, "2026-10-30T09:12:03.250Z"), now, 300)
+    assert kept is None or ls.UPDATED.match(kept)
+    have = {"value": json_mutant(rng, {"platform": "switch", "title_id": "0100ABCD00010000", "note": "Lea"}),
+            "updated": "2026-10-30T09:12:03.250Z"}
+    sent = {"value": json_mutant(rng, {"platform": "switch", "title_id": "0100ABCD00010000"}),
+            "updated": kept or "2026-10-30T09:12:03.250Z"}
+    if rng.random() < 0.3:
+        sent = {"deleted": True, "updated": sent["updated"]}
+    assert ls.sync_wins(sent, have) in (True, False)
+
+
+def t_encryption(rng):
+    try:
+        enc = ls.encryption_header(text(rng, "lantern-save-e2e-1; key_id=0a1b2c3d4e5f6071"))
+        assert enc["scheme"] == ls.E2E_SCHEME and ls.KEY_ID.match(enc["key_id"])
+        ls.archive_check(mutate(rng, ls.E2E_MAGIC + bytes.fromhex("0a1b2c3d4e5f6071")), None, enc)
+    except ls.Problem as p:
+        assert p.status == 400
+
+
+MDNS = {}
+
+
+def t_mdns(rng):
+    if not MDNS:
+        MDNS["r"] = mdns.Responder("_lantern._tcp", "Fuzz", 443, {"uid": Server.uid}, "lantern-fuzz", "192.0.2.10", 0,
+                                   "127.0.0.1")
+    query = struct.pack("!HHHHHH", 7, 0, 1, 0, 0, 0) + mdns.encode_name("_lantern._tcp.local") + struct.pack("!HH", 12, 1)
+    data = mutate(rng, query)
+    try:
+        mdns.questions(data)
+    except ValueError:
+        pass
+    out = MDNS["r"].reply(data, ("192.0.2.20", rng.choice((5353, 40000))))
+    assert out is None or (isinstance(out[0], bytes) and len(out[0]) < 9000)
+
+
+def t_peer_datagram(rng):
+    p = peer.Peer.__new__(peer.Peer)
+    p.uid, p.name, p.base, p.tls, p.slots, p.keys = Server.uid, "Fuzz", "/lantern", False, 2, {Server.uid: b"k" * 32}
+    p.server_address = ("127.0.0.1", 47116)
+    data = mutate(rng, b'{"schema":1,"lantern":"discover","peers":true}')
+    reply = p.reply(data, "192.168.1.20", ls.Limiter(10 ** 9, 1.0))
+    assert reply is None or (len(reply) <= ls.DATAGRAM_LIMIT and json.loads(reply)["lantern"] == "peer")
+
+
 TARGETS = {"document": t_document, "manifest": t_manifest, "nro": t_nro, "homebrew-json": t_homebrew_json,
-           "rating-cap": t_rating_cap, "signature": t_signature, "headers": t_headers, "datagram": t_datagram}
+           "rating-cap": t_rating_cap, "signature": t_signature, "headers": t_headers, "datagram": t_datagram,
+           "grant": t_grant, "sync": t_sync, "encryption": t_encryption, "mdns": t_mdns, "peer-datagram": t_peer_datagram}
 
 
 def run(target, iterations, seed):

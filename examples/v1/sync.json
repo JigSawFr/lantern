@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "generation": "g_4Rz1",
+  "device": "d_3f9a1c07b2e455d0",
+  "collections": {
+    "wishes": {
+      "rev": 42,
+      "items": 12
+    },
+    "installed": {
+      "rev": 7,
+      "items": 2
+    }
+  }
+}

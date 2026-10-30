@@ -106,7 +106,29 @@ Requests (SPEC.md § 11): each account's, kept in the state file; an account
 withdraws its own with DELETE.
 
 Save backups (SPEC.md § 9): kept under --saves (default DIR/.lantern-saves/),
-an index.json and the archives, sent in one request or by resumable upload.
+an index.json and the archives, sent in one request or by resumable upload;
+a backup encrypted on the device (§ 9.4) is kept as sent, its first bytes
+checked against its scheme's header and key id, never read.
+
+Events (SPEC.md § 18): /v1/events streams them (Server-Sent Events), and
+/v1/changes?since=&wait= long-polls them, from a journal kept in memory,
+whose ids are /v1/changes's tokens: a library changed (at a scan), a request
+made, done (its title arrived in the library) or withdrawn, a pairing
+waiting, a backup kept, a sync collection changed, and shutdown when the
+server stops. Each caller gets only what its token may read; a heartbeat
+every 15 seconds, 2 streams per token.
+
+Grants (SPEC.md § 19.3): the server's own Ed25519 key, kept in the state
+file ("grant_seed"), signs them; server/peer.py is a reference peer that
+takes them. library.json's entries and homebrew.json's packages may give
+`mirrors` ([{"url"}], HTTPS, or HTTP on a private network).
+
+Sync (SPEC.md § 20): each account's wishes and installed items, in
+--sync-file (default DIR/.lantern-sync.json), merged by § 20.4's rule,
+deletions kept 30 days.
+
+Static libraries (SPEC.md § 21): --export DIR writes the library as files
+(server/static.py), then exits.
 
 Each file is hashed once (SHA-256); the hashes are kept with the server's
 uid and secret in a state file (--state, default DIR/.lantern-state.json).
@@ -115,14 +137,18 @@ knows is treated as absent and never written over, and the keys it does
 not know are kept.
 
 Families offered: library, titles, changes, homebrew, cheats, saves,
-requests and admin (to an account with the scope), and pairing and
-signatures when there are accounts. Sections stay at 0: their routes answer
-404.
+encrypted_saves, requests, admin, events, peers and sync (to an account
+with the scope), and pairing and signatures when there are accounts.
+Sections stay at 0: their routes answer 404.
 
 library.json's and homebrew.json's entries may also give `atlas` (the
 game's Atlas id, a Wikidata item such as "Q900001", SPEC.md § 6.1),
 `installed_size` (an app's bytes once installed) and, for a homebrew,
 `ratings` ([{"system": "PEGI", "rating": "3"}]), which rating caps read.
+
+Deleting an account (SPEC.md § 5.7): only one the administration API made;
+one of users.json gives 409 (remove it there). Its tokens, invitations,
+pairings waiting, backups, requests and sync data go with it.
 
 Accounts (SPEC.md § 5): without --users, the server is public, every caller
 reads the library anonymously, and nobody pairs. With --users FILE:
@@ -147,8 +173,8 @@ pairing, which binds the token: its requests are then signed (SPEC.md
 tokens. `--tokens` lists them and `--revoke ID` revokes one, even while the
 server runs. `--token-days N` makes new tokens expire after N days.
 
-Languages (SPEC.md § 2.2): errors' titles and details in English or French,
-as Accept-Language asks; `--motd FILE` gives the handshake's message,
+Languages (SPEC.md § 2.2): errors' titles and details in the fifteen
+languages of Boréale's sites (server/texts.py), as Accept-Language asks; `--motd FILE` gives the handshake's message,
 {"schema": 1, "motd": {"en": "…", "fr": "…"}} (or one text). JSON is sent
 compressed when the client asks (gzip, and zstd where Python has it); files
 never are (SPEC.md § 2.1).
@@ -159,8 +185,9 @@ only on a loopback address (127.0.0.0/8, ::1), for testing: SPEC.md § 2.
 
 LAN discovery (SPEC.md § 4.1): --discovery answers Lantern's discovery
 datagram on UDP 47115 (--discovery-port to change it), from local addresses
-only (not global ones), a few times a second per address.
-DNS-SD is not advertised: the standard library has no mDNS.
+only (not global ones), a few times a second per address. --dns-sd
+advertises _lantern._tcp over multicast DNS (server/mdns.py, the standard
+library alone), with the TXT keys uid, path and v.
 """
 import argparse
 import base64
@@ -174,6 +201,7 @@ import json
 import math
 import re
 import secrets
+import select
 import socket
 import ssl
 import sys
@@ -190,26 +218,52 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 try:
-    from server import ed25519, nro, signatures
+    from server import ed25519, mdns, nro, signatures, texts
 except ImportError:     # run as server/lantern_server.py
     import ed25519
+    import mdns
     import nro
     import signatures
+    import texts
 
 try:                    # Python 3.14 and later: zstd in the standard library (SPEC.md § 2.1)
     from compression import zstd
 except ImportError:
     zstd = None
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 BASE = "/api/lantern"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
-            "signatures", "admin")
+            "signatures", "admin", "events", "peers", "sync", "encrypted_saves")
 OFFERED = {"library": 1, "titles": 1, "changes": 1, "homebrew": 1, "saves": 1, "cheats": 1,
-           "requests": 1, "admin": 1}  # the schema written
+           "requests": 1, "admin": 1, "events": 1, "peers": 1, "sync": 1, "encrypted_saves": 1}  # the schema written
 SCOPE_OF = {"library": "library", "titles": "library", "changes": "library", "homebrew": "library",
             "saves": "saves", "cheats": "cheats", "cheats.write": "cheats.write", "requests": "requests",
-            "admin": "admin"}
+            "admin": "admin", "peers": "library", "sync": "sync.read", "sync.write": "sync.write",
+            "encrypted_saves": "saves"}
+# Events (SPEC.md § 18): who may read each event, by the scope it needs; ready and shutdown go to every stream.
+EVENT_SCOPES = {"library": "library", "request": "requests", "save": "saves", "pairing": "admin", "sync": "sync.read"}
+HEARTBEAT = 15          # limits.heartbeat: seconds between two heartbeats at most (5 to 60)
+EVENT_STREAMS = 2       # limits.event_streams: streams a token (or an anonymous address) holds at once
+WAIT_LIMIT = 60         # limits.wait: the longest wait of a long poll (30 to 300)
+STREAM_MAX = 3600       # a stream ends after an hour; its client connects again with Last-Event-ID
+RETRY_MS = 5000         # the stream's retry field
+EVENTS_LIMIT = 10000    # events kept for Last-Event-ID and long polls; older ids are gone
+# Peers (SPEC.md § 19): a grant's lifetime, at most 900 seconds; mirrors per file.
+GRANT_LIFETIME = 600
+MIRRORS_LIMIT = 8
+PRIVATE_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7",
+                                                  "fe80::/10")]
+# Sync (SPEC.md § 20).
+SYNC_COLLECTIONS = ("wishes", "installed")
+SYNC_ITEMS = 10000      # limits.sync_items
+SYNC_WRITE = 1000       # items in one write (SPEC.md § 13)
+TOMBSTONE_DAYS = 30     # deletions kept at least this long (SPEC.md § 20.5)
+UPDATED = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d{1,3})?Z$")
+# End-to-end encrypted saves (SPEC.md § 9.4).
+E2E_SCHEME = "lantern-save-e2e-1"
+E2E_MAGIC = b"LTNE2E01"
+KEY_ID = re.compile(r"^[0-9a-f]{16}$")
 PAGE_LIMIT = 500        # limits.page_size
 PAGE_DEFAULT = 100
 BODY_LIMIT = 1 << 20    # a request document, well under SPEC.md § 13's 32 MiB
@@ -291,7 +345,7 @@ SPDX = re.compile(r"^[A-Za-z0-9.+:() -]{1,256}$")
 SAVE_KINDS = ("account", "device", "bcat", "cache", "other")
 RATING_SYSTEM = re.compile(r"^[A-Z][A-Z0-9-]{1,15}$")
 CHUNK = 1 << 20
-SCOPES = ("library", "saves", "cheats", "cheats.write", "requests", "admin")
+SCOPES = ("library", "saves", "cheats", "cheats.write", "requests", "admin", "sync.read", "sync.write")
 DISCOVERY_PORT = 47115
 DATAGRAM_LIMIT = 1200   # SPEC.md § 4.1, § 13
 CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"  # 5 bits a symbol; no 0, O, 1 or I
@@ -666,39 +720,10 @@ def image(value):
     return None
 
 
-# Errors in French (SPEC.md § 2.2): each code's title, and a detail for
-# people, which stands for the English one's specifics.
-FRENCH = {
-    "bad_request": ("Requête incorrecte", "La requête est mal formée ; sa documentation dit la forme attendue."),
-    "key_required": ("Clé de l’appareil requise", ("Ce serveur n’associe un jeton qu’à une clé de l’appareil : "
-                                                   "envoyez-en une à l’appairage.")),
-    "unauthorized": ("Non autorisé", "Jeton absent, inconnu, révoqué ou expiré : appairez cet appareil."),
-    "signature_required": ("Signature requise", "Ce jeton est lié à la clé de l’appareil : signez la requête."),
-    "signature_invalid": ("Signature invalide", "La signature ne se vérifie pas, ou n’a pas la forme attendue."),
-    "signature_expired": ("Signature périmée", ("L’heure de la signature est trop loin de celle du serveur : "
-                                                "réglez-la sur son en-tête Date.")),
-    "signature_replayed": ("Signature rejouée", "Ce nonce a déjà servi : un nouveau pour chaque requête."),
-    "forbidden": ("Interdit", "Ce compte n’a pas la portée nécessaire."),
-    "account_frozen": ("Compte gelé", "Ce compte ne peut rien faire pour l’instant."),
-    "not_found": ("Introuvable", "Rien de tel sur ce serveur."),
-    "conflict": ("Conflit", "Cela existe déjà, ou l’envoi n’en est pas là."),
-    "gone": ("Disparu", "Expiré, révoqué, épuisé ou inconnu."),
-    "too_large": ("Trop grand", "Au-delà des limites de ce serveur."),
-    "unsupported_schema": ("Schéma non pris en charge", "Ce serveur ne lit pas ce schéma de document."),
-    "digest_mismatch": ("Empreinte différente", "Le SHA-256 du corps n’est pas celui annoncé."),
-    "slow_down": ("Ralentissez", "Trop de requêtes : réessayez après le délai indiqué."),
-    "internal": ("Erreur interne", "Le serveur a échoué ; réessayez plus tard."),
-    "unavailable": ("Indisponible", "Le serveur est occupé ou en maintenance ; réessayez plus tard."),
-}
-LANGUAGES = ("en", "fr")     # the languages this server writes its own texts in
-
-
-def best_language(prefs, have=LANGUAGES):
-    """The first of the client's languages this server has (its primary subtag), else English."""
-    for tag in prefs:
-        if tag.split("-")[0] in have:
-            return tag.split("-")[0]
-    return "en"
+def best_language(prefs):
+    """The language of this server's own texts for the client's languages (SPEC.md § 2.2): one of the fifteen
+    of server/texts.py, else English."""
+    return texts.best(prefs)
 
 
 class Problem(Exception):
@@ -710,10 +735,11 @@ class Problem(Exception):
         self.headers = headers or {}
 
     def document(self, language="en"):
-        """The problem in `language` (SPEC.md § 2.2): English, or French when this server has it."""
+        """The problem in `language` (SPEC.md § 2.2): English, or one of server/texts.py's languages."""
         title, detail = self.title, self.detail
-        if language == "fr" and self.code in FRENCH:
-            title, generic = FRENCH[self.code]
+        translated = texts.error(self.code, language)
+        if translated:
+            title, generic = translated
             detail = generic if detail else None
         else:
             language = "en"
@@ -768,6 +794,90 @@ def sha256_file(path):
         while chunk := f.read(CHUNK):
             h.update(chunk)
     return h.hexdigest()
+
+
+def grant_payload(uid, sha256, size, exp):
+    """A grant's payload (SPEC.md § 19.3): these keys in this order, no space."""
+    return ('{"exp":%d,"purpose":"lantern-grant-1","sha256":"%s","size":%d,"uid":"%s"}'  # noqa: UP031 - the canonical bytes
+            % (exp, sha256, size, uid)).encode()
+
+
+def make_grant(seed, uid, sha256, size, exp):
+    payload = grant_payload(uid, sha256, size, exp)
+    return b64url(payload) + "." + b64url(ed25519.sign(seed, payload))
+
+
+def read_grant(grant, keys, now=None):
+    """The payload of a grant that verifies by the key of the server it names, among `keys` ({uid: the public
+    key's 32 bytes}), and is not expired (SPEC.md § 19.4); None otherwise."""
+    if not (isinstance(grant, str) and len(grant) <= 1024 and re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{86}", grant)):
+        return None
+    payload_b64, sig_b64 = grant.split(".")
+    try:
+        payload, signature = unb64url(payload_b64), unb64url(sig_b64)
+        doc = json.loads(payload.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not (isinstance(doc, dict) and doc.get("purpose") == "lantern-grant-1" and isinstance(doc.get("uid"), str)
+            and isinstance(doc.get("sha256"), str) and is_int(doc.get("exp")) and is_int(doc.get("size"))):
+        return None
+    key = keys.get(doc["uid"])
+    if key is None or payload != grant_payload(doc["uid"], doc["sha256"], doc["size"], doc["exp"]):
+        return None
+    if doc["exp"] < (time.time() if now is None else now) or not ed25519.verify(key, payload, signature):
+        return None
+    return doc
+
+
+def homebrew_view(entry, full, prefs):
+    """A homebrew entry as served (SPEC.md § 8.1): its texts in the client's language, and without its manifests
+    in a listing (`full` False)."""
+    doc = dict(entry["doc"])
+    if not full:
+        doc["package"] = {k: v for k, v in doc["package"].items() if k != "manifest"}
+        if "packages" in doc:
+            doc["packages"] = [{k: v for k, v in p.items() if k != "manifest"} for p in doc["packages"]]
+    language = None
+    for k, value in entry["texts"].items():
+        doc[k], lang = localized(value, prefs)
+        language = language or lang
+    if language:
+        doc["language"] = language
+    if "port" in doc:
+        doc["port"] = json.loads(json.dumps(doc["port"]))
+        for f in data_files(doc["port"].get("requires_data", [])):
+            if "hint" in f:
+                f["hint"] = localized(localizable(f["hint"]), prefs)[0]
+    return doc
+
+
+def request_event(r):
+    """A request's event (SPEC.md § 18.2)."""
+    return {"schema": 1, **{k: r[k] for k in ("id", "platform", "title_id", "status") if k in r}}
+
+
+def mirrors_of(value):
+    """A file's mirrors from library.json or homebrew.json (SPEC.md § 19.2): [{"url"}], each an HTTPS URL, or
+    an HTTP one at an address of a private network; None when absent, False when not of that form."""
+    if value is None:
+        return None
+    if not (isinstance(value, list) and len(value) <= MIRRORS_LIMIT and all(
+            isinstance(m, dict) and mirror_url_ok(m.get("url")) for m in value)):
+        return False
+    return [{"url": m["url"]} for m in value]
+
+
+def mirror_url_ok(url):
+    if https_url(url):
+        return True
+    if not (isinstance(url, str) and len(url) <= 4096):
+        return False
+    try:
+        u = urlsplit(url)
+        ip = ipaddress.ip_address((u.hostname or "").split("%")[0])
+    except ValueError:
+        return False
+    return u.scheme == "http" and any(ip in net for net in PRIVATE_NETS)
 
 
 def ratings_of(items):
@@ -871,10 +981,17 @@ class Library:
         self.state.setdefault("hashes", {})
         if not isinstance(self.state.get("titles"), dict):
             self.state["titles"] = {}
+        # The grant key (SPEC.md § 19.3): the server's own, for grants alone; its seed stays in the state file.
+        if not (isinstance(self.state.get("grant_seed"), str) and re.fullmatch(r"[0-9a-f]{64}", self.state["grant_seed"])):
+            self.state["grant_seed"] = secrets.token_hex(32)
+        self.grant_seed = bytes.fromhex(self.state["grant_seed"])
+        self.grant_public = ed25519.public_key(self.grant_seed)
         self.secret = bytes.fromhex(self.state["secret"])
         self.epoch = secrets.token_hex(4)   # since tokens do not outlive the process
         self.seq = 0
         self.journal = []                   # (seq, kind, ref, platform): kind added | removed | title | untitled
+        self.events = []                    # SPEC.md § 18: {seq, event, data, audience, items}, in order
+        self.changed = threading.Condition(self.lock)   # notified at each event
         self.floor = 0                      # tokens below it are gone
         self.apps, self.files, self.titles, self.homebrew, self.cheats = {}, {}, {}, {}, {}
         self.manifests = {}                 # (rel, size, mtime) -> a zip's manifest, or None when refused
@@ -987,6 +1104,11 @@ class Library:
             app["installed_size"] = entry["installed_size"]
         if isinstance(entry.get("atlas"), str) and ATLAS.match(entry["atlas"]):
             app["atlas"] = entry["atlas"]
+        mirrors = mirrors_of(entry.get("mirrors"))
+        if mirrors is False:
+            self.skip(rel + " (mirrors)", "mirrors are [{url}], HTTPS, or HTTP on a private network (SPEC.md § 19.2)")
+        elif mirrors:
+            app["mirrors"] = mirrors
         try:
             release = date.fromisoformat(entry["release"]) if isinstance(entry.get("release"), str) else None
         except ValueError:
@@ -1025,6 +1147,7 @@ class Library:
                 entries[aid] = meta.get(rel) or {}
                 files[fid] = {"path": path, "size": st.st_size, "sha256": sha,
                               "owner": ("app", app["platform"], app["title_id"])}
+            mark = self.seq
             titles = self.scan_titles(apps, entries, initial)
             homebrew = self.scan_homebrew(seen, files)
             cheats = self.scan_cheats(seen)
@@ -1040,10 +1163,69 @@ class Library:
                 if len(self.journal) > JOURNAL_LIMIT:
                     self.floor = self.journal[-JOURNAL_LIMIT - 1][0]
                     del self.journal[:-JOURNAL_LIMIT]
+            if not initial:
+                items = self.library_changes(mark, apps, homebrew, cheats)
+                if items:
+                    self.emit("library", items=items)
+            arrived = set(titles) - set(self.titles)
             self.apps, self.files, self.titles, self.homebrew, self.cheats = apps, files, titles, homebrew, cheats
+            if not initial:
+                self.requests_done(arrived)
             self.scanned = time.monotonic()
             if self.dirty:
                 self.save_state()
+
+    def library_changes(self, mark, apps, homebrew, cheats):
+        """What a scan changed (SPEC.md § 18.2's event library): (family, platform, how, ref) for each app,
+        title, homebrew and cheat set added, removed or changed, `how` saying how a rating cap reads it: by its
+        title's ratings ("title", the title id) or by its own ("ratings", them as JSON)."""
+        items = set()
+        for seq, kind, ref, platform in self.journal:
+            if seq <= mark:
+                continue
+            if kind in ("added", "removed"):
+                doc = (apps.get(ref) or self.apps.get(ref) or {}).get("doc", {})
+                items.add(("apps", platform, "title", doc.get("title_id", "")))
+            elif kind in ("title", "untitled"):
+                items.add(("titles", platform, "title", ref.split("/", 1)[1]))
+        old = self.homebrew
+        for key in old.keys() | homebrew.keys():
+            a, b = (old.get(key) or {}).get("doc"), (homebrew.get(key) or {}).get("doc")
+            if a != b:
+                ratings = json.dumps((b or a).get("ratings", []), sort_keys=True)
+                items.add(("homebrew", key[0], "ratings", ratings))
+        for cid in self.cheats.keys() | cheats.keys():
+            a, b = (self.cheats.get(cid) or {}).get("doc"), (cheats.get(cid) or {}).get("doc")
+            if a != b:
+                doc = b or a
+                items.add(("cheats", doc["platform"], "title", doc["title_id"]))
+        return sorted(items)
+
+    def emit(self, event, data=None, audience=None, items=None):
+        """Records an event (SPEC.md § 18), its id the next token of /v1/changes, and wakes the streams and
+        long polls. `audience`: {"user"?, "platform"?} beside the event's scope; `items`: a library event's."""
+        with self.lock:
+            seq = self.next_seq()
+            self.events.append({"seq": seq, "event": event, "data": data or {"schema": 1},
+                                "audience": audience or {}, "items": items or []})
+            if len(self.events) > EVENTS_LIMIT:
+                self.floor = max(self.floor, self.events[-EVENTS_LIMIT - 1]["seq"])
+                del self.events[:-EVENTS_LIMIT]
+            self.changed.notify_all()
+            return seq
+
+    def token(self, seq):
+        """The token of /v1/changes (and an event's id) at `seq` (SPEC.md § 6.4, § 18.1)."""
+        return f"s_{self.epoch}_{seq}"
+
+    def requests_done(self, arrived):
+        """An open request whose title just arrived in the library (`arrived`, keys of titles a scan found new) is
+        done (SPEC.md § 11), and its event sent (§ 18.2)."""
+        for r in self.requests():
+            if isinstance(r, dict) and r.get("status") == "open" and f"{r.get('platform')}/{r.get('title_id')}" in arrived:
+                r["status"] = "done"
+                self.dirty = True
+                self.emit("request", request_event(r), {"user": r.get("user"), "platform": r.get("platform")})
 
     def next_seq(self):
         self.seq += 1
@@ -1187,6 +1369,12 @@ class Library:
                 self.skip(rel, "signer_sha256 is a lower-case hex SHA-256")
                 return None
             package["signer_sha256"] = item["signer_sha256"]
+        mirrors = mirrors_of(item.get("mirrors"))
+        if mirrors is False:
+            self.skip(rel, "mirrors are [{url}], HTTPS, or HTTP on a private network (SPEC.md § 19.2)")
+            return None
+        if mirrors:
+            package["mirrors"] = mirrors
         return package, manifest, {"fid": fid, "path": path, "size": st.st_size, "sha256": sha, "mtime": st.st_mtime_ns}
 
     def homebrew_requires(self, requires, rel):
@@ -1244,7 +1432,7 @@ class Library:
         if "packages" in meta:
             items = [i for i in meta["packages"]]
         else:
-            items = [{k: meta.get(k) for k in ("arch", "signature", "signer_sha256", "path")}]
+            items = [{k: meta.get(k) for k in ("arch", "signature", "signer_sha256", "path", "mirrors")}]
         if len(items) > 1 and platform in ONE_ARCH:
             self.skip(rel, f"{platform} has one architecture: one package (Annex A)")
             return None
@@ -1519,6 +1707,7 @@ class Library:
                 entry["name"] = title["name"]
             self.requests().append(entry)
             self.save_state()
+            self.emit("request", request_event(entry), {"user": user, "platform": platform})
             return 201, entry
 
     def withdraw(self, user, rid):
@@ -1528,8 +1717,12 @@ class Library:
                                                        and r.get("id") == rid)]
             if len(kept) == len(self.requests()):
                 return False
+            gone = next(r for r in self.requests() if isinstance(r, dict) and r.get("user") == user and r.get("id") == rid)
             self.state["requests"] = kept
             self.save_state()
+            self.emit("request", {"schema": 1, "id": rid, "platform": gone.get("platform"),
+                                  "title_id": gone.get("title_id"), "deleted": True},
+                      {"user": user, "platform": gone.get("platform")})
             return True
 
     def platforms(self):
@@ -1682,7 +1875,7 @@ class Saves:
     makes the family unavailable, and is never written over."""
 
     PUBLIC = ("platform", "title_id", "save_id", "created", "size", "sha256", "kind", "game_version_code",
-              "profile", "slot", "note", "device")
+              "profile", "slot", "note", "device", "encryption")
 
     def __init__(self, folder, body=SAVE_BODY, size=SAVE_SIZE, chunk=SAVE_CHUNK, kept=SAVES_KEPT,
                  hours=UPLOAD_HOURS):
@@ -1828,14 +2021,24 @@ class Saves:
             try:
                 if sha256_file(part) != s["sha256"]:
                     raise digest_mismatch("The archive's SHA-256 is not the one announced; it was discarded.")
-                if not zipfile.is_zipfile(part):
-                    raise bad_request("A save is a zip archive; this one was discarded.")
+                with part.open("rb") as f:
+                    archive_check(f.read(16), part, s.get("encryption"))
                 fields = {k: s[k] for k in self.PUBLIC if k in s and k not in ("size", "sha256")}
                 return self.add(s["user"], part, s["sha256"], s["size"], fields)
             finally:
                 if part.exists():
                     part.unlink()
                 self.write()
+
+    def delete_user(self, user):
+        """Erases every backup and upload of an account (SPEC.md § 5.7)."""
+        with self.lock:
+            for entry in self.mine(user):
+                self.drop(entry)
+            for uid, sess in list(self.index["uploads"].items()):
+                if isinstance(sess, dict) and sess.get("user") == user:
+                    self.abandon(uid, write=False)
+            self.write()
 
     def abandon(self, uid, write=True):
         with self.lock:
@@ -1846,6 +2049,32 @@ class Saves:
                 pass
             if write:
                 self.write()
+
+
+def archive_check(start, path, encryption):
+    """A backup's bytes as SPEC.md § 9 and § 9.4 want them: a zip in clear; encrypted, the header of
+    lantern-save-e2e-1 with the key id of its metadata. 400 otherwise."""
+    if encryption:
+        if start[:8] != E2E_MAGIC or start[8:16].hex() != encryption["key_id"]:
+            raise bad_request("An encrypted backup begins with LTNE2E01 and its key id (SPEC.md § 9.4); this one "
+                              "was discarded.")
+    elif not zipfile.is_zipfile(path):
+        raise bad_request("A save is a zip archive; this one was discarded.")
+
+
+def encryption_of(value):
+    """A backup's encryption (SPEC.md § 9.4): {"scheme", "key_id"} of lantern-save-e2e-1; 400 otherwise."""
+    if not (isinstance(value, dict) and value.get("scheme") == E2E_SCHEME and isinstance(value.get("key_id"), str)
+            and KEY_ID.match(value["key_id"])):
+        raise bad_request(f"encryption is {{scheme: {E2E_SCHEME}, key_id: 16 hex digits}} (SPEC.md § 9.4).")
+    return {"scheme": E2E_SCHEME, "key_id": value["key_id"]}
+
+
+def encryption_header(header):
+    """Lantern-Save-Encryption: lantern-save-e2e-1; key_id=<16 hex> (SPEC.md § 9.4), as encryption_of() reads it."""
+    scheme, _, params = header.partition(";")
+    fields = dict(p.strip().partition("=")[::2] for p in params.split(";") if p.strip())
+    return encryption_of({"scheme": scheme.strip(), "key_id": fields.get("key_id")})
 
 
 # --- Accounts -----------------------------------------------------------
@@ -1951,6 +2180,16 @@ class Accounts:
             self.store.save_state()
         return self.get(name)
 
+    def delete(self, name):
+        """Removes an account the administration API made (SPEC.md § 5.7); 409 for one users.json defines, which
+        this server only reads. What belongs to the account is erased by LanternServer.delete_account()."""
+        with self.store.lock:
+            if name in self.users:
+                raise Problem(409, "conflict", "Conflict", f"The account {name} is defined in the server's users "
+                              "file, which it only reads: remove it there.")
+            self.changes().pop(name, None)
+            self.store.save_state()
+
     def resolve(self, header, tokens):
         """(the caller's account, its token's record) from its bearer token, or a 401 Problem (SPEC.md § 5.1)."""
         if not header:
@@ -1969,6 +2208,166 @@ class Accounts:
         if isinstance(record.get("rating_cap"), dict):
             account["rating_cap"] = record["rating_cap"]
         return account, record
+
+
+# --- Sync (SPEC.md § 20) ------------------------------------------------------
+
+def sync_time(text, now, skew):
+    """An item's `updated`, to the millisecond (2026-10-30T09:12:03.250Z), one more than `skew` seconds ahead of
+    `now` (a datetime) taken as `now` (SPEC.md § 20.4); None when it is not such a time."""
+    m = UPDATED.match(text) if isinstance(text, str) else None
+    if not m:
+        return None
+    try:
+        when = datetime.fromisoformat(m.group(1) + (m.group(2) or ".0").ljust(4, "0") + "+00:00")
+    except ValueError:
+        return None
+    if when > now + timedelta(seconds=skew):
+        when = now
+    return when.strftime("%Y-%m-%dT%H:%M:%S.") + f"{when.microsecond // 1000:03d}Z"
+
+
+def canonical(value):
+    """A value's canonical JSON (SPEC.md § 20.4): keys sorted, no space, characters other than ASCII as they are."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def sync_wins(sent, have):
+    """Whether the item sent replaces the one kept (SPEC.md § 20.4's merge rule): the later `updated`; on the same,
+    a deletion; between two values, the greater canonical JSON. An item the same as the one kept does not."""
+    if have is None:
+        return True
+    if sent["updated"] != have["updated"]:
+        return sent["updated"] > have["updated"]
+    deleted, kept_deleted = bool(sent.get("deleted")), bool(have.get("deleted"))
+    if deleted != kept_deleted:
+        return deleted
+    return not deleted and canonical(sent["value"]) > canonical(have["value"])
+
+
+class Sync:
+    """Sync data (SPEC.md § 20) in a file (schema 1): {"accounts": {name: {"generation", "collections":
+    {collection: {"rev", "floor", "items": {key: item}}}}}}, an item {"key", "value" or "deleted", "updated",
+    "rev", "kept"}, `kept` the server's time when it took it, for a deletion's retention, `floor` the revision
+    below which deletions were dropped. A file of a newer schema, or unreadable, makes the family unavailable,
+    and is never written over; its unknown keys are kept."""
+
+    def __init__(self, path, limit=SYNC_ITEMS, skew=signatures.SKEW):
+        self.path, self.limit, self.skew = Path(path), limit, skew
+        self.lock = threading.RLock()
+        doc = read_versioned(self.path, "sync file")
+        self.available = doc is not None or not self.path.exists()
+        self.doc = doc or {"schema": 1}
+        if not isinstance(self.doc.get("accounts"), dict):
+            self.doc["accounts"] = {}
+
+    def write(self):
+        if self.available:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            write_json(self.path, self.doc)
+
+    def account(self, user):
+        acc = self.doc["accounts"].get(user)
+        if not (isinstance(acc, dict) and isinstance(acc.get("generation"), str)):
+            acc = self.doc["accounts"][user] = {"generation": "g_" + secrets.token_urlsafe(9), "collections": {}}
+        if not isinstance(acc.get("collections"), dict):
+            acc["collections"] = {}
+        return acc
+
+    def collection(self, user, name):
+        acc = self.account(user)
+        col = acc["collections"].get(name)
+        if not (isinstance(col, dict) and is_int(col.get("rev")) and isinstance(col.get("items"), dict)):
+            col = acc["collections"][name] = {"rev": 0, "floor": 0, "items": {}}
+        self.purge(col)
+        return acc, col
+
+    @staticmethod
+    def purge(col):
+        """Drops the deletions kept longer than TOMBSTONE_DAYS (SPEC.md § 20.5), and raises the floor."""
+        limit = (datetime.now(timezone.utc) - timedelta(days=TOMBSTONE_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for key, item in list(col["items"].items()):
+            if isinstance(item, dict) and item.get("deleted") and str(item.get("kept", "")) < limit:
+                col["floor"] = max(col.get("floor", 0), item.get("rev", 0))
+                del col["items"][key]
+
+    @staticmethod
+    def public(item):
+        return {k: item[k] for k in ("key", "value", "deleted", "updated", "rev") if k in item}
+
+    def overview(self, user):
+        with self.lock:
+            acc = self.account(user)
+            out = {}
+            for name in SYNC_COLLECTIONS:
+                _, col = self.collection(user, name)
+                out[name] = {"rev": col["rev"], "items": sum(1 for i in col["items"].values() if not i.get("deleted"))}
+            self.write()
+            return acc["generation"], out
+
+    def read(self, user, name, since):
+        """(generation, rev, items): with `since`, every item changed after it, deletions included; without,
+        every live item. 410 when the deletions that far back are gone, 400 for a revision never given."""
+        with self.lock:
+            acc, col = self.collection(user, name)
+            if since is None:
+                items = [i for i in col["items"].values() if not i.get("deleted")]
+            else:
+                if since > col["rev"]:
+                    raise bad_request("This revision was never given: read the collection whole.")
+                if since < col.get("floor", 0):
+                    raise Problem(410, "gone", "Revision too old", "Its deletions are gone: read the collection whole.")
+                items = [i for i in col["items"].values() if i.get("rev", 0) > since]
+            return acc["generation"], col["rev"], [self.public(i) for i in items]
+
+    def merge(self, user, name, generation, items, if_match=None):
+        """Merges items sent (SPEC.md § 20.4): (generation, rev, each item as kept, changed or not)."""
+        now = datetime.now(timezone.utc)
+        with self.lock:
+            acc, col = self.collection(user, name)
+            if generation != acc["generation"]:
+                raise Problem(409, "conflict", "Conflict", "This sync data was deleted since: ask the user again "
+                              "before sending anything (SPEC.md § 20.3).")
+            if if_match is not None and if_match != f'"{acc["generation"]}-{col["rev"]}"':
+                raise Problem(412, "precondition_failed", "Precondition failed", "The collection changed since it "
+                              "was read: read it again.")
+            fresh = sum(1 for i in items if i["key"] not in col["items"])
+            if len(col["items"]) + fresh > self.limit:
+                raise Problem(413, "too_large", "Too large", f"A collection holds {self.limit} items at most here.")
+            out = []
+            for sent in items:
+                sent = dict(sent, updated=sync_time(sent["updated"], now, self.skew))
+                have = col["items"].get(sent["key"])
+                if sync_wins(sent, have):
+                    col["rev"] += 1
+                    kept = {"key": sent["key"], "updated": sent["updated"], "rev": col["rev"],
+                            "kept": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+                    if sent.get("deleted"):
+                        kept["deleted"] = True
+                    else:
+                        kept["value"] = sent["value"]
+                    col["items"][sent["key"]] = have = kept
+                out.append(self.public(have))
+            self.write()
+            return acc["generation"], col["rev"], out
+
+    def erase(self, user, name=None):
+        """Erases a collection of the account, or all its sync data (SPEC.md § 20.5): a new generation."""
+        with self.lock:
+            acc = self.account(user)
+            if name is None:
+                acc["collections"] = {}
+            else:
+                acc["collections"].pop(name, None)
+            acc["generation"] = "g_" + secrets.token_urlsafe(9)
+            self.write()
+            return acc["generation"]
+
+    def forget(self, user):
+        """Erases an account's sync data, the account being deleted (SPEC.md § 5.7, § 20.5)."""
+        with self.lock:
+            if self.doc["accounts"].pop(user, None) is not None:
+                self.write()
 
 
 def token_hash(token):
@@ -2037,6 +2436,16 @@ class Tokens:
         with self.store.lock:
             return [(device_id(k), r) for k, r in self.table().items() if self.live(r)]
 
+    def revoke_user(self, user):
+        """Revokes every token of an account (SPEC.md § 5.7, an account deleted)."""
+        with self.store.lock:
+            self.store.reload_tokens()
+            found = [k for k, r in self.table().items() if isinstance(r, dict) and r.get("user") == user]
+            for k in found:
+                del self.table()[k]
+            if found:
+                self.store.save_state()
+
     def revoke(self, did):
         """Revokes the token of device `did` (SPEC.md § 5.7); False when there is none."""
         with self.store.lock:
@@ -2096,6 +2505,12 @@ class Invitations:
         with self.store.lock:
             return [(i, dict(v)) for i, v in self.table().items() if isinstance(v, dict) and self.redeemable(v)]
 
+    def revoke_user(self, user):
+        with self.store.lock:
+            for iid in [i for i, v in self.table().items() if isinstance(v, dict) and v.get("user") == user]:
+                del self.table()[iid]
+            self.store.save_state()
+
     def revoke(self, iid):
         with self.store.lock:
             if iid not in self.table():
@@ -2124,8 +2539,8 @@ class Pairing:
     PAIR_EXPIRES seconds, a token is collected once. Each has a poll address
     (the secret), and an id for the administration API, which is not."""
 
-    def __init__(self, tokens, accounts, interval=PAIR_INTERVAL, expires=PAIR_EXPIRES, lifetime=None):
-        self.tokens, self.accounts = tokens, accounts
+    def __init__(self, tokens, accounts, interval=PAIR_INTERVAL, expires=PAIR_EXPIRES, lifetime=None, announce=None):
+        self.tokens, self.accounts, self.announce = tokens, accounts, announce   # announce(entry): the event
         self.interval, self.expires, self.lifetime = interval, expires, lifetime
         self.pending, self.lock = {}, threading.Lock()
 
@@ -2134,7 +2549,8 @@ class Pairing:
         for pid in [p for p, e in self.pending.items() if e["until"] <= now]:
             del self.pending[pid]
 
-    def start(self, device, scopes, key=None):
+    def start(self, device, scopes, key=None, waiting=True):
+        """A pairing waiting for its user; `waiting` False for one an invitation approves at once."""
         with self.lock:
             self.purge()
             if len(self.pending) >= PENDING_LIMIT:
@@ -2148,7 +2564,9 @@ class Pairing:
                      "created": now_utc(), "expires": now_utc(self.expires), "polled": None,
                      "interval": self.interval}
             self.pending[pid] = entry
-            return entry
+        if waiting and self.announce:
+            self.announce(entry)
+        return entry
 
     @staticmethod
     def shown(code):
@@ -2201,11 +2619,22 @@ class Pairing:
         token = self.tokens.issue(user_name, entry["device"], granted, self.lifetime, key=entry.get("key"),
                                   rating_cap=rating_cap, invitation=invitation)
         with self.lock:
-            entry.update(state="approved", token=token, granted=granted, nonce=None, rating_cap=rating_cap)
+            entry.update(state="approved", token=token, granted=granted, nonce=None, rating_cap=rating_cap,
+                         user=user_name)
 
     def refuse(self, entry):
         with self.lock:
             entry.update(state="refused", nonce=None)
+
+    def forget_user(self, user):
+        """Refuses the pairings an account's user was approving, and drops its tokens not yet collected."""
+        with self.lock:
+            for pid, entry in list(self.pending.items()):
+                if entry.get("user") == user:
+                    if entry["state"] == "approved":
+                        del self.pending[pid]
+                    else:
+                        entry.update(state="refused", nonce=None)
 
     def poll(self, pid):
         """The token document once approved, None while waiting; 410 or 429 as a Problem."""
@@ -2352,7 +2781,13 @@ class Handler(BaseHTTPRequestHandler):
         ("pairing/{}", ("GET",), "pairing", "pair_poll"),
         ("apps", ("GET", "HEAD"), "library", "apps"),
         ("apps/missing", ("POST",), "library", "missing"),
-        ("changes", ("GET", "HEAD"), "changes", "changes"),
+        ("changes", ("GET", "HEAD"), None, "changes"),     # changes, or events with wait: chosen within
+        ("events", ("GET",), "events", "events"),
+        ("grants/sha256/{}", ("GET", "HEAD"), "peers", "grant"),
+        ("sync", ("GET", "HEAD"), "sync", "sync_overview"),
+        ("sync", ("DELETE",), "sync.write", "sync_erase"),
+        ("sync/{}", ("GET", "HEAD"), "sync", "sync_read"),
+        ("sync/{}", ("PATCH", "DELETE"), "sync.write", "sync_write"),
         ("titles", ("GET", "HEAD"), "titles", "titles"),
         ("titles/changes", ("GET", "HEAD"), "titles", "title_changes"),
         ("titles/{}", ("GET", "HEAD"), "titles", "title"),
@@ -2373,7 +2808,7 @@ class Handler(BaseHTTPRequestHandler):
         ("requests/{}", ("DELETE",), "requests", "request_delete"),
         ("files/{}", ("GET", "HEAD"), "library", "file"),
         ("admin/users", ("GET", "HEAD", "POST"), "admin", "admin_users"),
-        ("admin/users/{}", ("PATCH",), "admin", "admin_user"),
+        ("admin/users/{}", ("PATCH", "DELETE"), "admin", "admin_user"),
         ("admin/devices", ("GET", "HEAD"), "admin", "admin_devices"),
         ("admin/devices/{}", ("DELETE",), "admin", "admin_device"),
         ("admin/pairings", ("GET", "HEAD"), "admin", "admin_pairings"),
@@ -2479,12 +2914,19 @@ class Handler(BaseHTTPRequestHandler):
             if not self.server.accounts.pairing:
                 raise not_found("This server does not pair.")
             return
-        if family == "saves" and not self.server.saves.available:
+        if family in ("saves", "encrypted_saves") and not self.server.saves.available:
             raise not_found("Save backups are unavailable on this server for now.")
-        if account["state"] == "anonymous" and (not self.server.accounts.public or family == "admin"):
+        if family in ("sync", "sync.write") and not self.server.sync.available:
+            raise not_found("Sync is unavailable on this server for now.")
+        if account["state"] == "anonymous" and (not self.server.accounts.public or family in ("admin", "sync",
+                                                                                              "sync.write")):
             raise unauthorized(CHALLENGE, "This server asks for a token: pair this device first.")
         if account["state"] == "frozen":
             raise Problem(403, "account_frozen", "Account frozen", "This account may do nothing for now.")
+        if family == "events":      # SPEC.md § 18: offered to whoever may read one kind of event
+            if not set(EVENT_SCOPES.values()) & set(account["scopes"]):
+                raise Problem(403, "forbidden", "Forbidden", "This account may read no event.")
+            return
         if SCOPE_OF[family] not in account["scopes"]:
             raise Problem(403, "forbidden", "Forbidden", f"This account lacks the scope {SCOPE_OF[family]}.")
 
@@ -2499,6 +2941,14 @@ class Handler(BaseHTTPRequestHandler):
         # The same for every caller (SPEC.md § 4.2): whoever reaches the server may pair, with a key.
         features["pairing"] = features["signatures"] = 1 if self.server.accounts.pairing else 0
         return features
+
+    def may(self, family):
+        """Whether the caller may use `family` (allow() without the error)."""
+        try:
+            self.allow(self.account, family)
+            return True
+        except Problem:
+            return False
 
     def platform(self, query, required=False):
         """The platform the client named (SPEC.md § 4.3): ?platform=, else Lantern-Platform; None for every one."""
@@ -2533,8 +2983,11 @@ class Handler(BaseHTTPRequestHandler):
             doc["language"] = doc["language"] or "en"
         doc.update({"account": self.account, "features": self.features(self.account),
                     "auth": {"bearer_only": not self.server.bound_only, "skew": self.server.skew},
+                    "peers": {"key": base64.b64encode(lib.grant_public).decode(), "grant_lifetime": GRANT_LIFETIME},
                     "limits": {"page_size": PAGE_LIMIT, "save_body": saves.body, "save_size": saves.size,
-                               "saves_kept_per_title": saves.kept}})
+                               "saves_kept_per_title": saves.kept, "heartbeat": self.server.heartbeat,
+                               "event_streams": self.server.event_streams, "wait": self.server.wait_limit,
+                               "sync_items": self.server.sync.limit}})
         self.send_doc(200, doc)
 
     def listing_args(self, query, sorts=("name", "added", "release")):
@@ -2588,9 +3041,207 @@ class Handler(BaseHTTPRequestHandler):
         return read_document(body, self.headers.get("Content-Type"))
 
     def changes(self, query):
-        doc = self.server.library.changes(query.get("since"), self.platform(query))
-        doc["added"] = [a for a in doc["added"] if not self.app_hidden(a)]
-        self.send_doc(200, doc)
+        """GET /v1/changes (SPEC.md § 6.4), and with wait, a long poll of events (§ 18.3)."""
+        lib, platform = self.server.library, self.platform(query)
+        self.events_platform = platform
+        if "wait" not in query:
+            self.allow(self.account, "changes")
+            doc = lib.changes(query.get("since"), platform)
+            doc["added"] = [a for a in doc["added"] if not self.app_hidden(a)]
+            return self.send_doc(200, doc)
+        wait, since = query["wait"], query.get("since")
+        if not wait.isdigit() or since is None:
+            raise bad_request("wait is a number of seconds, from 0, with since (SPEC.md § 18.3).")
+        self.allow(self.account, "events")
+        start = self.event_start(since)
+        deadline = time.monotonic() + min(int(wait), self.server.wait_limit)
+        while True:
+            with lib.changed:
+                found = self.visible_events(start)
+                left = deadline - time.monotonic()
+                if found or left <= 0 or self.server.stopping.is_set():
+                    if self.may("changes"):
+                        doc = lib.changes(since, platform)
+                        doc["added"] = [a for a in doc["added"] if not self.app_hidden(a)]
+                    else:
+                        doc = {"schema": 1, "added": [], "removed": [], "since": lib.token(lib.seq)}
+                    doc["events"] = [{"id": lib.token(seq), "event": e["event"], "data": data}
+                                     for seq, e, data in found]
+                    break
+                lib.changed.wait(min(left, 1.0))
+            lib.refresh(self.server.rescan)
+        self.send_doc(200, doc, {"Cache-Control": "no-store"})
+
+    # Events (SPEC.md § 18).
+
+    def event_start(self, since):
+        """The sequence number a stream or a long poll starts after: `since`'s, or now's; 400 or 410 as § 18.1
+        says."""
+        lib = self.server.library
+        if since is None:
+            return lib.seq
+        with lib.lock:
+            lib.since("s", since)       # 400 for a token never given, 410 for one too old
+            return int(since.rsplit("_", 1)[1])
+
+    def visible_events(self, after):
+        """[(seq, event, data)] of the events after `after` the caller may see (SPEC.md § 18.2)."""
+        out = []
+        for e in self.server.library.events:
+            if e["seq"] > after:
+                data = self.event_for(e)
+                if data is not None and e["event"] != "shutdown":
+                    out.append((e["seq"], e, data))
+        return out
+
+    def event_for(self, e):
+        """The data of event `e` for this caller, or None when it may not see it (SPEC.md § 18.2): of its scopes,
+        its account, its platform and within its rating cap."""
+        kind, audience = e["event"], e["audience"]
+        if kind == "shutdown":
+            return e["data"]
+        scope = EVENT_SCOPES.get(kind)
+        if scope is None or not self.may(scope if scope != "sync.read" else "sync"):
+            return None
+        platform = self.events_platform
+        if kind == "library":
+            families, platforms = set(), set()
+            for family, p, how, ref in e["items"]:
+                if platform is not None and p != platform:
+                    continue
+                hidden = self.title_hidden(p, ref) if how == "title" else \
+                    bool(self.cap()) and above_cap(json.loads(ref), self.cap())
+                if not hidden:
+                    families.add(family)
+                    platforms.add(p)
+            if not families:
+                return None
+            return {"schema": 1, "families": sorted(families), "platforms": sorted(platforms)}
+        if "user" in audience and audience["user"] != self.account.get("name"):
+            return None
+        if platform is not None and audience.get("platform") not in (None, platform):
+            return None
+        if kind == "save" and self.title_hidden(audience.get("platform"), e["data"].get("title_id")):
+            return None
+        return e["data"]
+
+    def stream_key(self):
+        """Whose streams count together (SPEC.md § 18.4): the token's, or an anonymous caller's address."""
+        header = (self.headers.get("Authorization") or "").partition(" ")[2].strip()
+        return ("token", token_hash(header)) if self.record is not None else ("address", self.client_address[0])
+
+    def still_allowed(self):
+        """Whether the stream's token still holds (SPEC.md § 18.1): not revoked, its account not frozen nor gone."""
+        try:
+            account, _ = self.server.accounts.resolve(self.headers.get("Authorization"), self.server.tokens)
+        except Problem:
+            return False
+        if account["state"] == "frozen":
+            return False
+        self.account = account
+        return True
+
+    def events(self, query):
+        lib, server = self.server.library, self.server
+        self.events_platform = self.platform(query)
+        since = query.get("since") or (self.headers.get("Last-Event-ID") or "").strip() or None
+        last = self.event_start(since)
+        key = self.stream_key()
+        if not server.take_stream(key):
+            raise slow_down(server.heartbeat, f"At most {server.event_streams} event streams at once for a token "
+                                              "(SPEC.md § 18.4).")
+        try:
+            self.began = True
+            self.close_connection = True        # the stream ends with the connection
+            self.send_response(200)
+            for k, v in (("Content-Type", "text/event-stream; charset=utf-8"), ("Cache-Control", "no-store"),
+                         ("Connection", "close"), ("X-Accel-Buffering", "no"),
+                         ("Vary", "Authorization, Lantern-Platform")):
+                self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(f"retry: {RETRY_MS}\n\n".encode())
+            self.write_event(lib.token(last), "ready", {"schema": 1})
+            ends, beat = time.monotonic() + server.stream_max, time.monotonic()
+            while True:
+                with lib.changed:
+                    found = self.visible_events(last)
+                    newest = lib.events[-1]["seq"] if lib.events else last
+                    if not found and not server.stopping.is_set():
+                        lib.changed.wait(max(0.05, min(0.25, server.heartbeat - (time.monotonic() - beat))))
+                        found = self.visible_events(last)
+                        newest = lib.events[-1]["seq"] if lib.events else last
+                if server.stopping.is_set():
+                    self.write_event(lib.token(newest), "shutdown", {"schema": 1, "retry": max(1, RETRY_MS // 1000)})
+                    return
+                if not self.still_allowed() or self.client_gone():
+                    return
+                for seq, e, data in found:
+                    self.write_event(lib.token(seq), e["event"], data)
+                    last, beat = seq, time.monotonic()
+                if time.monotonic() - beat >= server.heartbeat:
+                    self.wfile.write(b": heartbeat\n\n")
+                    self.wfile.flush()
+                    beat = time.monotonic()
+                if time.monotonic() >= ends:
+                    return
+                lib.refresh(server.rescan)
+        except OSError:
+            return              # the client went away
+        finally:
+            server.release_stream(key)
+
+    def client_gone(self):
+        """Whether the client closed its stream: its socket readable, and at its end (a client sends nothing on a
+        stream), so that its slot of § 18.4 is free again within a second, not at the next heartbeat."""
+        conn = self.connection
+        try:
+            readable, _, _ = select.select([conn], [], [], 0)
+        except (OSError, ValueError):
+            return True
+        if not readable:
+            return False
+        try:
+            conn.settimeout(0.05)
+            data = conn.recv(1) if isinstance(conn, ssl.SSLSocket) else conn.recv(1, socket.MSG_PEEK)
+        except (TimeoutError, ssl.SSLWantReadError, BlockingIOError, InterruptedError):
+            return False
+        except OSError:
+            return True
+        finally:
+            try:
+                conn.settimeout(None)
+            except OSError:
+                pass
+        return not data
+
+    def write_event(self, eid, event, data):
+        line = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+        self.wfile.write(f"id: {eid}\nevent: {event}\ndata: {line}\n\n".encode())
+        self.wfile.flush()
+
+    # Grants (SPEC.md § 19.3).
+
+    def grant(self, query, hexdigest):
+        if not re.fullmatch(r"[0-9a-f]{64}", hexdigest):
+            raise not_found("A file is named by its SHA-256, lower-case hex.")
+        lib, platform = self.server.library, self.platform(query)
+        with lib.lock:
+            found = None
+            for entry in lib.files.values():
+                kind, p, ref = entry.get("owner", (None, None, None))
+                if entry["sha256"] != hexdigest or kind not in ("app", "homebrew") or (platform and p != platform):
+                    continue
+                hidden = self.title_hidden(p, ref) if kind == "app" else \
+                    self.homebrew_hidden((lib.homebrew.get((p, ref)) or {}).get("doc", {}))
+                if not hidden:
+                    found = entry
+                    break
+        if found is None:
+            raise not_found("No such file for this caller.")
+        exp = int(time.time()) + GRANT_LIFETIME
+        self.send_doc(200, {"schema": 1, "sha256": hexdigest, "size": found["size"],
+                            "grant": make_grant(lib.grant_seed, lib.uid, hexdigest, found["size"], exp),
+                            "expires": utc(exp * 10 ** 9)}, {"Cache-Control": "no-store"})
 
     # Titles (SPEC.md § 7).
 
@@ -2628,23 +3279,7 @@ class Handler(BaseHTTPRequestHandler):
     # Homebrew (SPEC.md § 8).
 
     def homebrew_view(self, entry, full):
-        doc = dict(entry["doc"])
-        if not full:
-            doc["package"] = {k: v for k, v in doc["package"].items() if k != "manifest"}
-            if "packages" in doc:
-                doc["packages"] = [{k: v for k, v in p.items() if k != "manifest"} for p in doc["packages"]]
-        language = None
-        for k, value in entry["texts"].items():
-            doc[k], lang = localized(value, self.prefs())
-            language = language or lang
-        if language:
-            doc["language"] = language
-        if "port" in doc:
-            doc["port"] = json.loads(json.dumps(doc["port"]))
-            for f in data_files(doc["port"].get("requires_data", [])):
-                if "hint" in f:
-                    f["hint"] = localized(localizable(f["hint"]), self.prefs())[0]
-        return doc
+        return homebrew_view(entry, full, self.prefs())
 
     def homebrew_list(self, query):
         platform = self.platform(query)
@@ -2712,7 +3347,7 @@ class Handler(BaseHTTPRequestHandler):
             raise bad_request(f"{name}: {limit} bytes at most, without control characters.")
         return value or None
 
-    def save_fields(self, platform, title_id, kind, version, profile, note, slot=None):
+    def save_fields(self, platform, title_id, kind, version, profile, note, slot=None, encryption=None):
         if kind is not None and kind not in SAVE_KINDS:
             raise bad_request("kind is " + ", ".join(SAVE_KINDS) + ".")
         if version is not None and not is_int(version):
@@ -2723,9 +3358,11 @@ class Handler(BaseHTTPRequestHandler):
             if value is not None and (not isinstance(value, str) or len(value.encode()) > limit
                                       or any(ord(c) < 32 or ord(c) == 127 for c in value)):
                 raise bad_request(f"{what}: {limit} bytes at most, without control characters.")
+        if encryption is not None and not self.may("encrypted_saves"):
+            raise bad_request("This server keeps no encrypted backup (SPEC.md § 9.4).")
         fields = {"platform": platform, "title_id": title_id, "kind": kind, "game_version_code": version,
                   "profile": profile or None, "slot": slot or None, "note": note or None,
-                  "device": (self.record or {}).get("device")}
+                  "device": (self.record or {}).get("device"), "encryption": encryption}
         return {k: v for k, v in fields.items() if v is not None}
 
     def saves_list(self, query):
@@ -2744,10 +3381,12 @@ class Handler(BaseHTTPRequestHandler):
         version = self.headers.get("Lantern-Game-Version")
         if version is not None and not version.isdigit():
             raise bad_request("Lantern-Game-Version is an integer.")
+        encryption = self.headers.get("Lantern-Save-Encryption")
         fields = self.save_fields(platform, title_id, self.headers.get("Lantern-Save-Kind"),
                                   int(version) if version is not None else None,
                                   self.text_header("Lantern-Profile", 64), self.text_header("Lantern-Note", 120),
-                                  self.text_header("Lantern-Save-Slot", 64))
+                                  self.text_header("Lantern-Save-Slot", 64),
+                                  None if encryption is None else encryption_header(encryption))
         data = self.body(saves.body)
         if not hmac.compare_digest(hashlib.sha256(data).digest(), digest):
             raise digest_mismatch("The body's SHA-256 is not the one Content-Digest gives.")
@@ -2755,13 +3394,19 @@ class Handler(BaseHTTPRequestHandler):
         tmp = saves.folder / f".post-{secrets.token_hex(8)}"
         tmp.write_bytes(data)
         try:
-            if not zipfile.is_zipfile(tmp):
-                raise bad_request("A save is a zip archive.")
+            archive_check(data[:16], tmp, fields.get("encryption"))
             entry = saves.add(self.account["name"], tmp, hashlib.sha256(data).hexdigest(), len(data), fields)
         finally:
             if tmp.exists():
                 tmp.unlink()
+        self.saved(entry)
         self.send_doc(201, {"schema": 1, **entry})
+
+    def saved(self, entry):
+        """The event of a backup kept (SPEC.md § 18.2)."""
+        self.server.library.emit("save", {"schema": 1, **{k: entry[k] for k in ("platform", "title_id", "save_id",
+                                                                               "created", "device") if k in entry}},
+                                 {"user": self.account["name"], "platform": entry["platform"]})
 
     def upload_open(self, query, title_id):
         doc = self.request_document(self.body())
@@ -2773,7 +3418,8 @@ class Handler(BaseHTTPRequestHandler):
         if size > saves.size:
             raise Problem(413, "too_large", "Too large", f"A save is {saves.size} bytes at most here.")
         fields = self.save_fields(platform, title_id, doc.get("kind"), doc.get("game_version_code"),
-                                  doc.get("profile"), doc.get("note"), doc.get("slot"))
+                                  doc.get("profile"), doc.get("note"), doc.get("slot"),
+                                  None if doc.get("encryption") is None else encryption_of(doc["encryption"]))
         uid, expires = saves.open(self.account["name"], fields, size, sha)
         self.send_doc(201, {"schema": 1, "upload": f"{BASE}/v1/uploads/{uid}", "chunk_size": saves.chunk,
                             "offset": 0, "expires": expires}, {"Location": f"{BASE}/v1/uploads/{uid}"})
@@ -2803,6 +3449,7 @@ class Handler(BaseHTTPRequestHandler):
         if at < s["size"]:
             return self.send_head(204, None, {"Upload-Offset": str(at), "Cache-Control": "no-store"})
         entry = saves.finish(uid)
+        self.saved(entry)
         self.send_doc(201, {"schema": 1, **entry}, {"Upload-Offset": str(at)})
 
     def save_one(self, query, title_id, save_id):
@@ -2922,6 +3569,117 @@ class Handler(BaseHTTPRequestHandler):
             raise not_found("No such request of this account.")
         self.send_head(204, None, {})
 
+    # Sync (SPEC.md § 20).
+
+    def device(self):
+        """The caller's device id (SPEC.md § 5.7), its key in the collection installed; None without a token."""
+        header = (self.headers.get("Authorization") or "").partition(" ")[2].strip()
+        return device_id(token_hash(header)) if self.record is not None else None
+
+    @staticmethod
+    def sync_collection(name):
+        if name not in SYNC_COLLECTIONS:
+            raise not_found("No such collection: " + ", ".join(SYNC_COLLECTIONS) + ".")
+        return name
+
+    def sync_event(self, name, rev):
+        self.server.library.emit("sync", {"schema": 1, "collection": name, "rev": rev},
+                                 {"user": self.account["name"]})
+
+    def sync_overview(self, query):
+        generation, collections = self.server.sync.overview(self.account["name"])
+        doc = {"schema": 1, "generation": generation, "collections": collections}
+        if self.device():
+            doc["device"] = self.device()
+        self.send_doc(200, doc)
+
+    def sync_erase(self, query):
+        self.server.sync.erase(self.account["name"])
+        for name in SYNC_COLLECTIONS:
+            self.sync_event(name, 0)
+        self.send_head(204, None, {})
+
+    def sync_read(self, query, name):
+        name = self.sync_collection(name)
+        since = query.get("since")
+        if since is not None and not since.isdigit():
+            raise bad_request("since is a revision, an integer.")
+        generation, rev, items = self.server.sync.read(self.account["name"], name, None if since is None else int(since))
+        _, size, cursor = self.listing_args(query, ("name",))
+        entries = [{"doc": i, "keys": {"name": (i["rev"], i["key"]) if since is not None else (i["key"],)}}
+                   for i in items]
+        page = self.server.library.page(entries, "name", size, cursor,
+                                        ("sync", self.account["name"], name, since, generation))
+        self.send_doc(200, {"schema": 1, "collection": name, "generation": generation, "rev": rev,
+                            "items": page["items"], "next": page["next"]})
+
+    def sync_item(self, name, item):
+        """An item sent, checked against its collection's form (SPEC.md § 20.2, § 20.4); 400 otherwise."""
+        if not (isinstance(item, dict) and isinstance(item.get("key"), str) and isinstance(item.get("updated"), str)
+                and sync_time(item["updated"], datetime.now(timezone.utc), self.server.skew) is not None):
+            raise bad_request("An item is {key, value, updated} or {key, deleted: true, updated}, updated a UTC time "
+                              "to the millisecond (SPEC.md § 20.2).")
+        key = item["key"]
+        if "deleted" in item and "value" in item:
+            raise bad_request("An item has a value, or deleted: true, not both.")
+        if item.get("deleted") is True:
+            out = {"key": key, "deleted": True, "updated": item["updated"]}
+        elif "value" in item and "deleted" not in item:
+            out = {"key": key, "value": item["value"], "updated": item["updated"]}
+        else:
+            raise bad_request("An item has a value, or deleted: true.")
+        value = out.get("value")
+        if name == "wishes":
+            platform, _, title_id = key.partition("/")
+            if not (PLATFORM.match(platform) and title_id_ok(platform, title_id)):
+                raise bad_request(f"{key[:80]!r}: a wish's key is <platform>/<title_id> (SPEC.md § 20.2).")
+            if value is not None and not (
+                    isinstance(value, dict) and value.get("platform") == platform and value.get("title_id") == title_id
+                    and all(k not in value or (isinstance(value[k], str) and len(value[k].encode()) <= limit
+                                               and plain(value[k], limit) == value[k])
+                            for k, limit in (("name", 512), ("note", 120)))):
+                raise bad_request("A wish is {platform, title_id, name?, note?}, those of its key.")
+        else:
+            if not re.fullmatch(r"d_[0-9a-f]{16}", key):
+                raise bad_request("An item of installed is keyed by its device's id, d_….")
+            if value is not None and not (
+                    isinstance(value, dict) and isinstance(value.get("device"), str) and 0 < len(value["device"].encode()) <= 512
+                    and PLATFORM.match(str(value.get("platform", "")))
+                    and isinstance(value.get("apps", []), list) and len(value.get("apps", [])) <= SYNC_ITEMS
+                    and all(isinstance(a, dict) and CORE_ID.match(str(a.get("app_id", ""))) and is_int(a.get("version_code"))
+                            for a in value.get("apps", []))
+                    and isinstance(value.get("homebrew", []), list) and len(value.get("homebrew", [])) <= SYNC_ITEMS
+                    and all(isinstance(h, dict) and HOMEBREW_ID.match(str(h.get("id", ""))) and is_int(h.get("build"))
+                            for h in value.get("homebrew", []))):
+                raise bad_request("installed is {device, platform, apps: [{app_id, version_code}], "
+                                  "homebrew: [{id, build}]} (SPEC.md § 20.2).")
+            if key != self.device():
+                raise Problem(403, "forbidden", "Forbidden", "A device writes its own item of installed only "
+                              "(SPEC.md § 20.4).")
+        return out
+
+    def sync_write(self, query, name):
+        name = self.sync_collection(name)
+        sync, user = self.server.sync, self.account["name"]
+        if self.method == "DELETE":
+            sync.erase(user, name)
+            self.sync_event(name, 0)
+            return self.send_head(204, None, {})
+        doc = self.request_document(self.body())
+        generation, items = doc.get("generation"), doc.get("items")
+        if not isinstance(generation, str):
+            raise bad_request("generation is the one a read gave (SPEC.md § 20.4).")
+        if not (isinstance(items, list) and 1 <= len(items) <= SYNC_WRITE):
+            raise bad_request(f"items lists 1 to {SYNC_WRITE} items.")
+        checked = [self.sync_item(name, i) for i in items]
+        if len({i["key"] for i in checked}) != len(checked):
+            raise bad_request("An item's key twice in one write.")
+        before = sync.overview(user)[1][name]["rev"]
+        generation, rev, out = sync.merge(user, name, generation, checked, self.headers.get("If-Match"))
+        if rev != before:
+            self.sync_event(name, rev)
+        self.send_doc(200, {"schema": 1, "collection": name, "generation": generation, "rev": rev, "items": out})
+
     # Administration (SPEC.md § 5.7), scope admin. Never a token, a hash or a password in its documents.
 
     def admin_page(self, docs, query, scope, key):
@@ -2961,6 +3719,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_doc(201, {"schema": 1, **self.user_doc(user)})
 
     def admin_user(self, query, name):
+        if self.method == "DELETE":     # SPEC.md § 5.7: confirmed by the name, never the caller's own
+            if self.server.accounts.get(name) is None:
+                raise not_found("No such account.")
+            if query.get("confirm") != name:
+                raise bad_request("confirm repeats the account's name: ?confirm=<name> (SPEC.md § 5.7).")
+            if name == self.account["name"]:
+                raise Problem(409, "conflict", "Conflict", "An admin does not delete the account they use.")
+            self.server.delete_account(name)
+            return self.send_head(204, None, {})
         doc = self.request_document(self.body())
         state, scopes = doc.get("state"), doc.get("scopes")
         if state is None and scopes is None:
@@ -3114,7 +3881,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise Problem(410, "gone", "Invitation gone", "This invitation is unknown, expired, revoked or used "
                               "up (SPEC.md § 5.5).")
         pairing = self.server.pairing
-        entry = pairing.start(device.strip(), known, key)
+        entry = pairing.start(device.strip(), known, key, waiting=invitation is None)
         if invitation is not None:      # approved at once, as the invitation says (SPEC.md § 5.5)
             iid, inv = invitation
             pairing.approve(entry, inv["user"], inv["scopes"], inv.get("rating_cap"), iid)
@@ -3448,12 +4215,16 @@ class LanternServer(ThreadingHTTPServer):
 
     def __init__(self, address, library, accounts, name="Lantern reference server", rescan=30.0,
                  quiet=False, handler=Handler, tls=None, spki=None, token_lifetime=None, saves=None,
-                 bound_only=False, motd=None, skew=signatures.SKEW):
+                 bound_only=False, motd=None, skew=signatures.SKEW, sync=None, heartbeat=HEARTBEAT,
+                 event_streams=EVENT_STREAMS, wait_limit=WAIT_LIMIT, stream_max=STREAM_MAX):
         """`tls`: an ssl.SSLContext; without it, only a loopback address (SPEC.md § 2).
         `spki`: the SHA-256 of the certificate's key, for /pair (SPEC.md § 5.3).
         `saves`: a Saves, by default in the library's .lantern-saves/.
         `bound_only`: issue and take only tokens bound to a device key (SPEC.md § 5.4).
-        `motd`: the handshake's message, a text or one per language (SPEC.md § 4.2, § 2.2)."""
+        `motd`: the handshake's message, a text or one per language (SPEC.md § 4.2, § 2.2).
+        `sync`: a Sync, by default in the library's .lantern-sync.json (SPEC.md § 20).
+        `heartbeat`, `event_streams`, `wait_limit`: limits.heartbeat, .event_streams and .wait (SPEC.md § 18.4);
+        `stream_max`: the seconds a stream lasts at most."""
         if tls is None and not is_loopback(address[0]):
             raise ValueError(f"plain HTTP only on a loopback address, not {address[0] or 'every address'}: "
                              "give --tls-cert and --tls-key (SPEC.md § 2)")
@@ -3470,11 +4241,63 @@ class LanternServer(ThreadingHTTPServer):
         self.tokens = Tokens(library)
         accounts.attach(library)
         self.invitations = Invitations(library)
-        self.pairing = Pairing(self.tokens, accounts, lifetime=token_lifetime)
+        self.pairing = Pairing(self.tokens, accounts, lifetime=token_lifetime, announce=self.announce_pairing)
         self.bound_only, self.motd, self.skew = bound_only, motd, skew
+        self.sync = sync if sync is not None else Sync(library.root / ".lantern-sync.json", skew=skew)
+        self.heartbeat, self.event_streams, self.wait_limit = heartbeat, event_streams, wait_limit
+        self.stream_max = stream_max
+        self.stopping = threading.Event()
+        self.streams, self.streams_lock = {}, threading.Lock()
         self.nonces = signatures.Nonces(2 * skew)
         self.pair_limiter = Limiter(*PAIR_RATE)
         self.attempts = Limiter(*PAIR_ATTEMPTS)
+
+    def announce_pairing(self, entry):
+        """The event of a pairing waiting (SPEC.md § 18.2), as § 5.7 lists it."""
+        data = {"schema": 1, "id": entry["id"], "code": Pairing.shown(entry["code"]), "device": entry["device"],
+                "expires": entry["expires"]}
+        if entry.get("key"):
+            data["key"] = signatures.short_fingerprint(entry["key"])
+        self.library.emit("pairing", data)
+
+    def take_stream(self, key):
+        with self.streams_lock:
+            if self.streams.get(key, 0) >= self.event_streams:
+                return False
+            self.streams[key] = self.streams.get(key, 0) + 1
+            return True
+
+    def release_stream(self, key):
+        with self.streams_lock:
+            self.streams[key] -= 1
+            if not self.streams[key]:
+                del self.streams[key]
+
+    def shutdown(self):
+        """Stops serving: every stream first gets the event shutdown (SPEC.md § 18.2)."""
+        self.stopping.set()
+        with self.library.changed:
+            self.library.changed.notify_all()
+        deadline = time.monotonic() + 2
+        while self.streams and time.monotonic() < deadline:
+            time.sleep(0.02)
+        ThreadingHTTPServer.shutdown(self)
+
+    def delete_account(self, name):
+        """Deletes an account and what is its (SPEC.md § 5.7): tokens, invitations, pairings waiting, save backups,
+        requests and sync data, at once."""
+        self.accounts.delete(name)      # 409 for an account of users.json
+        self.tokens.revoke_user(name)
+        self.invitations.revoke_user(name)
+        self.pairing.forget_user(name)
+        self.saves.delete_user(name)
+        lib = self.library
+        with lib.lock:
+            lib.state["requests"] = [r for r in lib.requests() if not (isinstance(r, dict) and r.get("user") == name)]
+            lib.save_state()
+        self.sync.forget(name)
+        with lib.changed:
+            lib.changed.notify_all()    # its streams end at once
 
 
 def discovery(server, port, http_port):
@@ -3525,6 +4348,18 @@ def discovery_reply(server, http_port, data, address, limiter):
     return json.dumps(reply, ensure_ascii=False, separators=(",", ":")).encode()
 
 
+def advertise(server, http_port, port=mdns.PORT, address=None):
+    """DNS-SD over multicast DNS (SPEC.md § 4.1): _lantern._tcp, with the TXT keys uid, path and v; None when
+    the port cannot be bound."""
+    try:
+        return mdns.Responder("_lantern._tcp", server.name, http_port,
+                              {"uid": server.library.uid, "path": BASE, "v": "1"},
+                              "lantern-" + server.library.uid[:8], address, port).serve()
+    except OSError as e:
+        log(f"DNS-SD: UDP {port} not available ({e}); discovery's datagram still works")
+        return None
+
+
 def tokens_command(state_path, revoke):
     """--tokens and --revoke: the state file's tokens, listed or one revoked."""
     doc = read_versioned(Path(state_path), "state")
@@ -3569,6 +4404,13 @@ def main(argv=None):
     p.add_argument("--revoke", metavar="ID", help="revoke a token (its id from --tokens), then exit")
     p.add_argument("--discovery", action="store_true", help="answer LAN discovery on UDP")
     p.add_argument("--discovery-port", type=int, default=DISCOVERY_PORT)
+    p.add_argument("--dns-sd", action="store_true", help="advertise _lantern._tcp with multicast DNS (SPEC.md § 4.1)")
+    p.add_argument("--dns-sd-port", type=int, default=mdns.PORT, help=argparse.SUPPRESS)
+    p.add_argument("--sync-file", help="where sync data is kept (default <library>/.lantern-sync.json)")
+    p.add_argument("--export", metavar="DIR", help="write the library as a static library into DIR (SPEC.md § 21), "
+                                                   "then exit")
+    p.add_argument("--page-size", type=int, default=100, help="--export: items per page (1 to 1000)")
+    p.add_argument("--language", default="en", help="--export: the language of its texts")
     p.add_argument("--quiet", action="store_true", help="no request log")
     p.add_argument("--hash-password", action="store_true", help="print a password's hash for --users")
     args = p.parse_args(argv)
@@ -3591,6 +4433,17 @@ def main(argv=None):
         tls.load_cert_chain(args.tls_cert, args.tls_key)
         spki = spki_sha256(Path(args.tls_cert).read_text(encoding="ascii"))
     library = Library(args.library, args.state or Path(args.library) / ".lantern-state.json")
+    if args.export:
+        if not 1 <= args.page_size <= 1000:
+            p.error("--page-size is 1 to 1000")
+        try:
+            from server import static
+        except ImportError:
+            import static
+        done = static.export(sys.modules[__name__], library, args.export, args.page_size, args.language, args.name)
+        log(f"exported {done['documents']} document(s) and {done['files']} file(s) to {args.export} "
+            f"({', '.join(done['platforms']) or 'no platform'})")
+        return 0
     saves = Saves(args.saves or Path(args.library) / ".lantern-saves")
     if not saves.available:
         log(f"{saves.path}: save backups unavailable (an index this server cannot read or write)")
@@ -3604,12 +4457,15 @@ def main(argv=None):
     try:
         server = LanternServer((args.host, args.port), library, Accounts(args.users), args.name, args.rescan,
                                args.quiet, tls=tls, spki=spki, token_lifetime=lifetime, saves=saves,
-                               bound_only=args.bound_only, motd=motd)
+                               bound_only=args.bound_only, motd=motd,
+                               sync=Sync(args.sync_file or Path(args.library) / ".lantern-sync.json"))
     except ValueError as e:
         p.error(str(e))
     port = server.server_address[1]
     if args.discovery:
         discovery(server, args.discovery_port, port)
+    if args.dns_sd:
+        advertise(server, port, args.dns_sd_port, None if args.host in ("0.0.0.0", "::", "") else args.host)
     log(f"{len(library.apps)} app(s), {len(library.homebrew)} homebrew, {len(library.cheats)} cheat set(s) "
         f"from {library.root}, {'public' if server.accounts.public else 'private'}, uid {library.uid}")
     scheme = "https" if tls else "http"
@@ -3623,7 +4479,10 @@ def main(argv=None):
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        pass
+        server.stopping.set()       # the streams get shutdown (SPEC.md § 18.2) before the process ends
+        with library.changed:
+            library.changed.notify_all()
+        time.sleep(0.5)
     return 0
 
 

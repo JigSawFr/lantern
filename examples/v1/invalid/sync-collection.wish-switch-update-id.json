@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "collection": "wishes",
+  "generation": "g_4Rz1",
+  "rev": 42,
+  "items": [
+    {
+      "key": "switch/0100ABCD00010000",
+      "value": {
+        "platform": "switch",
+        "title_id": "0100ABCD00010800"
+      },
+      "updated": "2026-10-30T09:12:03.250Z",
+      "rev": 41
+    }
+  ],
+  "next": null
+}

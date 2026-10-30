@@ -17,12 +17,17 @@ refused), keyed pairing and its QR address, languages, compression,
 `Deprecation` and `Sunset`, the cold start's budget (Annex B.8), and LAN
 discovery when asked for (--discover); with the scope `admin`, the
 administration API, invitations and their limits, and rating caps hiding
-titles everywhere. Each check prints PASS, FAIL, WARN (a SHOULD not met) or
+titles everywhere; then what 0.5 adds (checks_v05.py): event streams and
+long polling, grants and mirrors (and a peer, with --peer), sync, encrypted
+backups, deleting an account, DNS-SD (--dns-sd), and the rate limits of
+pairing, last. With --static, it checks a static library instead
+(static_check.py). Each check prints PASS, FAIL, WARN (a SHOULD not met) or
 SKIP, with the SPEC.md section it comes from and the requirement ids it
 covers (SPEC.md § 3.5); the exit code is 1 when one fails. At the end it
 prints the conformance levels the server reaches (SPEC.md § 17): `Lantern
-Core`, then `+titles`, `+homebrew`, `+saves`, `+cheats`, `+requests` and
-`+admin`.
+Core`, then `+titles`, `+homebrew`, `+saves`, `+cheats`, `+requests`,
+`+admin`, `+events`, `+peers`, `+sync` and `+encrypted_saves`; or `Lantern
+Static` for a static library.
 
 The token is one a device got by pairing (SPEC.md § 5.2), and --key the file
 of the device's key (its 32-byte Ed25519 seed, base64) when the token is
@@ -38,8 +43,12 @@ answer is the same request), then withdraws it. With `admin`, it pairs two
 devices of its own through the administration API (one approved with a
 rating cap, one refused), makes an invitation and redeems it, and revokes
 what it paired and made; with --admin-writes, it also makes an account of
-its own, `lantern-conformance-…`, and freezes it: SPEC.md has no route to
-delete an account, so that one stays, frozen, without a device. It changes
+its own, `lantern-conformance-…`, freezes and thaws it, pairs a device to it
+by an invitation, and deletes it (SPEC.md § 5.7). With `sync.write`, it
+writes wishes for title ids of its own and deletes them (a deletion stays
+listed, as § 20.5 keeps it). Last, it asks for pairing codes and redeems
+wrong invitation codes until the server answers 429 (--rate-probe at most):
+the server then limits pairing from its address for a while. It changes
 nothing else.
 Rules that the suite cannot see (a client's, such as ignoring unknown
 fields, pinning, asking before a path that needs consent, checking a port's
@@ -74,17 +83,20 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import checks_v05
 import lantern_client as client
+import static_check
 
 try:                    # Python 3.14 and later: zstd, to read what a server compresses with it
     from compression import zstd
 except ImportError:
     zstd = None
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
-            "signatures", "admin")
-LEVELS = ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin")    # SPEC.md § 17
+            "signatures", "admin", "events", "peers", "sync", "encrypted_saves")
+LEVELS = ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
+          "encrypted_saves")    # SPEC.md § 17; and Lantern Static, for a static library
 LEVEL_NAMES = {"core": "Lantern Core", **{x: "+" + x for x in LEVELS[1:]}}
 BUDGET = 256 << 10      # a cold start's JSON, as it travels (SPEC.md Annex B.8)
 JSON_LIMIT = 32 << 20
@@ -101,7 +113,7 @@ SAVE_KINDS = ("account", "device", "bcat", "cache", "other")
 # SPEC.md § 12: the codes each status may carry.
 CODES = {400: {"bad_request", "key_required"},
          401: {"unauthorized", "signature_required", "signature_invalid", "signature_expired", "signature_replayed"}, 403: {"forbidden", "account_frozen"},
-         404: {"not_found"}, 405: {"bad_request"}, 409: {"conflict"}, 410: {"gone"},
+         404: {"not_found"}, 405: {"bad_request"}, 409: {"conflict"}, 410: {"gone"}, 412: {"precondition_failed"},
          413: {"too_large"}, 416: {"bad_request"}, 422: {"unsupported_schema", "digest_mismatch"},
          429: {"slow_down"}, 500: {"internal"}, 503: {"unavailable"}}
 # A route per family, to see whether the server honours what it declares (SPEC.md § 4.2).
@@ -116,6 +128,8 @@ PROBES = {
     "requests": ("GET", "/v1/requests", None, "requests"),
     "pairing": ("POST", "/v1/pairing", PAIRING, "pairing-code"),
     "admin": ("GET", "/v1/admin/users?page_size=1", None, "admin-users"),
+    "peers": ("GET", "/v1/grants/sha256/{sha256}", None, "grant"),
+    "sync": ("GET", "/v1/sync", None, "sync"),
 }
 # Routes that take a JSON document, by family, with a document of schema 2
 # (SPEC.md § 3.2, § 12), sent with a platform where the route needs one.
@@ -179,6 +193,23 @@ REQS = {
     "auth.no-basic": ["L-5.1-1"], "documents.schema": ["L-3.2-1"], "documents.type": ["L-2-4"],
     "documents.limits": ["L-13-2"], "documents.date": ["L-5.4-7"], "caching.private": ["L-14-2"],
     "deprecation.headers": ["L-3.4-1", "L-3.4-2"],
+    # Draft 0.5 (checks_v05.py, static_check.py).
+    "events.stream": ["L-18.1-1", "L-18.1-2", "L-18.1-7", "L-18.4-1"], "events.heartbeat": ["L-18.1-6"],
+    "events.resume": ["L-18.1-3", "L-18.2-1", "L-18.3-2"], "events.bad-token": ["L-18.1-4"],
+    "events.long-poll": ["L-18.3-1", "L-18.3-3"], "events.limit": ["L-18.4-2"], "events.revoked": ["L-18.1-8"],
+    "peers.handshake": ["L-19.3-3"], "peers.grant": ["L-19.3-1", "L-19.3-2"], "peers.mirrors": ["L-19.2-2"],
+    "peer.refused": ["L-19.4-1", "L-19.4-5"], "peer.serves": ["L-19.4-2"], "peer.rate": ["L-19.4-4"],
+    "peer.discovery": ["L-19.5-1"],
+    "sync.overview": [], "sync.write": ["L-20.4-1", "L-20.3-1"], "sync.future": ["L-20.4-2"],
+    "sync.if-match": ["L-20.4-3"], "sync.generation": ["L-20.4-4"], "sync.installed": ["L-20.4-5"],
+    "sync.malformed": ["L-20.4-6"], "sync.limits": ["L-20.5-4"],
+    "e2e.upload": ["L-9.4-4"], "e2e.not-offered": ["L-9.4-5"],
+    "admin.users-delete": ["L-5.7-6", "L-5.7-7", "L-20.5-1"],
+    "pairing.rate-limit": ["L-5.2-8"], "invitations.rate-limit": ["L-5.5-3"], "discovery.dns-sd": ["L-4.1-4"],
+    "transport.pin": [],
+    "static.handshake": ["L-21.2-1", "L-3.2-5"], "static.pages": ["L-21.1-1"], "static.titles": ["L-21.1-1"],
+    "static.homebrew": ["L-21.1-1", "L-8.1-3"], "static.cheats": ["L-21.1-1"], "static.paths": ["L-21.1-2"],
+    "static.files": ["L-21.1-1"],
 }
 # Rules only a client keeps: the suite cannot see them (SPEC.md § 17).
 CLIENT_RULES = [
@@ -214,18 +245,33 @@ CLIENT_RULES = [
     ("9.1", ["L-9.1-2"], "A save is not restored on an older game without a warning"),
     ("12", ["L-12-4"], "A code the client does not know is read by its status"),
     ("13", ["L-13-1"], "What a client reads is bounded"),
+    ("9.4", ["L-9.4-1", "L-9.4-2", "L-9.4-3"],
+     "An encrypted backup is checked whole before it is restored; the key never leaves; a new file key each time"),
+    ("9.4", ["L-9.4-6", "L-9.4-7", "L-9.4-8", "L-9.4-9"],
+     "Profile and note left out of an encrypted backup; a phrase's check; the phrase shown on request only"),
+    ("18.1", ["L-18.1-5", "L-18.1-9"], "Unknown events are skipped; a client waits retry and backs off"),
+    ("18.4", ["L-18.4-3"], "One stream per server at most"),
+    ("19.1", ["L-19.1-1", "L-19.1-2", "L-19.1-3"],
+     "A mirror's or a peer's file is checked as the server's; no credential goes to them"),
+    ("19.2", ["L-19.2-1"], "A mirror over plain HTTP only on a private network"),
+    ("19.4", ["L-19.4-6"], "A grant over plain HTTP only on a private network"),
+    ("19.5", ["L-19.5-2"], "Peers looked for at most once a minute, 2 at once"),
+    ("20.1", ["L-20.1-1", "L-20.1-2", "L-20.1-3"], "Sync only with the user's consent, installed games by name"),
+    ("20.3", ["L-20.3-2"], "Another generation: nothing written back, sync off, the user asked again"),
+    ("21.3", ["L-21.3-1", "L-21.3-2"], "A static library's files read whatever their type, checked; missing computed"),
 ]
 # A server's rules the suite cannot see from outside, and why.
 UNSEEN = {
     "L-3.1-1": "keeping an old major version needs one",
     "L-3.4-3": "a Sunset is in the future of a run", "L-3.4-4": "as is an older schema's last day",
     "L-4.1-2": "the suite asks from one network", "L-4.1-3": "it would take many datagrams",
-    "L-4.1-4": "DNS-SD is not read by the suite",
     "L-5.1-2": "a token's entropy cannot be measured from one", "L-5.1-3": "what a server keeps is inside it",
     "L-5.2-2": "the protocol has no route for it, which is what the rule says",
-    "L-5.2-8": "it would take many requests; the reference server's tests check it",
-    "L-5.5-3": "it would take many requests; the reference server's tests check it",
     "L-7.1-2": "the suite does not fetch images",
+    "L-18.2-2": "a server stops when its owner says, not the suite",
+    "L-19.4-3": "whether a peer's user allowed it, and its networks, are the device's",
+    "L-20.5-2": "thirty days are longer than a run",
+    "L-20.5-3": "the data of a deleted account cannot be read any more",
 }
 
 
@@ -301,11 +347,23 @@ class Client:
     """One HTTP request per connection, with the caller chosen per request; signed (SPEC.md § 5.4) when the
     token is bound to the key given."""
 
-    def __init__(self, origin, token, context, timeout, seed=None):
-        self.origin, self.token, self.seed = origin, token, seed
+    def __init__(self, origin, token, context, timeout, seed=None, pin=None):
+        self.origin, self.token, self.seed, self.pin = origin, token, seed, pin
         self.context, self.timeout, self.log = context, timeout, []
         self.offset = 0         # the server's clock minus this one's, from its Date (SPEC.md Annex B.9)
         self.peer_spki = None   # the SHA-256 of the key the server's certificate carries, over TLS
+
+    def check_pin(self, conn):
+        """The key of the server's certificate, which must be the pinned one with --pin (SPEC.md § 5.3)."""
+        if self.origin.scheme != "https" or conn.sock is None:
+            return
+        der = conn.sock.getpeercert(binary_form=True)
+        spki = spki_of(der) if der else None
+        if self.peer_spki is None:
+            self.peer_spki = spki
+        if self.pin and spki != self.pin:
+            conn.close()
+            raise ConnectionError(f"the server's key {spki} is not the one pinned, {self.pin}: nothing sent")
 
     def uri(self, path):
         u = self.origin
@@ -348,10 +406,7 @@ class Client:
         label = "device" if token else "anonymous" if auth == "none" or (auth == "token" and self.token is None) else auth
         try:
             conn.request(method, path, body=body, headers=hdrs)
-            if u.scheme == "https" and self.peer_spki is None and conn.sock is not None:
-                der = conn.sock.getpeercert(binary_form=True)
-                if der:
-                    self.peer_spki = spki_of(der)
+            self.check_pin(conn)
             r = conn.getresponse()
             data = b"" if method == "HEAD" else r.read(limit + 1)
             res = Response(method, path, label, r.status, r.headers, data[:limit], len(data) > limit, raw, platform)
@@ -368,14 +423,16 @@ class Client:
         return res
 
 
-class Suite:
+class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
+    version = VERSION
+
     def __init__(self, args):
         self.args = args
         u = urlsplit(args.url if "://" in args.url else "https://" + args.url)
         self.origin = u
         if u.scheme == "https":
             ctx = ssl.create_default_context(cafile=args.cafile)
-            if args.insecure:
+            if args.insecure or args.pin:   # with --pin, the pinned key is what is trusted (SPEC.md § 5.3)
                 ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
         else:
             ctx = None
@@ -387,7 +444,10 @@ class Suite:
                 sys.exit(f"conformance: {args.key} is not a device key (its 32-byte seed, base64)")
             if len(seed) != 32:
                 sys.exit(f"conformance: {args.key} is not a device key (its 32-byte seed, base64)")
-        self.http = Client(u, args.token, ctx, args.timeout, seed)
+        pin = args.pin.lower().replace(":", "") if args.pin else None
+        if pin and not re.fullmatch(r"[0-9a-f]{64}", pin):
+            sys.exit("conformance: --pin is the SHA-256 of the server's SPKI, 64 hex digits (SPEC.md § 5.3)")
+        self.http = Client(u, args.token, ctx, args.timeout, seed, pin)
         self.seed = seed
         self.results = []
         self.level = "core"     # the level the checks being run count for (SPEC.md § 17)
@@ -473,6 +533,8 @@ class Suite:
             if self.args.token and not self.seed:
                 print("A token bound to a device key needs its key: --key FILE.", file=self.out)
             return self.summary()
+        if self.args.pin:
+            self.check("transport.pin", "5.3", "The server's certificate carries the pinned key", self.c_pin)
         self.check("handshake.v1", "4.2", "GET <base>/v1/ is the same handshake", self.c_v1)
         self.check("handshake.versions", "3.1", "The server serves version 1", self.c_versions)
         self.check("handshake.anonymous", "4.2", "Without credentials: account anonymous", self.c_anonymous)
@@ -510,7 +572,7 @@ class Suite:
         if mine["library"]:
             self.check("apps.first-page", "6.2", "GET <base>/v1/apps is a valid page", self.c_first_page)
         for family in FAMILIES:
-            if family != "signatures":
+            if family not in ("signatures", "encrypted_saves"):
                 self.level = family if family in LEVELS else "core"
                 self.check(f"features.{family}", "4.2", f"Feature {family} ({mine[family]}) is honoured",
                            lambda f=family: self.c_feature(f, "token", mine[f]))
@@ -650,6 +712,13 @@ class Suite:
                            self.c_save_too_large)
                 self.check("saves.single", "9.2", "One request: Content-Digest required, checked, then kept",
                            self.c_save_single)
+                self.level = "encrypted_saves"
+                if mine["encrypted_saves"]:
+                    self.check("e2e.upload", "9.4", "An encrypted backup: uploaded and sent in one request, kept as "
+                               "sent, listed with its encryption", self.c_e2e_upload)
+                self.level = "saves"
+                self.check("e2e.not-offered", "9.4", "Without encrypted_saves, a backup with an encryption gives 400",
+                           self.c_e2e_not_offered)
                 self.check("saves.cleanup", "9.1", "What the suite made is deleted (204), then gone (404)",
                            self.c_save_cleanup)
             else:
@@ -670,6 +739,50 @@ class Suite:
                        "once", self.c_admin_devices)
             self.check("admin.invitations", "5.5", "An invitation: made, listed, redeemed once, then 410; revoked",
                        self.c_admin_invitations)
+            self.check("admin.users-delete", "5.7", "An account deleted: confirmed by its name, its token and "
+                       "invitations dead, its sync data erased", self.c_admin_users_delete)
+        self.level = "events"
+        if mine["events"]:
+            self.check("events.stream", "18.1", "The stream: retry, ready and its id, never compressed; limits",
+                       self.c_events_stream)
+            self.check("events.resume", "18.1", "An event of the suite's own: on the stream, again with "
+                       "Last-Event-ID, in a long poll, not on another platform's stream", self.c_events_resume)
+            self.check("events.bad-token", "18.1", "A Last-Event-ID never given: 400 or 410", self.c_events_bad_token)
+            self.check("events.long-poll", "18.3", "changes with wait: answers by then; wait without since gives 400",
+                       self.c_events_long_poll)
+            self.check("events.heartbeat", "18.1", "Something on the stream every limits.heartbeat seconds",
+                       self.c_events_heartbeat)
+            self.check("events.limit", "18.4", "Beyond limits.event_streams: 429 with Retry-After", self.c_events_limit)
+            self.check("events.revoked", "18.1", "A revoked device's stream ends by its next heartbeat",
+                       self.c_events_revoked)
+        self.level = "peers"
+        if mine["peers"]:
+            self.check("peers.handshake", "19.3", "peers: a grant key of 32 bytes, the same for every caller",
+                       self.c_peers_handshake)
+            self.check("peers.grant", "19.3", "Grants for files of the library verify; an unknown file gives 404",
+                       self.c_peers_grant)
+            self.check("peers.mirrors", "19.2", "Mirrors: HTTPS, or HTTP on a private network, no token in them",
+                       self.c_peers_mirrors)
+            self.check("peer.refused", "19.4", "The peer: without a grant, with a changed one or another file's, 403",
+                       self.c_peer_refused)
+            self.check("peer.serves", "19.4", "The peer serves a file granted: its bytes, Repr-Digest, ranges",
+                       self.c_peer_serves)
+            self.check("peer.discovery", "19.5", "The peer answers discovery that asks for peers, and only that",
+                       self.c_peer_discovery)
+            self.check("peer.rate", "19.4", "The peer limits requests: 429 with Retry-After", self.c_peer_rate)
+        self.level = "sync"
+        if mine["sync"]:
+            self.check("sync.overview", "20.3", "GET <base>/v1/sync: generation, collections, the device's id",
+                       self.c_sync_overview)
+            self.check("sync.write", "20.4", "Items merged by the rule: kept, not replaced by an older, a deletion "
+                       "wins a tie; listed since a revision", self.c_sync_write)
+            self.check("sync.future", "20.4", "An updated far ahead is taken as the server's time", self.c_sync_future)
+            self.check("sync.if-match", "20.4", "If-Match of another revision: 412, nothing changed",
+                       self.c_sync_if_match)
+            self.check("sync.generation", "20.4", "A write of another generation: 409", self.c_sync_generation)
+            self.check("sync.installed", "20.4", "Another device's item of installed: 403", self.c_sync_installed)
+            self.check("sync.malformed", "20.4", "An item of another form: 400", self.c_sync_malformed)
+            self.check("sync.limits", "20.5", "limits.sync_items", self.c_sync_limits, level="should")
         self.level = "core"
         for family, (path, _) in BODIES.items():
             if mine[family] and (family != "saves" or "saves" in self.scopes()):
@@ -679,6 +792,13 @@ class Suite:
         self.level = "core"
         self.check("errors.unknown-route", "12", "An unknown route gives 404 not_found", self.c_unknown_route)
         self.check("discovery.reply", "4.1", "LAN discovery reply", self.c_discovery)
+        self.check("discovery.dns-sd", "4.1", "DNS-SD: _lantern._tcp, its uid, path, versions and port",
+                   self.c_dns_sd, level="should")
+        if self.features(self.hello_anon)["pairing"]:
+            self.check("invitations.rate-limit", "5.5", "Wrong invitation codes from one address: 429 slow_down",
+                       self.c_invitation_rate)
+            self.check("pairing.rate-limit", "5.2", "Pairing requests from one address: 429 slow_down",
+                       self.c_pairing_rate)
         for section, reqs, rule in CLIENT_RULES:
             self.check("client-rule", section, f"{rule} [{' '.join(reqs)}]", client_rule)
         # Over every response the run saw.
@@ -730,6 +850,10 @@ class Suite:
         return 1 if counts["FAIL"] or not self.results else 0
 
     # Transport and handshake (SPEC.md § 2, 4).
+
+    def c_pin(self):
+        expect(self.http.peer_spki == self.http.pin, f"the server's key {self.http.peer_spki}, pinned {self.http.pin}")
+        return f"SPKI {self.http.pin[:16]}…"
 
     def c_https(self):
         if self.origin.scheme == "https":
@@ -870,10 +994,15 @@ class Suite:
 
     def probe(self, family, auth):
         method, path, body, schema = PROBES[family]
-        path = self.api(path.format(title_id=quote(self.title_id(), safe="")))
+        sha = self.sample["sha256"] if self.sample else "0" * 64
+        path = self.api(path.format(title_id=quote(self.title_id(), safe=""), sha256=sha))
         return self.http.request(method, path, auth=auth, body=body), schema
 
     def c_feature(self, family, auth, level):
+        if family == "events":
+            return self.c_feature_events(auth, level)
+        if family == "peers" and level and not self.sample:
+            raise Skip("no app to ask a grant for")
         r, schema = self.probe(family, auth)
         if not level:
             expect(r.status in (401, 403, 404), f"{r}: feature at 0, expected 401, 403 or 404")
@@ -885,7 +1014,7 @@ class Suite:
         anon = self.features(self.hello_anon)
         problems = []
         for family in FAMILIES:
-            if family not in PROBES:
+            if family not in PROBES and family != "events":
                 continue
             try:
                 self.c_feature(family, "none", anon[family])
@@ -2215,9 +2344,10 @@ class Suite:
 
     def c_admin_users_write(self):
         if not self.args.admin_writes:
-            raise Skip("it makes an account the protocol cannot delete: run with --admin-writes")
+            raise Skip("it makes an account of its own, then deletes it: run with --admin-writes")
         name = "lantern-conformance-" + secrets.token_hex(4)
-        r = self.http.request("POST", self.api("/v1/admin/users"), body={"schema": 1, "name": name, "scopes": ["library"]})
+        r = self.http.request("POST", self.api("/v1/admin/users"), body={
+            "schema": 1, "name": name, "scopes": ["library", "admin", "sync.read", "sync.write"]})
         expect(r.status == 201, f"{r}, expected 201" + problem_detail(r))
         self.validate(r.json(), "admin-user", str(r))
         again = self.http.request("POST", self.api("/v1/admin/users"), body={"schema": 1, "name": name, "scopes": []})
@@ -2228,7 +2358,10 @@ class Suite:
         expect(r.json()["state"] == "frozen", f"{r}: state {r.json()['state']}, frozen asked for")
         listed = {u["name"]: u for u in self.admin_walk(self.api("/v1/admin/users"), "admin-users")}
         expect(listed.get(name, {}).get("state") == "frozen", f"{name} is not listed frozen")
-        return f"{name}, left frozen"
+        r = self.http.request("PATCH", self.api(f"/v1/admin/users/{name}"), body={"schema": 1, "state": "active"})
+        expect(r.status == 200 and r.json()["state"] == "active", f"{r}: thawed, expected 200 active" + problem_detail(r))
+        self.made_account = name
+        return f"{name}, frozen, then thawed"
 
     def sheets(self):
         """{(platform, title_id): ratings} of every title of the library, read with the suite's token."""
@@ -2515,6 +2648,11 @@ class Suite:
             raise Warn("\n".join(bad[:8]))
 
 
+checks_v05.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Response=Response, Client=Client,
+                check_repr_digest=lambda r, d: check_repr_digest(r, d), problem_detail=lambda r: problem_detail(r))
+static_check.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Client=Client)
+
+
 def client_rule():
     raise Skip("a client rule, not visible from outside")
 
@@ -2531,7 +2669,7 @@ def reqs_of(cid):
     """The requirement ids a check covers (REQS), by its id or the family of ids it belongs to."""
     if cid in REQS:
         return REQS[cid]
-    for prefix in ("features", "apps.pages", "schema.refused"):
+    for prefix in ("features", "apps.pages", "schema.refused", "static.pages"):
         if cid.startswith(prefix + "."):
             return REQS[prefix]
     return []
@@ -2654,11 +2792,22 @@ def load_validators(folder):
 
 def main(argv=None, out=None):
     p = argparse.ArgumentParser(prog="conformance/run.py", description="Checks a Lantern server against SPEC.md.")
-    p.add_argument("url", help="the server, e.g. https://shelf.example.org/")
+    p.add_argument("url", nargs="?", help="the server, e.g. https://shelf.example.org/")
     p.add_argument("--token", help="a device's token, from pairing (Authorization: Bearer)")
     p.add_argument("--key", help="the file of the token's device key: its 32-byte Ed25519 seed, base64 (SPEC.md § 5.4)")
     p.add_argument("--admin-writes", action="store_true",
-                   help="with the scope admin, also make an account (left frozen: the protocol deletes none)")
+                   help="with the scope admin, also make an account of its own, then delete it (SPEC.md § 5.7)")
+    p.add_argument("--pin", metavar="SPKI", help="trust the server by the SHA-256 of its key's SPKI, hex, as a paired "
+                   "client does (SPEC.md § 5.3), instead of a CA")
+    p.add_argument("--peer", metavar="URL", help="also check a peer (SPEC.md § 19.4): its address and base, e.g. "
+                   "http://192.168.1.20:47116/lantern")
+    p.add_argument("--peer-discover-port", type=int, help="the UDP port the peer answers discovery on (default: "
+                   "--discover-port's)")
+    p.add_argument("--dns-sd", metavar="ADDRESS[:PORT]", help="also ask DNS-SD for _lantern._tcp, unicast, at this "
+                   "address (its port 5353 by default)")
+    p.add_argument("--rate-probe", type=int, default=120, help="pairing requests sent at most to see 429 (§ 5.2, § 5.5)")
+    p.add_argument("--static", metavar="URL_OR_FOLDER", help="check a static library (SPEC.md § 21) instead of a "
+                   "server; the url argument is then not needed")
     p.add_argument("--base", help="the base path, when the handshake should not decide it")
     p.add_argument("--cafile", help="CA certificates to trust (PEM)")
     p.add_argument("--insecure", action="store_true", help="do not verify the certificate (a LAN server)")
@@ -2672,10 +2821,14 @@ def main(argv=None, out=None):
     p.add_argument("--schemas", default=str(Path(__file__).resolve().parent.parent / "schemas" / "v1"))
     p.add_argument("--no-schemas", action="store_true", help="skip the JSON Schema checks")
     args = p.parse_args(argv)
+    if not args.url and not args.static:
+        p.error("the server's url, or --static")
+    if args.static:
+        args.url = args.url or "https://static.invalid/"
     suite = Suite(args)
     if out is not None:
         suite.out = out
-    return suite.run()
+    return suite.run_static() if args.static else suite.run()
 
 
 if __name__ == "__main__":

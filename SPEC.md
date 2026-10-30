@@ -1,6 +1,6 @@
 # Lantern — an open protocol for game library servers
 
-Draft 0.4, 2026-10-30. Status: **draft**, open to change until 1.0.
+Draft 0.5, 2026-10-30. Status: **draft**, open to change until 1.0.
 This text is licensed under [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
 Lantern lets a client (a homebrew on a console, or an app on a phone, a
@@ -8,7 +8,8 @@ computer or in a browser) browse a library server the user runs for their
 own games, download games and homebrew from it with integrity checks, read
 what it knows about each game, and keep save backups and cheats there. It
 is a small REST/JSON contract, versioned so that a client and a server of
-different ages keep working together. It is a protocol of its own: it owes
+different ages keep working together. Its read routes also work as plain
+files (§ 21), on a web host or a USB key. It is a protocol of its own: it owes
 nothing to the protocols in use before it and keeps nothing for their sake.
 
 Its core knows no platform: listing, downloads, pairing and errors work the
@@ -52,8 +53,9 @@ covers. Annex B is advice to client authors, without requirements.
 - HTTPS. A client MUST verify the certificate against its CA store, or
   against the key it pinned at pairing (§ 5.3). [L-2-1]
 - Plain HTTP is allowed only on loopback addresses (`127.0.0.0/8`, `::1`),
-  for testing. A client MUST NOT speak plain HTTP to any other address.
-  [L-2-2] A server MUST NOT serve Lantern in plain HTTP on one. [L-2-3]
+  for testing. A client MUST NOT speak plain HTTP to any other address,
+  but to fetch a file by its SHA-256 from a mirror or a peer on a private
+  network, as § 19 allows. [L-2-2] A server MUST NOT serve Lantern in plain HTTP on one. [L-2-3]
 - All routes live under a base path the server chooses (default
   `/api/lantern`), announced by discovery (§ 4.1) and the handshake (§ 4.2).
   Below, paths are relative to `<base>`.
@@ -220,9 +222,13 @@ Lantern has its own discovery, on UDP port **47115**:
   request it can read (§ 3.2) and stays silent otherwise. It SHOULD answer
   only addresses of its own networks. [L-4.1-2] It SHOULD answer only a few
   times a second to the same address. [L-4.1-3]
-- A server SHOULD also advertise itself with DNS-SD (RFC 6763) as
-  `_lantern._tcp`, with the TXT keys `uid=<uid>`, `path=<base>` and `v=1`
-  (the versions, comma-separated). [L-4.1-4]
+- A server SHOULD also advertise itself with DNS-SD (RFC 6763) over
+  multicast DNS (RFC 6762) as `_lantern._tcp`, with the TXT keys
+  `uid=<uid>`, `path=<base>` and `v=1` (the versions, comma-separated).
+  [L-4.1-4] The reference server does, with the standard library alone; a
+  client that cannot read multicast DNS uses the datagram.
+- A datagram with `"peers": true` also asks the consoles that share files
+  (§ 19.5); a server answers it as any other.
 - Discovery is a hint: it finds an address and a name, nothing more. A
   reply proves nothing, and a client MUST trust a server only through TLS
   and pairing (§ 5). [L-4.1-5]
@@ -245,10 +251,13 @@ return the same document, with or without a token. [L-4.2-1]
              "bound": true, "rating_cap": {"age": 12}},
  "features": {"library": 1, "titles": 1, "changes": 1, "sections": 1,
               "homebrew": 1, "saves": 1, "cheats": 1, "requests": 0,
-              "pairing": 1, "signatures": 1, "admin": 0},
+              "pairing": 1, "signatures": 1, "admin": 0, "events": 1,
+              "peers": 1, "sync": 0, "encrypted_saves": 1},
  "auth": {"bearer_only": true, "skew": 300},
+ "peers": {"key": "<base64 of 32 bytes>", "grant_lifetime": 600},
  "limits": {"page_size": 500, "save_body": 8388608,
-            "save_size": 1073741824, "saves_kept_per_title": 10}}
+            "save_size": 1073741824, "saves_kept_per_title": 10,
+            "heartbeat": 15, "event_streams": 2, "wait": 60}}
 ```
 
 - `uid`: a UUID that never changes for this server. A client uses it to
@@ -262,8 +271,8 @@ return the same document, with or without a token. [L-4.2-1]
   account exists but may do nothing; `motd` says why). Without a token, the
   handshake MUST answer `200` with `account.state` `anonymous`. [L-4.2-3]
 - `account.scopes`: what this caller may do: `library`, `saves`,
-  `cheats`, `cheats.write`, `requests`, `admin`. `library` covers every
-  read of the catalogue: apps, titles and homebrew.
+  `cheats`, `cheats.write`, `requests`, `admin`, `sync.read`, `sync.write`.
+  `library` covers every read of the catalogue: apps, titles and homebrew.
 - `account.bound`: whether the caller's token is bound to a device key
   (§ 5.4); `account.rating_cap`: the rating cap its token carries, if any
   (§ 5.6).
@@ -278,7 +287,12 @@ return the same document, with or without a token. [L-4.2-1]
   `save_body`, the largest save a single request takes (§ 9.2),
   `save_size`, the largest save at all (§ 9.3), and
   `saves_kept_per_title`, how many backups the server keeps per title,
-  platform and account before it drops the oldest (§ 9.1).
+  platform and account before it drops the oldest (§ 9.1); with `events`,
+  `heartbeat`, `event_streams` and `wait` (§ 18.4); with `sync`,
+  `sync_items` (§ 20.5).
+- `peers`, with the family `peers`: the public key of the server's grants
+  and their lifetime (§ 19.3). `static`, in a static library's handshake
+  only (§ 21.2).
 - A call without a token to a private server returns the document with
   `account.state` `anonymous` and every feature at 0 but `pairing` and
   `signatures`, so a client can show the server's name and pair. A frozen
@@ -635,6 +649,7 @@ with `cursor` and `page_size`.
 | `GET <base>/v1/admin/users` | The accounts: `{"name":"lea", "state":"active", "scopes":["library","saves"], "devices":2, "created":"…"}`. |
 | `POST <base>/v1/admin/users` | `{"schema":1, "name":"sam", "scopes":["library"]}` → `201` the account; `409` `conflict` when the name is taken. |
 | `PATCH <base>/v1/admin/users/{name}` | `{"schema":1, "state":"frozen"}`, or `"active"`, and `scopes` → `200` the account. |
+| `DELETE <base>/v1/admin/users/{name}?confirm=<name>` | Deletes the account → `204`: its devices, invitations and waiting pairings, its save backups, requests and sync data. |
 | `GET <base>/v1/admin/devices?user=` | The devices, one token each: `{"id":"d_…", "user":"lea", "device":"Lea's Switch", "scopes":[…], "created":"…", "bound":true, "key":"<short fingerprint>", "rating_cap":{…}, "invitation":"i_…", "expires":"…"}`. |
 | `DELETE <base>/v1/admin/devices/{id}` | Revokes the device's token → `204`. |
 | `GET <base>/v1/admin/pairings` | The pairings waiting for approval: `{"id":"pr_…", "code":"KQ4M-7TXD", "device":"Lea's Switch", "scopes":[…], "key":"<short fingerprint>", "created":"…", "expires":"…"}`. |
@@ -659,6 +674,22 @@ with `cursor` and `page_size`.
   short fingerprint of the server's key as the app pinned it, so that its
   user compares them with the console's screen as on the server's page
   (§ 5.3). [L-5.7-5]
+
+**Deleting an account.** `confirm` repeats the account's name, so that a
+slip of the finger deletes nothing; an admin app asks its user to type it.
+
+- A server MUST refuse a deletion whose `confirm` is not the account's
+  name, with `400`, and the deletion of the caller's own account, with
+  `409` `conflict`. [L-5.7-6] It MAY refuse, with `409` `conflict`, to
+  delete an account its own configuration defines (a file of accounts it
+  only reads), and says so in `detail`.
+- A deletion MUST take effect at once and whole: the account's tokens give
+  `401` from their next request, its invitations `410`, its pairings
+  waiting are refused, and its save backups, requests and sync data
+  (§ 20) are erased; the name then gives `404` on this family's routes.
+  [L-5.7-7] An account later made with the same name inherits nothing of
+  it.
+- A deletion cannot be undone: the protocol keeps no account in a bin.
 
 ## 6. Library (feature `library`)
 
@@ -712,6 +743,8 @@ An app is one installable package: a base game, an update or an add-on.
   platform's own ids, which `links.json` gives. It is a hint about the
   game, never its identity: a client MUST NOT install or match anything by
   `atlas` alone. [L-6.1-2] Atlas is an external address (§ 7.1).
+- `mirrors`, optional: other addresses of the same file, which a client may
+  read it from (§ 19.2).
 
 ### 6.2 Listing
 
@@ -776,6 +809,8 @@ named, or every platform. Without `since`, it MUST return no apps and the
 current token. [L-6.4-1] A `since` token MUST give `410` when it is too old
 for the server (the client then reads the whole library again), and `400`
 when the server never gave it (or `410`, as for a cursor, § 6.2). [L-6.4-2]
+With `wait`, a request waits for what changes, and its document carries
+the events of § 18 (§ 18.3).
 
 ### 6.5 Sections (feature `sections`)
 
@@ -1005,6 +1040,8 @@ package whose `arch` lists its own, or else one without `arch`; it MUST
 skip the others, and install nothing when none fits. [L-8.2-8] On a
 platform with one architecture (Annex A says so), a package MUST NOT carry
 `arch`. [L-8.2-9]
+
+A package MAY carry `mirrors`, as an app (§ 19.2).
 
 Where the profile says so (Android), a package also carries
 `signer_sha256`: the SHA-256, lower-case hex, of the certificate the
@@ -1239,7 +1276,10 @@ save is: [L-9.1-1]
 - `profile`: the name the user gave the profile the save belongs to, as
   the device shows it. Never a hardware or account identifier.
 - `device`: the name of the paired device that sent it (§ 5.2).
-- The archive is a zip whose content the profile gives (Annex A).
+- `encryption`, only for a backup encrypted on the device: its scheme and
+  key id (§ 9.4).
+- The archive is a zip whose content the profile gives (Annex A); an
+  encrypted backup's bytes are that zip, encrypted (§ 9.4).
 - The server keeps at most `limits.saves_kept_per_title` backups per title,
   platform and account, and drops the oldest beyond it.
 - `GET` and `DELETE <base>/v1/saves/{title_id}/{save_id}`: the archive, as
@@ -1292,6 +1332,107 @@ lost connection:
 `expires` is gone (`404` or `410`). Only the account that opened an upload
 sees it.
 
+### 9.4 End-to-end encryption (feature `encrypted_saves`)
+
+A client MAY encrypt a backup before it sends it, with a key that only its
+user's devices hold: the server then keeps bytes it cannot read. A server
+that offers this family keeps such backups as they come, with the metadata
+that stays in clear.
+
+**The save key.** 32 random bytes, made once, from its system's secure
+random source, by the first device of the user that encrypts, and carried
+by the user to their other devices (below). It never goes to a server. Two
+values come from it by HKDF-SHA-256 (RFC 5869), with an empty salt:
+
+- the **key id**, the first 8 bytes of HKDF(info `lantern-save-e2e-1 key
+  id`), written as 16 lower-case hex digits: which key a backup needs,
+  stored and shown in clear;
+- the **wrapping key**, 32 bytes of HKDF(info `lantern-save-e2e-1 wrap`).
+
+**A backup, scheme `lantern-save-e2e-1`.** For each backup, the client
+makes a random 32-byte **file key**, wraps it with the wrapping key, and
+encrypts the archive (the zip of § 9.1) with it in chunks, with
+XChaCha20-Poly1305 (draft-irtf-cfrg-xchacha-03: HChaCha20, then RFC 8439's
+ChaCha20-Poly1305), as age's STREAM does with ChaCha20-Poly1305:
+
+| Bytes | What |
+|---|---|
+| 0–7 | `LTNE2E01`, in ASCII |
+| 8–15 | the key id's 8 bytes |
+| 16–39 | the wrap's nonce: 24 random bytes |
+| 40–87 | the file key sealed by the wrapping key with that nonce, bytes 0–15 as additional data: 32 bytes, then the 16-byte tag |
+| 88– | the chunks |
+
+Bytes 0–87 are the **header**. The archive is cut into chunks of 65,536
+bytes, the last one shorter (an empty archive is one empty chunk). Chunk
+*i*, from 0, is sealed by the file key with the 24-byte nonce made of 16
+zero bytes, *i* on 7 bytes big-endian, and one byte, `01` for the last
+chunk and `00` for the others, with the header as additional data; it is
+written as its bytes, then its 16-byte tag. The encrypted backup is
+88 + *n* + 16 × (number of chunks) bytes long for an archive of *n* bytes.
+Test vectors: `vectors/encrypted-saves.json`.
+
+- A reader MUST refuse a backup whose key id is not its key's, whose header
+  or any chunk does not open, whose last chunk is not marked last, or that
+  goes on after it, and restore nothing of it. [L-9.4-1] A chunk cut, moved,
+  dropped or added thus never goes unnoticed.
+- A client MUST NOT send the save key, a file key, the wrapping key or the
+  recovery phrase to any server or peer: of the key, only its id leaves the
+  device. [L-9.4-2]
+- A client MUST make a new file key and a new wrap nonce, from a secure
+  random source, for each backup. [L-9.4-3] One that resumes an upload
+  (§ 9.3) keeps the header it made and encrypts again to the same bytes,
+  without keeping the encrypted file.
+
+**Sending it.** As any backup (§ 9.2, § 9.3), with its `encryption`,
+`{"scheme": "lantern-save-e2e-1", "key_id": "0a1b2c3d4e5f6071"}`, in the
+upload's document (§ 9.3), or in the header
+`Lantern-Save-Encryption: lantern-save-e2e-1; key_id=0a1b2c3d4e5f6071` of a
+request of § 9.2. `size`, `sha256`, `Content-Digest` and `Repr-Digest` are
+those of the encrypted bytes, as the server keeps them.
+
+- A server that offers this family MUST keep an encrypted backup's bytes as
+  sent, list it with its `encryption`, and not require of it what it
+  checks of an archive in clear, such as being a zip. [L-9.4-4] It MAY
+  check that the bytes begin with `LTNE2E01` and the metadata's key id,
+  and answer `400` otherwise.
+- A server that does not offer it MUST answer `400` to a backup sent with
+  an `encryption`, rather than keep it as an archive. [L-9.4-5]
+- The title, `kind`, `slot`, `game_version_code`, `profile`, `note`,
+  `device`, the times and the sizes stay in clear: the server needs them to
+  list and keep backups. A client SHOULD leave `profile` and `note` out of
+  an encrypted backup unless its user wants them shown. [L-9.4-6]
+
+**Carrying the key.** The user moves the key from one device to another in
+one of two forms of the same 35 bytes: the key's 32 bytes, then the first
+3 bytes of SHA-256(`lantern-save-key` ‖ the key), written in the pairing
+alphabet (§ 5.2), 5 bits a symbol, the most significant first: 56 symbols,
+shown in 14 groups of 4.
+
+- A **recovery phrase**, which the user writes down and types on the other
+  device: `7KQ2-MZ4P-…`. Symbols rather than words: nothing to translate
+  into the languages a console shows, no list of 2048 words to ship in a
+  homebrew, the alphabet the user already types at pairing, without `0`,
+  `O`, `1` or `I`, and a 24-bit check that catches a mistyped symbol. A
+  reader ignores case, spaces and dashes.
+- A **QR code**: `LANTERN-SAVE-KEY-1:` then the 56 symbols, which fit the
+  QR code's alphanumeric mode, for a device with a camera to scan.
+
+- A client MUST refuse a phrase or a QR code whose check does not match,
+  and say so before anything else. [L-9.4-7]
+- A client MUST show the phrase or the QR code only when its user asks, on
+  its own screen. [L-9.4-8] It SHOULD ask the user to write the phrase down
+  when it makes the key. [L-9.4-9] It keeps the key where its system
+  protects keys, as a device key (§ 5.4).
+
+**What is lost.** The server can no longer show what a backup holds, check
+that it is a zip, nor keep one copy of two backups of the same save: the
+same archive gives other bytes each time. Nobody can give a backup back to
+a user who lost both their key and its phrase. The server still sees which
+title, when, how large and from which device; it may delete a backup,
+withhold one, or give an older one back: the key protects what a backup
+holds, not whether it is there.
+
 ## 10. Cheats (feature `cheats`)
 
 - `GET <base>/v1/cheats?platform=&title_id=&build_id=` →
@@ -1329,6 +1470,8 @@ sees it.
 - `DELETE <base>/v1/requests/{id}`: the account withdraws its own request,
   whatever its status. A server MUST answer `204`, and `404` for another
   account's request or an unknown one. [L-11-2]
+- Every device of the account reads the same requests; the event `request`
+  (§ 18.2) tells them when one is made, changes status or is withdrawn.
 
 ## 12. Errors
 
@@ -1349,15 +1492,16 @@ that status. [L-12-2] Its `type` is the code's page,
 |---|---|---|
 | 400 | `bad_request`, `key_required` | A malformed query or body; a cursor or `since` token the server never gave; a platform missing where one is needed; a pairing without a device key, on a server that issues only bound tokens (§ 5.4) |
 | 401 | `unauthorized`, `signature_required`, `signature_invalid`, `signature_expired`, `signature_replayed` | No token where one is needed, or an unknown, revoked or expired one (with `WWW-Authenticate: Bearer`); a bound token without a signature (§ 5.4); a signature that does not verify or is not of the form § 5.4 gives; a signature's `created` outside the server's window; a signature's `nonce` seen before |
-| 403 | `forbidden`, `account_frozen` | A scope missing; a frozen account |
+| 403 | `forbidden`, `account_frozen` | A scope missing; a frozen account; a peer's grant missing or not valid (§ 19.4); another device's `installed` (§ 20.4) |
 | 404 | `not_found` | |
 | 405 | `bad_request` | A method the route does not take (with `Allow`) |
-| 409 | `conflict` | An upload's offset that is not the server's (with `Upload-Offset`); a cheat set or an account that exists already (§ 10, § 5.7) |
-| 410 | `gone` | An expired cursor, `since` token, pairing, invitation or file id |
-| 413 | `too_large` | A save or a chunk above the server's limit |
+| 409 | `conflict` | An upload's offset that is not the server's (with `Upload-Offset`); a cheat set or an account that exists already (§ 10, § 5.7); an account that cannot be deleted (§ 5.7); a sync write of another generation (§ 20.4) |
+| 410 | `gone` | An expired cursor, `since` token, event id, sync revision, pairing, invitation or file id |
+| 412 | `precondition_failed` | A sync write whose `If-Match` is not the collection's (§ 20.4) |
+| 413 | `too_large` | A save or a chunk above the server's limit; a sync collection full (§ 20.5) |
 | 416 | `bad_request` | A range outside the file (with `Content-Range: bytes */<size>`) |
 | 422 | `unsupported_schema`, `digest_mismatch` | A request document of a schema the server cannot read; a body whose SHA-256 is not the one announced |
-| 429 | `slow_down` | Too many requests, pairing attempts or polls (with `Retry-After`) |
+| 429 | `slow_down` | Too many requests, pairing attempts, polls, event streams or downloads from a peer (with `Retry-After`) |
 | 500 | `internal` | A failure of the server itself; the client may try again later |
 | 503 | `unavailable` | Scanning, maintenance (with `Retry-After`) |
 
@@ -1386,6 +1530,10 @@ A client MUST bound what it reads. [L-13-1] A server MUST stay within:
 | A cheat set | 1 MiB |
 | A discovery datagram | 1200 bytes |
 | `Signature-Input`, `Signature` | 1 KiB each |
+| An event's `data` (§ 18) | 4 KiB |
+| A file's `mirrors` (§ 19.2) | 8 |
+| A grant (§ 19.3) | 1 KiB |
+| A sync write (§ 20.4) | 1000 items; a collection `limits.sync_items`, 100,000 at most |
 
 A server MUST refuse a request document beyond these limits, or beyond
 its own lower ones, with `400` or `413`, never fail on it. [L-13-3]
@@ -1408,7 +1556,14 @@ that depend on the platform or the language also vary on
   the user can revoke from the server (§ 5), bound to a key the device made
   (§ 5.4).
 - No proprietary encryption of documents: TLS protects them, with a key
-  pinned at pairing when no CA vouches for it (§ 5.3).
+  pinned at pairing when no CA vouches for it (§ 5.3). Save backups may be
+  encrypted on the device, by an open construction whose key the server
+  never sees (§ 9.4).
+- Nothing about what a console holds leaves it for sync without its
+  user's consent, and the user deletes what the server keeps (§ 20).
+- A file taken from a mirror or a peer is checked as one from the server;
+  a peer serves only files, by their hash, to the holders of a grant
+  (§ 19).
 - Discovery is a hint, never a proof (§ 4.1).
 - A server cannot change a client's settings or add headers to its later
   requests.
@@ -1504,6 +1659,67 @@ it says).
 - Not protected: what is on the console's own storage (its saves, its
   games, its key until revoked): protecting it is the platform's.
 
+**A hostile mirror or peer** (a mirror that serves other bytes, a console
+on the LAN that lies, a peer that answers slowly or never).
+
+- Protected: every file from a mirror or a peer is checked by its size and
+  SHA-256 against the server's document before it is kept (§ 19.1); no
+  token, signature or cookie goes to them (§ 19.1); a client stops at the
+  size and falls back to its server.
+- Not protected: on plain HTTP, whoever watches the network sees which
+  file goes where; a peer or a mirror may refuse to serve, or serve slowly.
+
+**Someone on the LAN, against a peer** (a guest's laptop, a smart TV).
+
+- Protected: a peer serves nothing without a grant of a server it paired
+  with, for that very file, valid a few minutes (§ 19.3, § 19.4); it
+  serves only apps and homebrew packages it holds whole, by their hash,
+  never a save, a key, a token or a path (§ 19.4); it is off unless its
+  user turns it on, answers its own networks only, and limits its
+  downloads and requests (§ 19.4).
+- Not protected: a grant seen on a plain HTTP network may be replayed, for
+  that same file, until it expires; a peer's discovery reply tells the
+  network its name and the uids of its servers.
+
+**A flood of event streams, or a curious stream** (§ 18).
+
+- Protected: each token holds a few streams at most, beyond which a server
+  answers `429` (§ 18.4); a stream carries only what its caller could read,
+  by scope, account, platform and rating cap (§ 18.2); a revoked token's
+  stream ends at its next heartbeat (§ 18.1); events name what changed,
+  never the documents, which are read with the token's rights.
+- Not protected: a stream tells its caller when something it may see
+  changed, and so when the server's owner is at work on the library.
+
+**A curious server, for what it keeps of the user** (§ 9.4, § 20).
+
+- Protected: nothing of what a console holds leaves it for sync without
+  its user's consent, given by name for `installed` (§ 20.1); the user
+  deletes what the server keeps, at once, and a console asleep cannot put
+  it back (§ 20.3, § 20.5); a backup encrypted on the device is bytes the
+  server cannot read, by a key it never sees (§ 9.4).
+- Not protected: the metadata of an encrypted backup (its title, times,
+  sizes and device), and what a server keeps while sync is on; a server
+  may delete a backup, withhold one or give back an older one; a user who
+  loses both their save key and its phrase loses their encrypted backups.
+
+**A static library** (§ 21): what a web host or a USB key holds.
+
+- Protected: the same as against a malicious server: manifests, roots,
+  hashes and authors' signatures are checked whatever the source (§ 8,
+  § 6.6).
+- Not protected: a static library is public to whoever reaches its files,
+  has no token, no rating cap and no pairing; on a local storage nothing
+  says who wrote it.
+
+**A stolen admin token.**
+
+- Protected: it is bound to its device's key like any (§ 5.4); a deletion
+  asks for the account's name and refuses the caller's own (§ 5.7).
+- Not protected: whoever holds an admin's device and key can delete other
+  accounts and their data: the confirmation guards against a slip, not an
+  attacker. Keep the scope `admin` to few devices.
+
 Out of scope: rights to games. Lantern serves a user's own games and
 enforces nothing (§ 15).
 
@@ -1515,9 +1731,13 @@ from outside; each check names the ids it covers. The rules it cannot see
 (a client's, or a server's inside) are listed by id on the site's
 [traceability page](https://lantern.boreale.dev/requirements/). With a
 token, it writes only what it then deletes: save backups, a cheat set, a
-request, the devices it pairs and the invitations it makes (with
-`--admin-writes`, an account of its own, frozen). A reference server
-(`server/`) serves a folder of packages and homebrew and passes the suite.
+request, sync items, the devices it pairs and the invitations it makes,
+and, with `--admin-writes`, an account of its own, which it then deletes
+(§ 5.7). With `--static`, it checks a static library (§ 21) instead of a
+server, at an address or in a folder; with `--peer`, a peer (§ 19.4). A
+reference server (`server/`) serves a folder of packages and homebrew,
+exports it as a static library, and passes the suite; `server/peer.py` is a
+reference peer.
 
 **Levels.** An implementation is conformant at a level:
 
@@ -1529,25 +1749,481 @@ request, the devices it pairs and the invitations it makes (with
 | `+saves` | Save backups (§ 9) |
 | `+cheats` | Cheats, and writing them when offered (§ 10) |
 | `+requests` | Requests (§ 11) |
-| `+admin` | Administration, invitations and rating caps (§ 5.5–5.7) |
+| `+admin` | Administration, invitations, rating caps and deleting accounts (§ 5.5–5.7) |
+| `+events` | Events: the stream, long polling and their limits (§ 18) |
+| `+peers` | Grants and mirrors (§ 19.2, § 19.3); with `--peer`, the peer's profile (§ 19.4) |
+| `+sync` | Sync: collections, the merge rule, deletion (§ 20) |
+| `+encrypted_saves` | End-to-end encrypted backups kept as sent (§ 9.4) |
+| `Lantern Static` | A static library: its layout, documents and files (§ 21), without the routes a server has |
 
 The suite prints the levels a server reaches: a level is reached when its
 family is offered to the caller, none of its checks fails, and none was
 left out for want of a token or a scope (run it with a token that holds
-every scope, and anonymously on a public server). Every level needs
-`Lantern Core`.
+every scope, and anonymously on a public server). Every level of a server
+needs `Lantern Core`; `Lantern Static` stands alone, for a static library
+read with `--static`.
 
 **The name.** Only an implementation that passes the suite at a level may
 call itself "Lantern compatible" and show the badge, with that level and
-the version of the text: "Lantern compatible 0.4 · Core +titles". The
+the version of the text: "Lantern compatible 0.5 · Core +titles". The
 badges and the registry of implementations are
 [on the site](https://lantern.boreale.dev/conformance/); an implementation joins the
 registry by a pull request with its report.
 
 **Test vectors** (`vectors/`), for the libraries of clients and servers:
 signed requests (§ 5.4), homebrew signatures (§ 8.4), SPKI fingerprints
-(§ 5.3), paths (§ 8.2), `version_code` per profile (Annex A) and
-requirements (§ 8.7), each case with what a reader decides.
+(§ 5.3), paths (§ 8.2), `version_code` per profile (Annex A),
+requirements (§ 8.7), rating caps (§ 5.6), encrypted backups and recovery
+phrases (§ 9.4), grants (§ 19.3), sync's merge rule (§ 20.4) and the
+static layout (§ 21.1), each case with what a reader decides.
+
+## 18. Events (feature `events`)
+
+What changed, pushed by the server as it happens, so that a client in the
+background (a console's homebrew while its user plays, a home automation
+integration such as boreale-ha) learns it without reading the library
+again and again. Two ways carry the same events: a stream (18.1), and long
+polling (18.3) for a client that cannot keep a connection open. Annex B.10
+says how a console and a home automation integration use them.
+
+### 18.1 The stream
+
+`GET <base>/v1/events`, with `Accept: text/event-stream`, answers `200`
+with `Content-Type: text/event-stream` and `Cache-Control: no-store`, and
+keeps the response open: Server-Sent Events, as the WHATWG HTML standard
+defines them.
+
+```text
+retry: 5000
+
+id: s_9f2c01aa_1042
+event: ready
+data: {"schema":1}
+
+: heartbeat
+
+id: s_9f2c01aa_1043
+event: request
+data: {"schema":1,"id":"r_7Qm2","platform":"switch","title_id":"0100ABCD00010000","status":"done"}
+```
+
+- Each event's `id` is a token of `GET <base>/v1/changes` (§ 6.4): the
+  stream and `changes?since=` share their tokens. A server MUST give every
+  event an `id` that `changes?since=` takes, and that resumes just after
+  that event. [L-18.1-1]
+- A stream MUST begin with a `retry` field, the milliseconds a client waits
+  before it connects again, then an event `ready` whose `id` is the token
+  it starts from: the one the client gave, or the current one. [L-18.1-2]
+  A client that connected without a token learns from it where it stands.
+- A client resumes with `Last-Event-ID: <token>`, or `?since=<token>` when
+  it cannot set the header (the query wins). The server MUST then send,
+  after `ready`, every event after that token that the caller may see, in
+  order, then the new ones as they come. [L-18.1-3] A token too old for the
+  server MUST give `410` `gone`, and one it never gave `400` (or `410`, as
+  for `since`, § 6.4), before the stream begins. [L-18.1-4] The client then
+  reads again what it shows (the library, its requests) and connects
+  without a token.
+- `data` is one line of JSON, a document with its `schema` (§ 3.2). A reader
+  MUST ignore an event whose `event` it does not know, and one whose
+  document is of a newer `schema`. [L-18.1-5]
+- A server MUST write a comment line (`:` and anything) or an event at
+  least every `limits.heartbeat` seconds, so that the client, and the
+  proxies between them, see the stream alive. [L-18.1-6] A client that
+  hears nothing for twice that long connects again.
+- A server MUST NOT apply a `Content-Encoding` to a stream: each event goes
+  out as soon as it is written. [L-18.1-7]
+- The request is authenticated, and signed when its token is bound
+  (§ 5.4), once, when the stream opens. A server MUST end the stream of a
+  token revoked, or of an account frozen or deleted, at the latest at its
+  next heartbeat (§ 5.7). [L-18.1-8] A server MAY end any stream when it
+  wants, after an hour, say: the client connects again with the last `id`
+  it read.
+- A client MUST wait at least `retry` before it connects again, and back
+  off as Annex B.2 says while connecting fails. [L-18.1-9]
+
+### 18.2 Events
+
+| `event` | Who gets it | `data` |
+|---|---|---|
+| `ready` | Every stream | `{"schema":1}`: the stream begins (18.1). |
+| `library` | Scope `library` | `{"schema":1, "families":["apps","titles","homebrew","cheats"], "platforms":["switch"]}`: something of those families changed on those platforms. The client reads their changes (§ 6.4, § 7.3) or their listings again. |
+| `request` | Scope `requests`: the account's own requests | `{"schema":1, "id", "platform", "title_id", "status"}` (§ 11); `"deleted": true` instead of `status` when it was withdrawn. |
+| `pairing` | Scope `admin` | A pairing waiting for approval, as § 5.7 lists it: `{"schema":1, "id", "code", "device", "key", "expires"}`. |
+| `save` | Scope `saves`: the account's own backups | A backup kept: `{"schema":1, "platform", "title_id", "save_id", "created", "device"}` (§ 9). |
+| `sync` | Scope `sync.read`: the account's own | `{"schema":1, "collection":"wishes", "rev":42}`: a collection changed (§ 20). |
+| `shutdown` | Every stream | `{"schema":1, "retry":30}`: the server is stopping; the client connects again after `retry` seconds at least. |
+
+- A server MUST send a caller only the events of what it could read with
+  its token: of its scopes and its account, of its platform when it named
+  one (`Lantern-Platform` or `?platform=`, § 4.3), and within its rating
+  cap (§ 5.6). [L-18.2-1] A `library` event names only the families and
+  platforms of which the caller sees a change; a change it cannot see gives
+  it no event.
+- A server SHOULD send `shutdown` to every stream before it stops on
+  purpose. [L-18.2-2]
+- An event says what changed, never the documents: the client reads them
+  from their routes, under their own rules, and an event's `data` stays
+  small (§ 13). A later version may add events.
+
+### 18.3 Long polling
+
+`GET <base>/v1/changes?since=<token>&wait=<seconds>`: the same events, for
+a client that cannot keep a stream open (a console that sleeps, a proxy
+that cuts long responses).
+
+- With `wait`, a server MUST answer as soon as an event the caller may see
+  comes after `since`, or once `wait` seconds have passed, the first of the
+  two; a `wait` above `limits.wait` is lowered to it. [L-18.3-1]
+- Its document MUST be that of § 6.4, with `events`: every event after `since`
+  that the stream would send this caller, `{"id", "event", "data"}` each,
+  in order (`ready` and `shutdown` excepted), `[]` when the wait ended with
+  none; its `since` resumes after the last of them. [L-18.3-2]
+- `wait` without `since`, or that is not an integer from 0, MUST give
+  `400`. [L-18.3-3]
+- The client asks again at once with the new `since`; it waits (Annex B.2)
+  only after an error.
+
+### 18.4 Limits
+
+- A server that offers `events` MUST give, in its handshake's `limits`:
+  `heartbeat`, the seconds between two heartbeats at most, 5 to 60;
+  `event_streams`, how many streams a token may hold at once (an anonymous
+  caller: an address), 1 at least; and `wait`, the longest wait of a long
+  poll, 30 to 300 seconds. [L-18.4-1]
+- Beyond `event_streams`, a server MUST answer `429` `slow_down`, with a
+  `Retry-After` of `heartbeat` seconds at most: by then it has seen whether
+  an older stream of the token still listens. [L-18.4-2]
+- A client SHOULD hold one stream per server, and none while it has
+  nothing to show of what events tell. [L-18.4-3]
+
+## 19. Mirrors and peers (feature `peers`)
+
+A file is its SHA-256 (§ 6.6, Annex B.5): whoever serves its bytes serves
+the file, and a client checks them the same way wherever they come from.
+A client may thus take a file of its library from somewhere nearer than its
+server: a **mirror** the server names, or a **peer**, a paired console on
+the same network that holds it already. Only files go that way, by their
+hash: apps and homebrew packages, never a save backup, a document, or
+anything named by a path.
+
+### 19.1 What a client checks, whatever the source
+
+- A client MUST check the size and SHA-256 of what a mirror or a peer
+  served against its server's document (the app's, or the package's)
+  before it keeps or installs any of it, treating mirrors and peers as
+  untrusted: nothing they say (a size, a header, a redirect, a
+  document) decides anything. [L-19.1-1]
+- A client MUST NOT send a mirror or a peer its token, its signatures, a
+  cookie or any credential of its server (§ 2); a peer gets a grant, and
+  nothing else (§ 19.3). [L-19.1-2]
+- A client SHOULD stop reading from a source once it gave more bytes than
+  the size, and take the file from its server when what a source gave
+  fails its check. [L-19.1-3]
+
+### 19.2 Mirrors
+
+An app (§ 6.1) or a homebrew package (§ 8.2) MAY carry `mirrors`, at most
+8 other addresses of the same bytes: `[{"url":
+"https://mirror.example.org/frostline.nsz"}]`.
+
+- A mirror's `url` is absolute, `https`, or `http` for an address of a
+  private network: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
+  `fc00::/7` or `fe80::/10`. A client MUST NOT read a mirror over plain HTTP
+  at another address. [L-19.2-1]
+- A server MUST name as a mirror only an address that serves the file's
+  exact bytes, and put none of its tokens in it. [L-19.2-2]
+- A client reads a mirror as a file (§ 6.6), with `Range` to resume. A
+  mirror is a hint: a client may pass it by, and takes the file from its
+  server when the mirror fails.
+
+### 19.3 Grants
+
+A peer serves a file only to a client its server allows to read it. The
+server says so with a **grant**: a short statement, signed by a key of the
+server's own, that a peer checks without asking anyone.
+
+`GET <base>/v1/grants/sha256/{hex}`, with the scope `library` →
+
+```json
+{"schema": 1, "sha256": "3a7bd3e2…", "size": 734003200,
+ "grant": "eyJleHAiOjE3OTMzNDYwMDAsInB1cnBvc2UiOi…Iq9k",
+ "expires": "2026-10-30T09:40:00Z"}
+```
+
+- The server MUST answer `200` with a grant only for a file it would serve
+  the caller (of its scopes and platform, within its rating cap: § 5.6),
+  and `404` otherwise, as for a file it does not have. [L-19.3-1]
+- A grant is `<payload>.<signature>`, each in base64url without padding.
+  The payload is the UTF-8 bytes of the JSON object
+  `{"exp":<Unix seconds>,"purpose":"lantern-grant-1","sha256":"<hex>","size":<bytes>,"uid":"<server's uid>"}`,
+  with these keys in this order and no space, `uid` that of the server's
+  handshake (§ 4.2); the signature is the Ed25519 signature (RFC 8032) of
+  those bytes by the server's grant key, whose public key the handshake
+  gives in `peers.key`. Test vectors: `vectors/grants.json`.
+- A grant's `exp` MUST be at most `peers.grant_lifetime` seconds ahead,
+  and `peers.grant_lifetime` at most 900. [L-19.3-2] A grant names one
+  file of one server: whoever holds it may read that file from a peer, as
+  its holder could from its server.
+- The grant key MUST serve grants alone and stay on the server, its public
+  key, `peers.key`, the same for every caller. [L-19.3-3] A server
+  changes it only when it leaks: a peer then refuses its grants until it
+  reads the handshake again.
+
+### 19.4 Peers
+
+A paired console MAY serve the files of its server that it holds to the
+other devices of its network: it is then a **peer**. It is off until its
+user turns it on.
+
+A peer has one route, under a base path of its own (the `base` of its
+discovery reply): `GET <peer base>/v1/blobs/sha256/{hex}`, with
+`Lantern-Grant: <grant>` → the file whose SHA-256 is `<hex>`, served as
+§ 6.6 says: `Range`, a strong `ETag`, `Repr-Digest`, `Content-Length`,
+`Accept-Ranges`; `HEAD` alike.
+
+A peer MUST:
+
+- serve a file only with a grant that verifies with the `peers.key` of the
+  server whose `uid` it names, a server it paired with and whose handshake
+  it read over the pinned connection (§ 5.3), whose `exp` is not past by its
+  clock and whose `sha256` is the path's, and answer `403` `forbidden`
+  otherwise; [L-19.4-1]
+- serve only files it holds whole, whose size and SHA-256 it checked against
+  its server's document, and only apps and homebrew packages: never a save
+  backup, a key, a token, a document or anything named by a path; a file it
+  does not hold gives `404` `not_found`; [L-19.4-2]
+- serve only while its user allows it, and only to addresses of its own
+  networks; [L-19.4-3]
+- serve at most `slots` downloads at once (its discovery reply, 1 to 8),
+  and a few requests a second per address, answering `429` `slow_down`
+  with `Retry-After` beyond; [L-19.4-4]
+- answer errors as § 12 says, as `application/problem+json`, without
+  `WWW-Authenticate`: a peer takes no token. [L-19.4-5]
+
+A peer speaks plain HTTP on a private network (§ 19.2's addresses), or
+HTTPS with a certificate of its own that nobody pins: what it serves is
+checked by its hash, and nothing secret goes to it but a grant, worth one
+file for a few minutes. A client MUST NOT send a grant over plain HTTP to
+an address outside a private network. [L-19.4-6]
+
+### 19.5 Finding peers
+
+- A client that looks for peers adds `"peers": true` to its discovery
+  datagram (§ 4.1). A peer answers only such a datagram, unicast, with
+  `{"schema":1, "lantern":"peer", "uid":"<the peer's own uid>",
+  "name":"Lea's Switch", "port":47116, "base":"/lantern", "tls":false,
+  "slots":2, "servers":["6f1c2a8e-…"]}`: `servers` are the uids of the
+  servers whose grants it takes, and `tls` whether it speaks HTTPS. Its
+  reply MUST be of this form, within § 4.1's limits, and only from a
+  peer that is on. [L-19.5-1] A client older than this version ignores a
+  reply whose `lantern` is not `server`.
+- A peer MAY also advertise itself with DNS-SD as `_lantern-peer._tcp`,
+  with the TXT keys `servers=<uid>,…`, `path=<base>`, `v=1` and `tls=0` or
+  `1`.
+- A client asks the peers whose `servers` hold its server's `uid`; it MAY
+  ask a peer `HEAD` first, to see whether it holds the file. A reply is a
+  hint, as discovery is (§ 4.1).
+- A client SHOULD look for peers at most once a minute, and read a file
+  from at most 2 peers at once. [L-19.5-2]
+
+## 20. Sync (feature `sync`)
+
+A user's wishes, and what each of their consoles has installed, kept by
+their server so that every console of theirs sees them, with the scopes
+`sync.read` and `sync.write`. Requests (§ 11) are the account's already:
+every device of the account reads the same ones, and the event `request`
+(§ 18.2) tells them of a change.
+
+### 20.1 Consent
+
+- A client MUST ask its user before it turns sync on, saying which
+  collections it sends and to which server, and reads or writes nothing of
+  `<base>/v1/sync` before they agree. [L-20.1-1] The answer is kept per
+  console profile and per server: a console of several users asks each
+  one, and syncs each profile with the account its user chose (a profile
+  that wants sync of its own pairs with its own account, § 5.2).
+- What a console has installed MUST NOT leave it without a consent given
+  for it by name: agreeing to sync wishes does not cover it. [L-20.1-2]
+- A client MUST let its user turn sync off; it then stops sending at once,
+  and offers to delete what the server keeps (20.5). [L-20.1-3]
+
+### 20.2 Collections
+
+| Collection | An item per | `key` | `value` |
+|---|---|---|---|
+| `wishes` | Game wished for | `<platform>/<title_id>` | `{"platform", "title_id", "name"?, "note"?}` |
+| `installed` | Device of the account | The device's id, `d_…` (§ 5.7), which `GET <base>/v1/sync` gives the device | `{"device":"Lea's Switch", "platform":"switch", "apps":[{"app_id", "version_code"}…], "homebrew":[{"id", "build"}…]}` |
+
+An item is `{"key", "value", "updated", "rev"}`, or a deletion, `{"key",
+"deleted": true, "updated", "rev"}`:
+
+- `updated`: when the item last changed, in UTC, to the millisecond
+  (`2026-10-30T09:12:03.250Z`), as the device that changed it saw it,
+  corrected by its offset to the server's `Date` (Annex B.9);
+- `rev`: the collection's revision when the server took the change, an
+  integer that grows with each change of the collection.
+
+A later version may add collections: a reader skips one it does not know.
+
+### 20.3 Reading
+
+`GET <base>/v1/sync` (scope `sync.read`) → `{"schema":1,
+"generation":"g_4Rz1", "device":"d_3f9a1c07b2e455d0",
+"collections":{"wishes":{"rev":42, "items":12}, "installed":{"rev":7,
+"items":2}}}`: what the account keeps; `device`, the caller's own key in
+`installed`.
+
+`GET <base>/v1/sync/{collection}?since=<rev>&page_size=&cursor=` →
+`{"schema":1, "collection":"wishes", "generation":"g_4Rz1", "rev":42,
+"items":[Item…], "next":null}`, a page as in § 6.2: with `since`, the items
+changed after that revision, deletions included; without it, every item
+but deletions. `rev` is the collection's when its first page was read.
+
+- A server MUST give, after `since`, every item whose `rev` is above it,
+  deletions included, or answer `410` `gone` when it no longer keeps the
+  deletions that far back; the client then reads the collection whole.
+  [L-20.3-1]
+- `generation` changes only when the account's sync data is deleted
+  (20.5). A client that reads another `generation` than the one it kept
+  MUST NOT write its own items back: it drops its copy of the sync state,
+  turns sync off and asks its user again (20.1). [L-20.3-2] So a console
+  asleep while its user deleted their data cannot bring it back.
+
+### 20.4 Writing and conflicts
+
+`PATCH <base>/v1/sync/{collection}` (scope `sync.write`), `{"schema":1,
+"generation":"g_4Rz1", "items":[{"key", "value", "updated"} or {"key",
+"deleted": true, "updated"}…]}` → `200` `{"schema":1, "collection",
+"generation", "rev", "items":[…]}`: each item sent, as the server keeps it
+then, with its `rev`.
+
+The merge rule, item by item, the same on every server:
+
+1. Of the item the server has and the one sent, the server keeps the one
+   of the later `updated`.
+2. On the same `updated`, a deletion wins; between two values, the one
+   whose canonical JSON (keys sorted, no space, characters other than ASCII
+   as they are, in UTF-8) is the greater string of bytes.
+3. An item it keeps takes the collection's next `rev`; an item it does not
+   keep is answered as the server has it.
+
+So two consoles that change two items never lose each other's change, and
+two that change the same item end with the same result, whatever the order
+in which their changes arrive. Test vectors: `vectors/sync-merge.json`.
+
+- A server MUST merge by these rules, item by item, and answer each item
+  sent as it then keeps it. [L-20.4-1]
+- A server MUST take an `updated` more than `auth.skew` seconds ahead of its
+  clock as its own time: a console whose clock runs ahead cannot win every
+  conflict to come. [L-20.4-2]
+- `If-Match: "<generation>-<rev>"`, the collection's as a read gave them,
+  makes a write all or nothing: when the collection changed since, a
+  server MUST change nothing and answer `412` `precondition_failed`.
+  [L-20.4-3] A client sends it when it wrote its
+  items from the whole collection, and lets the rule merge otherwise.
+- A server MUST refuse a write of another `generation` than its own with
+  `409` `conflict`: the data was deleted since. [L-20.4-4]
+- In `installed`, a device MUST be able to write its own item only: a server
+  answers `403` `forbidden` to a write of another key. [L-20.4-5]
+- A server MUST answer `400` to an item whose `key` or `value` is not of its
+  collection's form (a `wishes` key is a platform and a title id of § 4.3 and
+  § 6.1), or whose `updated` is not such a time. [L-20.4-6]
+
+### 20.5 Deletion and retention
+
+- `DELETE <base>/v1/sync/{collection}`, and `DELETE <base>/v1/sync` for
+  every collection (scope `sync.write`) → `204`. A server MUST erase those
+  items, deletions included, at once, and give the account a new
+  `generation`. [L-20.5-1] Its other devices learn it at their next read
+  (20.3), and from the event `sync`.
+- A server MUST keep a deletion at least 30 days, so that a device that
+  syncs once a month learns of it. [L-20.5-2]
+- A server MUST erase the sync data of an account it deletes (§ 5.7).
+  [L-20.5-3]
+- A server SHOULD give `limits.sync_items`, how many items a collection
+  holds at most, and answer `413` `too_large` to a write beyond. [L-20.5-4]
+
+## 21. Static libraries
+
+A library served as files, which change only when they are written again:
+on a web host such as GitHub Pages, a NAS's web server, or a USB key or an
+SD card read with no server at all. A static library is read only, and
+public to whoever reaches its files.
+
+### 21.1 Layout
+
+A static library is a folder, its **root**: an address
+(`https://lea.example.org/library/`) or a folder on a storage the device
+reads. Each read route is a file below it:
+
+| Route | File |
+|---|---|
+| The handshake (§ 4.2) | `lantern.json` |
+| `GET <base>/v1/apps?platform=<p>` | `v1/apps/<p>/pages/<n>.json`: page *n*, from 1 |
+| `GET <base>/v1/titles/{title_id}` | `v1/titles/<p>/<title_id>.json` |
+| Every title of a platform | `v1/titles/<p>/pages/<n>.json`: § 7.2's document, with `next` |
+| `GET <base>/v1/homebrew?platform=<p>` | `v1/homebrew/<p>/pages/<n>.json` |
+| `GET <base>/v1/homebrew/{id}` | `v1/homebrew/<p>/<id>.json` |
+| `GET <base>/v1/cheats?platform=<p>&title_id=<t>` | `v1/cheats/<p>/<t>.json` |
+| `GET <base>/v1/cheats/{id}` | `v1/cheats/<id>.txt` |
+| A file (§ 6.6) | `v1/blobs/sha256/<hex>`: the file whose SHA-256 is `<hex>` |
+
+`<p>` is a platform of the handshake's `platforms`. A title without cheat
+sets has no file of them. Test vectors: `vectors/static-layout.json`.
+
+- A listing is sorted as a server sorts it (by name: § 6.2, § 8.5) and cut
+  into pages of `static.page_size` items: the cursor of page *n* + 1 is
+  `"<n+1>"`, and `next` is `null` on the last page. A platform with nothing
+  of a family has an empty first page. The same library gives the same
+  pages.
+- A static library MUST hold these files only where the table puts them,
+  each valid against its schema as a server's document is (§ 3.2), its
+  pages chained as above, and every file its documents point at, of their
+  size and SHA-256. [L-21.1-1]
+- Every `file` of a document, and every `url` of an image that is not
+  `external`, MUST be a path relative to the root, such as
+  `v1/blobs/sha256/3a7b…`: without a scheme, a leading `/`, a `..` part, a
+  `\`, or a query. [L-21.1-2]
+- Its texts are in one language, the handshake's `language` (§ 2.2).
+
+### 21.2 Its handshake
+
+`lantern.json` is a handshake (§ 4.2) with `static`: `{"generated":
+"2026-10-30T18:00:00Z", "page_size": 100}`, when its files were written and
+the size of its pages. Its `base` is `.`: the root.
+
+- A static library's handshake MUST say `account` `{"state":"anonymous",
+  "scopes":["library","cheats"]}` (without `cheats` when it has none), and
+  give 0 in `features` to every family a static library cannot offer:
+  `changes`, `sections`, `saves`, `encrypted_saves`, `requests`,
+  `pairing`, `signatures`, `admin`, `events`, `peers` and `sync`.
+  [L-21.2-1]
+- `cheats`, when above 0, is read only (§ 10). `limits` gives `page_size`
+  alone.
+
+### 21.3 Reading one
+
+- A client MUST read a static library's files as JSON whatever their
+  `Content-Type` (a USB key has none, and a web host may say another), and
+  checks every file it takes by its size and SHA-256 (§ 6.6), as from a
+  server. [L-21.3-1] A web host may compress what it serves: the client
+  checks the bytes once decoded.
+- What a static library cannot answer, a client computes from its pages:
+  what is missing, by § 6.3's rules over the whole listing of its platform;
+  filters and search (§ 6.2, § 8.5); the updates of homebrew (§ 8.5), by
+  comparing `build`. A client MUST compute what is missing by § 6.3's rules,
+  as a server would. [L-21.3-2]
+- A static library has no pairing, no token and no rating cap: whoever
+  reads its files reads all of them, and one at a public address is public.
+  It has no changes and no events: a client reads `lantern.json` again,
+  and its pages again when `static.generated` changed (their `ETag`, where
+  HTTP gives one, spares those that did not).
+- Over HTTP, § 2 holds: HTTPS but on loopback. On a local storage, nothing
+  says who wrote the files but the user who plugged it in; the checks of
+  § 6.6 and § 8 hold as for any server.
+- A client given an address tries the origin's `/.well-known/lantern`
+  first, then `<address>/lantern.json`; a document with `static` is a
+  static library.
 
 ## Annex A — Platform profiles
 
@@ -1890,6 +2566,72 @@ A console's clock is often wrong. Take the offset to the server's `Date`
 from the handshake's response, and sign with it (§ 5.4); show times in the
 device's own zone.
 
+### B.10 Events in the background
+
+- **A console's homebrew.** While its user plays, a homebrew in the
+  background keeps one stream (§ 18.1) to its server, and shows a small
+  notice when a request it made is done or a backup arrived from another
+  console. When the console sleeps the stream dies: on waking, the
+  homebrew asks `changes?since=<the last id>&wait=0` once, which gives
+  what happened while it slept, then opens its stream again with
+  `Last-Event-ID`. A homebrew that cannot keep a socket in the background
+  long-polls with a `wait` of a minute or so instead.
+- **A home automation integration** (boreale-ha, for Home Assistant). It
+  pairs as a device, by a QR code shown in its configuration, with the
+  scopes of what it shows: `library` for a sensor of new games, `requests`
+  for the state of a household's requests, `admin` to raise a notification
+  when a console waits for approval (the event `pairing`, with its code
+  and its fingerprint, which the admin compares before approving). It
+  keeps one stream, turns each event into an event of its own, marks the
+  server unavailable on `shutdown` and comes back after its `retry`.
+- Both keep the last `id` they read, so that nothing is missed across a
+  restart, and read the library again only after a `410`.
+
+### B.11 Sharing on the LAN
+
+- Turn sharing on only when the user asks, say what it does ("other
+  consoles of this network may download the games this console holds,
+  once your server allows them"), and show how many downloads it served.
+- Before reading a file from a peer, ask the server for a grant; ask
+  peers `HEAD` first, take the file from one, keep reading the file from
+  the server when the peer is slower or fails, and check it whole before
+  keeping it.
+- A save backup never goes through a peer, encrypted or not.
+
+### B.12 Sync and save keys
+
+- Ask for consent once per profile, in plain words: "Keep your wishes on
+  Living room shelf, so that your other consoles see them?" and,
+  separately, "Also share what this console has installed?".
+- Read `GET <base>/v1/sync/{collection}?since=` at start and on each event
+  `sync`; write each change as it happens, with its `updated`.
+- When a console makes a save key, show its phrase once, ask the user to
+  write it down, and offer to show it again later; never put it in a
+  screenshot the system takes by itself, where the system lets a homebrew
+  say so.
+
+## Annex C — The road to 1.0
+
+Not normative: what this text needs before its version 1.0, when `/v1/`
+and `schema` 1 stop changing shape.
+
+1. **Two independent servers and two independent clients** reach
+   `Lantern Core` with the conformance suite, each written from this text
+   by people who did not write the other ones, and each pair of them works
+   together: pairing, listing, downloading, what is missing.
+2. **A core with no open question**: every section from § 2 to § 14, and
+   § 17, without a part marked "to check", and no issue labelled as a
+   question on them left open.
+3. **Profiles reviewed for two platforms at least**, by people who know
+   them and are not this text's authors: the Switch's and one other,
+   their ids, formats, paths and roots tried on real devices.
+4. The families beyond the core (§ 7 to § 11, § 18 to § 21) may stay at
+   `schema` 1 and still grow after 1.0, by additions only (§ 3.5).
+5. Then the drafts' rule (§ 3.5) ends: a change of shape raises a
+   document's `schema`, and the older one stays served while clients read
+   it.
+
+
 ## Changes
 
 - 0.1 (2026-10-30): first draft.
@@ -2007,3 +2749,47 @@ device's own zone.
   - A server refuses a document beyond the limits without failing (§ 13).
   - A threat model (§ 16); conformance levels, the name and the badge
     (§ 17); test vectors (`vectors/`); client guidelines (Annex B).
+- 0.5 (2026-10-30): what happens while nobody asks, files shared on the
+  LAN, sync, encrypted backups and static libraries; still `/v1/` and
+  `schema` 1, as a draft. Every 0.4 route and field stays, with the
+  additions below; four optional families are new, each declared in
+  `features`: `events`, `peers`, `sync` and `encrypted_saves`.
+  - Events (§ 18): Server-Sent Events at `<base>/v1/events`, whose ids are
+    `changes` tokens, so that `Last-Event-ID` resumes where
+    `changes?since=` would; events `library`, `request`, `pairing`, `save`,
+    `sync` and `shutdown`, each only to the callers that could read what it
+    is about; heartbeats, `retry`, a limit of streams per token; long
+    polling with `changes?wait=`, whose document gains `events`. The
+    handshake's `limits` add `heartbeat`, `event_streams` and `wait`.
+  - Mirrors and peers (§ 19): `mirrors` on apps and packages; grants,
+    signed by a key of the server's own (`peers` in the handshake), with
+    which a paired console shares the files it holds, by their SHA-256, at
+    `/v1/blobs/sha256/{hex}`; peers found by discovery (`"peers": true`, a
+    reply `lantern` `peer`) or DNS-SD. A client checks what a mirror or a
+    peer gives as what its server gives; plain HTTP is allowed for them on
+    a private network only (§ 2).
+  - Sync (§ 20): wishes and what each console has installed, kept per
+    account with the scopes `sync.read` and `sync.write`, only with the
+    user's consent; an item merge rule by time, with `If-Match` for a write
+    all or nothing (new code `412` `precondition_failed`), and deletion,
+    which a console asleep cannot undo (`generation`).
+  - Encrypted backups (§ 9.4): `lantern-save-e2e-1`, XChaCha20-Poly1305 in
+    chunks of 64 KiB with a file key wrapped by a key derived from the
+    user's save key (HKDF-SHA-256); the key carried as a recovery phrase in
+    the pairing alphabet, or a QR code; `encryption` on a backup.
+  - Static libraries (§ 21): the read routes as files (handshake,
+    pages of fixed cursors, titles, homebrew, cheats, files by their
+    SHA-256), a handshake with `static`, and what a client computes
+    itself; the reference server exports one, and the suite checks one
+    (`--static`).
+  - Deleting an account (§ 5.7): `DELETE <base>/v1/admin/users/{name}`,
+    confirmed by the name, which revokes its devices and erases its data;
+    the suite now deletes the account it makes.
+  - Discovery (§ 4.1): the reference server advertises itself with DNS-SD,
+    with the standard library alone.
+  - The schemas check the ids of every profile, the draft ones included,
+    in every document that carries them, and a cheat set's `build_id` per
+    profile.
+  - A threat model for each addition (§ 16), conformance levels `+events`,
+    `+peers`, `+sync`, `+encrypted_saves` and `Lantern Static` (§ 17),
+    client guidelines B.10 to B.12, and the road to 1.0 (Annex C).
