@@ -37,6 +37,14 @@
       },
       "minItems": 1
     },
+    "platforms": {
+      "description": "The platforms the server has something for (SPEC.md § 4.3).",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/platform"
+      },
+      "uniqueItems": true
+    },
     "motd": {
       "$ref": "common.json#/$defs/text"
     },
@@ -74,7 +82,7 @@
           "type": "integer",
           "minimum": 0
         },
-        "media": {
+        "titles": {
           "type": "integer",
           "minimum": 0
         },
@@ -83,6 +91,10 @@
           "minimum": 0
         },
         "sections": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "homebrew": {
           "type": "integer",
           "minimum": 0
         },
@@ -115,6 +127,19 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 1000
+        },
+        "save_body": {
+          "$ref": "common.json#/$defs/uint64",
+          "description": "The largest save a single request takes (SPEC.md § 9.2)."
+        },
+        "save_size": {
+          "$ref": "common.json#/$defs/uint64",
+          "description": "The largest save at all (SPEC.md § 9.3)."
+        },
+        "saves_kept_per_title": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Backups kept per title, platform and account (SPEC.md § 9.1)."
         }
       }
     }
@@ -125,6 +150,7 @@
     "name",
     "base",
     "versions",
+    "platforms",
     "account",
     "features"
   ]

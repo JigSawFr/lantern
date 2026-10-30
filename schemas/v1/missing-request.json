@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lantern.boreale.dev/schemas/v1/missing-request.json",
   "title": "What the console has",
-  "description": "POST <base>/v1/apps/missing (SPEC.md § 6.3).",
+  "description": "POST <base>/v1/apps/missing, with a platform (SPEC.md § 6.3).",
   "type": "object",
   "properties": {
     "schema": {
@@ -14,22 +14,26 @@
         "type": "object",
         "properties": {
           "app_id": {
-            "$ref": "common.json#/$defs/id16"
+            "$ref": "common.json#/$defs/id"
           },
-          "version": {
-            "$ref": "common.json#/$defs/uint32"
+          "version_code": {
+            "$ref": "common.json#/$defs/uint64"
           }
         },
         "required": [
           "app_id",
-          "version"
+          "version_code"
         ]
       }
     },
     "want": {
       "type": "array",
       "items": {
-        "$ref": "common.json#/$defs/app_type"
+        "enum": [
+          "base",
+          "update",
+          "dlc"
+        ]
       },
       "minItems": 1,
       "uniqueItems": true

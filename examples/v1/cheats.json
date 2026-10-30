@@ -2,11 +2,25 @@
   "schema": 1,
   "cheats": [
     {
+      "id": "cs_Jt3Vx0",
+      "platform": "switch",
       "title_id": "0100ABCD00010000",
       "build_id": "4A1B2C3D4E5F6071",
+      "source": "Community list",
       "note": "Endless lamp oil",
+      "updated": "2026-10-29T21:00:00Z",
       "size": 512,
       "sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817"
+    },
+    {
+      "id": "cs_Ra8Ye2",
+      "platform": "switch",
+      "title_id": "0100ABCD00010000",
+      "build_id": "4A1B2C3D4E5F6071",
+      "source": "Noor's notes",
+      "updated": "2026-10-30T07:30:00Z",
+      "size": 240,
+      "sha256": "9f2c41aa0b7e5d3c18f6a2b4c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1"
     }
   ]
 }

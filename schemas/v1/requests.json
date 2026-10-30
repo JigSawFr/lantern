@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lantern.boreale.dev/schemas/v1/requests.json",
   "title": "Requests",
-  "description": "GET <base>/v1/requests (SPEC.md § 9).",
+  "description": "GET <base>/v1/requests (SPEC.md § 11).",
   "type": "object",
   "properties": {
     "schema": {
@@ -11,34 +11,7 @@
     "requests": {
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "common.json#/$defs/opaque"
-          },
-          "title_id": {
-            "$ref": "common.json#/$defs/id16"
-          },
-          "name": {
-            "$ref": "common.json#/$defs/name"
-          },
-          "status": {
-            "enum": [
-              "open",
-              "done",
-              "declined"
-            ]
-          },
-          "created": {
-            "$ref": "common.json#/$defs/time"
-          }
-        },
-        "required": [
-          "id",
-          "title_id",
-          "status",
-          "created"
-        ]
+        "$ref": "common.json#/$defs/request"
       }
     }
   },

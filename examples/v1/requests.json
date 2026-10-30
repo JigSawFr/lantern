@@ -3,6 +3,7 @@
   "requests": [
     {
       "id": "r_12",
+      "platform": "switch",
       "title_id": "0100EFEF00020000",
       "name": "Harbor Lights",
       "status": "open",

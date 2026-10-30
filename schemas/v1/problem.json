@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lantern.boreale.dev/schemas/v1/problem.json",
   "title": "Error",
-  "description": "Every error, application/problem+json (RFC 9457; SPEC.md § 10), extended by `schema` and `code`.",
+  "description": "Every error, application/problem+json (RFC 9457; SPEC.md § 12), extended by `schema` and `code`.",
   "type": "object",
   "properties": {
     "schema": {
@@ -33,6 +33,7 @@
         "gone",
         "too_large",
         "unsupported_schema",
+        "digest_mismatch",
         "slow_down",
         "internal",
         "unavailable"

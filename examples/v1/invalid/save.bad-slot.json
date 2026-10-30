@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "platform": "ps4",
+  "title_id": "CUSA00000",
+  "save_id": "s_07",
+  "created": "2026-10-29T20:40:00Z",
+  "size": 2097152,
+  "sha256": "ffeab80f92459bbf173159f2ba45a2e5388a76f3fd34ec4dba4054314b888297",
+  "slot": "save data/00",
+  "kind": "account",
+  "game_version_code": 103,
+  "profile": "Noor",
+  "device": "Noor's PS4"
+}

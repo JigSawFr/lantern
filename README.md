@@ -1,50 +1,74 @@
 # Lantern protocol
 
-An open, versioned protocol between console homebrews and the game library
-servers people run at home for their own games: browse the library, download
-with integrity checks, keep save backups and cheats.
+An open, versioned protocol between the game library servers people run at
+home for their own games and the homebrews and apps that read them, on
+every platform [Aurore](https://aurore.boreale.dev/?utm_source=github&utm_medium=readme)
+runs on: browse the library, download with integrity checks, read what the
+server knows about each game, install homebrew and game ports, keep save
+backups and cheats.
 
 Website: <https://lantern.boreale.dev/?utm_source=github&utm_medium=readme>.
 
-**Status: draft 0.2.** The text may still change before 1.0; comments and
+**Status: draft 0.3.** The text may still change before 1.0; comments and
 issues are welcome, from client and server authors especially.
 
 - **[The specification](SPEC.md)**: REST and JSON, versioned by path (`/v1/`)
   and by a `schema` in every document, so a client and a server of
   different ages keep working together.
+- **Every platform Aurore runs on**: Nintendo Switch, New 3DS, PS Vita,
+  PS4, Android, iOS and tvOS, Windows, macOS, Linux and the browser. A core
+  that knows no platform, and a profile per platform in Annex A: the
+  Switch's complete, the 3DS's, the Vita's, the PS4's, Android's and
+  Linux's (one platform for computers and handhelds alike) as drafts to be
+  reviewed, the others open.
+- **What 0.3 adds**, each family optional and declared:
+  - **game data** (`titles`): genres, players, age ratings, a localized
+    summary and images, read a hundred at a time;
+  - **homebrew**, game ports included: packages with a manifest that says
+    where each file goes, nothing written elsewhere without the user's
+    consent, an optional author signature pinned per homebrew, a package
+    per architecture, shelves by kind and genre, and requirements (C
+    library, graphics, memory, screen) a client checks before offering a
+    package; a port names the files the user supplies from their own copy
+    of the game, which Lantern never serves;
+  - **save backups**, resumable, checked by SHA-256 when they arrive;
+  - **cheats**, several sets per game version, in each platform's format.
 - **A protocol of its own**, compatible with no earlier one by design:
   nothing in it is kept for the sake of the protocols in use before it.
 - **What makes it solid**: versioned twice (path and `schema`); a token per
   device, approved on the server, revocable, and no password ever on the
-  console; HTTPS everywhere, with the key of a server at home pinned at
+  device; HTTPS everywhere, with the key of a server at home pinned at
   pairing; a SHA-256 for every file, sent with every download and checked
-  before installing; features declared instead of guessed; and a
-  conformance suite.
-- **And also**: discovery on the local network, opaque download links,
-  range requests, server-side filtering of what a console is missing,
-  cursor pages, errors with real status codes, and nothing hidden: no
-  hardware identifier, no proprietary encryption, no server-driven change
-  to the client.
+  before installing; features declared instead of guessed; cursor pages,
+  errors with real status codes, and nothing hidden: no hardware
+  identifier, no proprietary encryption, no server-driven change to the
+  client; and a conformance suite.
 
 - **[JSON Schemas](schemas/v1/)** for every document, with
-  [examples](examples/v1/), and an **[OpenAPI description](openapi.yaml)**;
-  `tools/check_schemas.py` checks them, in CI too.
+  [examples](examples/v1/) and refused ones, and an **[OpenAPI
+  description](openapi.yaml)** of every route; `tools/check_schemas.py`
+  checks them, in CI too.
 
-PlayShelf, a homebrew package manager for the Nintendo Switch, will be the
-first client.
+[PlayShelf](https://shelf.boreale.dev/?utm_source=github&utm_medium=readme),
+a homebrew package manager for the Nintendo Switch, will be the first
+client.
 
 ## Conformance suite and reference server
 
 The **[conformance suite](conformance/run.py)** checks a server from
 outside, against every MUST it can see: handshake and declared features,
 documents against the schemas, the bearer token's challenge (and no Basic
-one), pairing's codes, cursor pages, what a console is missing, every app's
-SHA-256, ranges and `Repr-Digest` on every file response, errors, limits,
-and LAN discovery. Each check says PASS, FAIL, WARN (a SHOULD) or SKIP, with
-its SPEC.md section; the exit code is 1 when one fails. It changes nothing
-on the server and approves nothing, but on a server that offers pairing it
-asks for a few real pairing codes, which the server may show to its users
-until they expire on their own.
+one), pairing's codes, platforms and their filter, cursor pages, what a
+device is missing, every app's SHA-256, ranges and `Repr-Digest` on every
+file response, titles, homebrew manifests, packages, requirements, filters
+and signatures, cheats, requests, resumable saves, errors, limits, and LAN
+discovery. Each check says PASS, FAIL, WARN (a SHOULD) or SKIP, with its
+SPEC.md section; the exit code is 1 when one fails. It approves nothing,
+but on a server that offers pairing it asks for a few real pairing codes,
+which the server may show to its users until they expire on their own.
+With a token, it writes only for a title id of no game of the library: save
+backups and a cheat set, which it deletes, and one request, which it cannot
+delete (the protocol has no route for that).
 
 ```sh
 pip install -r tools/requirements.txt   # jsonschema, for the schema checks
@@ -56,19 +80,21 @@ anonymously. A server at home with a self-signed certificate: `--cafile`
 its certificate.
 
 The **[reference server](server/lantern_server.py)** serves a folder of
-packages (`.nsp`, `.nsz`, `.xci`, `.xcz`), identified by a `library.json` or
-by the `[title id][vN]` in their names, with the families `library`,
-`changes` and `media` (names only), and `pairing` when it has accounts; the
-others stay at 0. Standard library only; a reference, not a product:
+packages and homebrew, for the platforms with a profile, with the families
+`library`, `titles`, `changes`, `homebrew`, `cheats` (writing included),
+`saves` and `requests`, and `pairing` when it has accounts; `sections`
+stays at 0. Its
+docstring says how it reads the folder. Standard library only; a
+reference, not a product:
 
 ```sh
 python3 -m server --library ~/games [--users users.json] \
     [--host 0.0.0.0 --tls-cert cert.pem --tls-key key.pem] [--discovery]
 ```
 
-- With `--users`, a console pairs: it asks for a code, and the user approves
+- With `--users`, a device pairs: it asks for a code, and the user approves
   it on the server's page, `/pair`, signed in with their name and password,
-  after comparing the key's fingerprint the console shows. Tokens are kept
+  after comparing the key's fingerprint the device shows. Tokens are kept
   hashed in the state file; `--tokens` lists them, `--revoke ID` revokes
   one.
 - Without `--tls-cert` and `--tls-key` it speaks plain HTTP, and only on a
@@ -77,7 +103,9 @@ python3 -m server --library ~/games [--users users.json] \
 
 `python3 -m unittest discover -s tests` runs the suite against it on a tiny
 fictional library, over plain HTTP on loopback and over TLS, as the
-`conformance` workflow does.
+`conformance` workflow does; the workflow then runs the suite against the
+server twice, anonymously and with a token holding every scope, which
+`tools/pair_for_ci.py` gets by pairing through `/pair` as a user would.
 
 ## Licences
 
