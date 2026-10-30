@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "installed": [
+    {
+      "app_id": "0100ABCD00010000",
+      "version": 0
+    },
+    {
+      "app_id": "0100ABCD00010800",
+      "version": 131072
+    }
+  ],
+  "want": [
+    "update",
+    "dlc"
+  ]
+}

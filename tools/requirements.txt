@@ -1,0 +1,5 @@
+# What tools/check_schemas.py and the OpenAPI check need (CI pins them here).
+jsonschema==4.26.0
+referencing==0.37.0
+rfc3339-validator==0.1.4
+openapi-spec-validator==0.9.0

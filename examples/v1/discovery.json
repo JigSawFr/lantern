@@ -1,0 +1,16 @@
+{
+  "magic": "OWNFOIL",
+  "uid": "6f1c2a8e-4b7d-4e2a-9c31-8d5e2f0a7b14",
+  "name": "Living room shelf",
+  "version": "2.7.0",
+  "port": 8465,
+  "public": false,
+  "remote": "https://shelf.example.org",
+  "lantern": {
+    "schema": 1,
+    "base": "/api/lantern",
+    "versions": [
+      1
+    ]
+  }
+}

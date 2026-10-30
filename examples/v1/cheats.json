@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "cheats": [
+    {
+      "title_id": "0100ABCD00010000",
+      "build_id": "4A1B2C3D4E5F6071",
+      "note": "Endless lamp oil",
+      "size": 512,
+      "sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817"
+    }
+  ]
+}

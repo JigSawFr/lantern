@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "title_id": "0100ABCD00010000",
+  "language": "en",
+  "name": "Frostline Tales",
+  "publisher": "Fjord Works",
+  "release": "2025-03-14",
+  "players": {
+    "min": 1,
+    "max": 4
+  },
+  "languages": [
+    "en",
+    "fr",
+    "ja"
+  ],
+  "age": {
+    "system": "PEGI",
+    "rating": 7
+  },
+  "description": "Guide a lantern-bearer across a frozen archipelago.",
+  "media": {
+    "icon": {
+      "url": "/api/lantern/v1/media/9f2c41aa.jpg",
+      "width": 256,
+      "sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817"
+    },
+    "screenshots": [
+      {
+        "url": "https://media.example.org/frostline/1.jpg",
+        "width": 1280,
+        "height": 720,
+        "external": true
+      }
+    ]
+  }
+}

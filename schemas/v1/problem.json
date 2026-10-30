@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lantern.boreale.dev/schemas/v1/problem.json",
+  "title": "Error",
+  "description": "Every error, application/problem+json (RFC 9457; SPEC.md § 10), extended by `schema` and `code`.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "$ref": "common.json#/$defs/schema1"
+    },
+    "type": {
+      "$ref": "common.json#/$defs/url"
+    },
+    "title": {
+      "$ref": "common.json#/$defs/name"
+    },
+    "status": {
+      "type": "integer",
+      "minimum": 400,
+      "maximum": 599
+    },
+    "detail": {
+      "$ref": "common.json#/$defs/text"
+    },
+    "code": {
+      "enum": [
+        "bad_request",
+        "unauthorized",
+        "forbidden",
+        "account_frozen",
+        "not_found",
+        "conflict",
+        "gone",
+        "too_large",
+        "unsupported_schema",
+        "slow_down",
+        "unavailable"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "status",
+    "code"
+  ]
+}
