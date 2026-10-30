@@ -176,7 +176,8 @@ code { font-size: 0.875em; }
 table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
 th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--night-line); vertical-align: top; }
 tbody tr:last-child > * { border-bottom: 0; }
-thead th { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mist); font-weight: 500; }
+/* A long word of a heading ("ÉVÉNEMENT") breaks rather than push a narrow table sideways. */
+thead th { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mist); font-weight: 500; hyphens: auto; }
 td.num, th.num { text-align: right; white-space: nowrap; }
 /* The ways in: server, client, schemas. */
 .ways { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }

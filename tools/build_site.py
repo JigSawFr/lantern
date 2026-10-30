@@ -17,7 +17,10 @@ from the text and the suite: conformance/ (the levels), requirements/
 (traceability: each requirement and the suite's checks that cover it, from
 tools/requirements.py and conformance/run.py), implementations/ (the
 registry, site/registry.json) and badge/ (the "Lantern compatible" badges,
-written into assets/badges/ by badge_svg()). spec/<draft>/ are the drafts as
+written into assets/badges/ by badge_svg()); releases/ says how a version of
+the text is released and how to verify its files (SPEC.md § 3.6), in
+English too. schemas/v1/<name>.json are the schemas, each at its $id
+(copy_schemas()), as they are. spec/<draft>/ are the drafts as
 they were published (DRAFTS, read from git), spec/changes/ what each one
 changed; the French spec/ pages show the informative translation of
 site/translations/ (TRANSLATIONS); demo/ is the demo library and its trapped
@@ -88,12 +91,19 @@ PAGES = {"": "home", "spec/": "spec", "demo/": "demo"}
 # whole history for it (fetch-depth: 0). (draft, commit, pull request.)
 # Draft 0.1 is its text once the conformance suite had settled it (#3, #4,
 # #6, its "Changes"); it was first published in #1.
+# The last draft may be (draft, None, None) while it is not merged yet: its
+# page is then the working tree's SPEC.md (which must say "Draft <draft>,"),
+# without a commit or a pull request, and its links lead to main. Once draft
+# 0.6 is merged, a pull request replaces its None, None with the commit on
+# main that finished it and its pull request's number, as for 0.1 to 0.5;
+# check_site.py then pins the page to that commit like the others.
 DRAFTS = [
     ("0.1", "fda0f52aebef05bc3dbb9e8e2917c7e32eb15094", 6),
     ("0.2", "a4c1609a67c990e6fe7cb443f59c11f89c604137", 7),
     ("0.3", "836e13115663bc671d0727b221eaf2b42d3dfe83", 9),
     ("0.4", "442cc07ac7f86a37b5145e2940a0962bd6b8fe2a", 10),
     ("0.5", "ca10e3146a6300cc99814e2290de5da97c735965", 11),
+    ("0.6", None, None),    # not merged yet: SPEC.md as it is (see above)
 ]
 # The specification's informative translations (site/translations/), by
 # the catalogs whose spec/ page shows them; each says the English commit it
@@ -120,7 +130,7 @@ UTM_SOURCE = "lantern"
 
 KEY = re.compile(r"\{\{([a-z0-9_]+)\}\}")
 REQ = re.compile(r"\[(L-(?:\d+(?:\.\d+)?|[A-Z](?:\.\d+)?)-\d+)\]")
-DRAFT = "0.5"   # the draft the badges name (SPEC.md § 17)
+DRAFT = "0.6"   # the draft the badges name (SPEC.md § 17)
 LEVELS = [("core", "Core"), ("titles", "+titles"), ("homebrew", "+homebrew"), ("saves", "+saves"),
           ("cheats", "+cheats"), ("requests", "+requests"), ("admin", "+admin"), ("events", "+events"),
           ("peers", "+peers"), ("sync", "+sync"), ("encrypted_saves", "+encrypted_saves"), ("static", "Static")]
@@ -713,6 +723,47 @@ def requirements_body(spec: dict, root: str) -> str:
             f'<div><dt>Inside</dt><dd>{counts["unseen"]} inside a server</dd></div></dl>\n{body}\n</section>')
 
 
+def releases_body(root: str) -> str:
+    """releases/: how a version of the text is released and how to check its files (SPEC.md § 3.6)."""
+    v = DRAFT
+    return f"""<section class="prose" lang="en">
+<p>Each version of the text is released on the repository by a tag <code>spec-v&lt;version&gt;</code>
+(<code>spec-v{v}</code>), from draft 0.6 on (<a href="{root}spec/#36-releases">the specification, §&nbsp;3.6</a>).
+The maintainer makes the tag; the repository's release workflow builds the files from it, attests them and
+publishes them, a prerelease while the text is a draft. <a href="{REPO}/releases">The releases, on GitHub</a>.</p>
+<h2 id="files">What a release holds</h2>
+<ul>
+<li><code>SPEC.md</code> and <code>openapi.yaml</code>, as they are at the tag;</li>
+<li><code>lantern-schemas-{v}.zip</code>, <code>lantern-examples-{v}.zip</code>, <code>lantern-vectors-{v}.zip</code>
+and <code>lantern-conformance-{v}.zip</code>: the schemas, their examples, the test vectors and the conformance
+suite;</li>
+<li><code>lantern-{v}.zip</code>: all of them in one, with the licences;</li>
+<li><code>SHA256SUMS</code>: the SHA-256 of each file.</li>
+</ul>
+<p>The zips are reproducible: the same tagged tree gives the same bytes. Each file carries a build provenance
+attestation (SLSA, signed through Sigstore): GitHub's word that it was built from that tag by this repository's
+release workflow, and not changed since.</p>
+<h2 id="verify">Verify a release</h2>
+<p>With the <a href="https://cli.github.com/">GitHub CLI</a>, download the release, check the attestation of each
+file you use, then their sums:</p>
+<pre tabindex="0"><code>gh release download spec-v{v} --repo JigSawFr/lantern
+gh attestation verify lantern-{v}.zip --repo JigSawFr/lantern
+sha256sum --check --ignore-missing SHA256SUMS</code></pre>
+<p><code>gh attestation verify</code> fails when the file was not built by a workflow of
+<code>JigSawFr/lantern</code>, or was changed after. To also require the release workflow itself:</p>
+<pre tabindex="0"><code>gh attestation verify lantern-{v}.zip --repo JigSawFr/lantern \\
+  --signer-workflow JigSawFr/lantern/.github/workflows/release.yml</code></pre>
+<p>An implementation names the version it follows, and the conformance suite of that release checks it
+(<a href="{root}conformance/">conformance levels</a>).</p>
+<h2 id="schemas">The schemas at their address</h2>
+<p>Each schema's <code>$id</code> is its stable address, where this site serves it as it is in the repository:
+<a href="{root}schemas/v1/apps.json"><code>{SITE_URL}schemas/v1/apps.json</code></a>,
+<a href="{root}schemas/v1/common.json"><code>{SITE_URL}schemas/v1/common.json</code></a>… The address of a schema of
+<code>/v1/</code> never changes, and each release carries the same files
+(<a href="{root}spec/#32-document-schema">§&nbsp;3.2</a>).</p>
+</section>"""
+
+
 def registry() -> list:
     """site/registry.json's implementations; another schema is none (workbench's rule), never an error."""
     data = json.loads((SITE / "registry.json").read_text(encoding="utf-8"))
@@ -883,13 +934,13 @@ def changes_body(drafts: list) -> str:
     rows, parts = [], []
     previous = None
     for v, commit, pr, spec in reversed(drafts):
-        rows.append(f'<tr><td><a href="#d-{v}">Draft {v}</a></td><td><a href="{REPO}/pull/{pr}">#{pr}</a></td>'
+        rows.append(f'<tr><td><a href="#d-{v}">Draft {v}</a></td><td>{pull(pr)}</td>'
                     f'<td class="num">{len(outline(spec["text"]))}</td>'
                     f'<td class="num">{len(spec["text"].split()):,}</td></tr>')
     for v, commit, pr, spec in drafts:
         here = outline(spec["text"])
         said = notes.get(v)
-        said_html = (blocks(said, spec["sections"], ref=commit).replace('href="#', f'href="../{v}/#')
+        said_html = (blocks(said, spec["sections"], ref=commit or "main").replace('href="#', f'href="../{v}/#')
                      if said else "<p>The text says nothing of its changes.</p>")
 
         def link(o, at=v):
@@ -897,8 +948,8 @@ def changes_body(drafts: list) -> str:
             return f'<a href="../{at}/#{o["anchor"]}">{number}{html.escape(re.sub(r"^[0-9.]+ ", "", o["title"]))}</a>'
 
         part = [f'<h2 id="d-{v}">Draft {v}</h2>',
-                (f'<p class="meta"><a href="../{v}/">Read draft {v}</a> · <a href="{REPO}/pull/{pr}">lantern#{pr}</a>'
-                 f' · <code>{commit[:7]}</code></p>'),
+                (f'<p class="meta"><a href="../{v}/">Read draft {v}</a> · {pull(pr, "lantern#")}'
+                 + (f' · <code>{commit[:7]}</code>' if commit else "") + '</p>'),
                 f'<h3 id="d-{v}-said">What the text says</h3>', said_html]
         if previous is None:
             part.append(f'<h3 id="d-{v}-sections">Its sections</h3><p>The first draft: {len(here)} sections and '
@@ -934,11 +985,19 @@ def changes_body(drafts: list) -> str:
             + "\n</tbody></table></div>\n" + "\n".join(reversed(parts)) + "\n</section>")
 
 
-def draft_banner(v: str, pr: int) -> str:
+def pull(pr: int | None, prefix: str = "#") -> str:
+    """A draft's pull request, linked; "not merged yet" for the draft in progress (DRAFTS)."""
+    return f'<a href="{REPO}/pull/{pr}">{prefix}{pr}</a>' if pr else "not merged yet"
+
+
+def draft_banner(v: str, pr: int | None) -> str:
     if v != DRAFT:
         later = DRAFTS[[d for d, _, _ in DRAFTS].index(v) + 1][0]
         return (f'<p class="banner" role="note"><strong>Draft {v}, superseded;</strong> the current draft is '
                 f'<a href="../">{DRAFT}</a>. <a href="../changes/#d-{later}">What changed since</a>.</p>')
+    if pr is None:
+        return (f'<p class="banner" role="note"><strong>Draft {v}, the current draft,</strong> not merged yet: '
+                f'this page is SPEC.md as it is now. <a href="../">The current text</a> is the same.</p>')
     return (f'<p class="banner" role="note"><strong>Draft {v} as it was published</strong> (lantern#{pr}). '
             f'<a href="../">The current text</a> is this draft, with the fixes made since, if any.</p>')
 
@@ -1004,6 +1063,22 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
     return links_out(fill(template, values))
 
 
+def copy_schemas(out: Path) -> int:
+    """Each schema of schemas/ at its $id's path (https://lantern.boreale.dev/schemas/v1/<name>.json is
+    schemas/v1/<name>.json), byte for byte (SPEC.md § 3.2): no tracking, no tag, nothing added."""
+    count = 0
+    for source in sorted((ROOT / "schemas").rglob("*.json")):
+        sid = json.loads(source.read_text(encoding="utf-8")).get("$id", "")
+        path = urlparse(sid).path.lstrip("/")
+        if urlparse(sid).hostname != "lantern.boreale.dev" or not path.startswith("schemas/"):
+            sys.exit(f"build_site: {source.relative_to(ROOT)}'s $id is not an address of the site: {sid!r}")
+        target = out / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        count += 1
+    return count
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -1012,6 +1087,7 @@ def main() -> None:
         shutil.rmtree(out)
     out.mkdir(parents=True)
     shutil.copytree(SITE / "assets", out / "assets")
+    schemas = copy_schemas(out)
     catalogs = {c: json.loads((SITE / "i18n" / f"{c}.json").read_text(encoding="utf-8")) for c, _, _, _ in LANGUAGES}
     template = (SITE / "template.html").read_text(encoding="utf-8")
     spec = read_spec()
@@ -1051,17 +1127,23 @@ def main() -> None:
     en = catalogs["en"]
     # The drafts, each as it was published (DRAFTS), out of the sitemap and of search engines; and what changed.
     drafts = []
+    if DRAFTS[-1][0] != DRAFT or any(commit is None for _, commit, _ in DRAFTS[:-1]):
+        sys.exit(f"build_site: DRAFTS ends with draft {DRAFT}, and only the last one may be without a commit")
     for v, commit, pr in DRAFTS:
-        text = spec_at(commit)
+        # The draft not merged yet (commit None) is the working tree's SPEC.md.
+        text = spec_at(commit) if commit else SPEC.read_text(encoding="utf-8")
         if not text.split("\n")[2].startswith(f"Draft {v},"):
-            sys.exit(f"build_site: SPEC.md at {commit[:7]} is not draft {v}")
-        d = read_spec(text, ref=commit, errors_needed=False)
+            sys.exit(f"build_site: SPEC.md at {(commit or 'the working tree')[:7]} is not draft {v}")
+        ref = commit or "main"
+        d = read_spec(text, ref=ref, errors_needed=False)
         drafts.append((v, commit, pr, d))
         write(f"spec/{v}/", page_html(template, "en", en, f"spec/{v}/", "spec", d, versions, spec_body(
-            d, en, source=f"{REPO}/blob/{commit}/SPEC.md", label=f"SPEC.md at {commit[:7]}, on GitHub"), {
+            d, en, source=f"{REPO}/blob/{ref}/SPEC.md",
+            label=f"SPEC.md at {commit[:7]}, on GitHub" if commit else "SPEC.md on GitHub"), {
             "title": f"Draft {v} · Specification · Lantern", "eyebrow": f"Specification · draft {v}",
             "h1": f"The Lantern protocol, draft {v}",
-            "lede": f"SPEC.md as it was when draft {v} was merged (lantern#{pr}), kept as it was.",
+            "lede": (f"SPEC.md as it was when draft {v} was merged (lantern#{pr}), kept as it was." if commit else
+                     f"SPEC.md of draft {v}, the current draft, as it is now: it is kept as it was once merged."),
             "description": f"The Lantern protocol's draft {v}, as it was published; superseded by later drafts.",
             "noindex": True, "alternate": False, "lang_path": "spec/",
             "after": draft_banner(v, pr) + "\n    " + drafts_nav(en, "../../", "en", v)}), listed=False)
@@ -1093,6 +1175,10 @@ def main() -> None:
              ("implementations/", "Implementations", "Registry · SPEC.md § 17",
               "The servers and clients that pass the conformance suite, and the levels they reach.",
               "The registry of Lantern implementations and the conformance levels they reach.", registry_body("../")),
+             ("releases/", "Releases", "Releases · SPEC.md § 3.6",
+              "Each version of the text, its files, their sums and their attestations, and how to check them.",
+              "How the Lantern protocol's versions are released, and how to verify a release's files with gh attestation verify.",
+              releases_body("../")),
              ("badge/", "The “Lantern compatible” badge", "Badge · SPEC.md § 17",
               "For an implementation that passes the suite, at the level it reaches.",
               "The Lantern compatible badges, one per conformance level, and how to show them.", badge_body("../"))]
@@ -1122,7 +1208,7 @@ def main() -> None:
     (out / ".nojekyll").write_text("", encoding="utf-8")
     total = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
     print(f"build_site: {written} pages ({len(urls)} in the sitemap), {len(DRAFTS)} drafts, {len(spec['errors'])} error "
-          f"types, {len(versions)} versions, {total / 1e6:.1f} MB in {out}")
+          f"types, {schemas} schemas, {len(versions)} versions, {total / 1e6:.1f} MB in {out}")
 
 
 if __name__ == "__main__":

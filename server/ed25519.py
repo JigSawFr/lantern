@@ -76,11 +76,67 @@ def same(a, b):
 
 
 IDENTITY = (0, 1, 1, 0)
+_TABLE = []         # _TABLE[i][j]: j * 16**i * G, made at the first use
+
+
+def multiply_base(s):
+    """s * G, by windows of 4 bits over a table of G's multiples: some sixty additions, not five hundred (the
+    same point as multiply(s, G))."""
+    if not _TABLE:
+        point = G
+        for _ in range(64):
+            row = [IDENTITY, point]
+            for _ in range(14):
+                row.append(add(row[-1], point))
+            _TABLE.append(row)
+            point = add(row[-1], point)
+    q, i = IDENTITY, 0
+    while s:
+        if s & 15:
+            q = add(q, _TABLE[i][s & 15])
+        s, i = s >> 4, i + 1
+    return q
 
 
 def small_order(point):
     """Whether a point is of small order: one of the 8 whose [8]P is the identity."""
     return same(multiply(8, point), IDENTITY)
+
+
+_KEYS = {}          # a public key's 32 bytes -> its point and its multiples 0 to 15, or None when it is refused
+_KEYS_LIMIT = 256
+
+
+def _key(public):
+    """A public key's point, checked (canonical, not of small order), and a table of its 16 first multiples,
+    kept for the keys that sign again and again (a device's); None when the key is refused."""
+    if public in _KEYS:
+        return _KEYS[public]
+    a = decode(public)
+    found = None
+    if a is not None and not small_order(a):
+        row = [IDENTITY, a]
+        for _ in range(14):
+            row.append(add(row[-1], a))
+        found = row
+    if len(_KEYS) >= _KEYS_LIMIT:
+        _KEYS.pop(next(iter(_KEYS)))
+    _KEYS[public] = found
+    return found
+
+
+def _multiply_key(s, row):
+    """s * A by windows of 4 bits, the most significant first, A's multiples in `row`."""
+    q = IDENTITY
+    for shift in range(252, -1, -4):
+        q = add(q, q)
+        q = add(q, q)
+        q = add(q, q)
+        q = add(q, q)
+        n = (s >> shift) & 15
+        if n:
+            q = add(q, row[n])
+    return q
 
 
 def verify(public, message, signature):
@@ -93,12 +149,12 @@ def verify(public, message, signature):
     message in 8: anyone could forge."""
     if len(public) != 32 or len(signature) != 64:
         return False
-    a, r = decode(public), decode(signature[:32])
+    row, r = _key(bytes(public)), decode(signature[:32])
     s = int.from_bytes(signature[32:], "little")
-    if a is None or r is None or s >= L or small_order(a) or small_order(r):
+    if row is None or r is None or s >= L or small_order(r):
         return False
     h = int.from_bytes(hashlib.sha512(signature[:32] + public + message).digest(), "little") % L
-    return same(multiply(s, G), add(r, multiply(h, a)))
+    return same(multiply_base(s), add(r, _multiply_key(h, row)))
 
 
 def _secret(seed):
@@ -111,14 +167,14 @@ def _secret(seed):
 
 def public_key(seed):
     """The 32-byte public key of a 32-byte seed (RFC 8032 § 5.1.5)."""
-    return encode(multiply(_secret(seed)[0], G))
+    return encode(multiply_base(_secret(seed)[0]))
 
 
 def sign(seed, message):
     """The 64-byte signature of `message` by the key of `seed` (RFC 8032 § 5.1.6)."""
     a, prefix = _secret(seed)
-    public = encode(multiply(a, G))
+    public = encode(multiply_base(a))
     r = int.from_bytes(hashlib.sha512(prefix + message).digest(), "little") % L
-    big_r = encode(multiply(r, G))
+    big_r = encode(multiply_base(r))
     h = int.from_bytes(hashlib.sha512(big_r + public + message).digest(), "little") % L
     return big_r + ((r + h * a) % L).to_bytes(32, "little")

@@ -39,6 +39,7 @@ import base64
 import hashlib
 import json
 import re
+import unicodedata
 
 # Annex A: the roots a homebrew may write to, "{id}" its id, and the areas a
 # port's data_root may lie in (the user approves that folder once).
@@ -74,6 +75,12 @@ class Refused(Exception):
     """A homebrew a client must not install; its message says why."""
 
 
+
+def fold(text):
+    """Text as SPEC.md § 2.3 compares names and paths: Unicode's canonical caseless match (NFD, default case
+    folding, NFD)."""
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", text).casefold())
+
 def path_problem(path):
     """Why `path` breaks SPEC.md § 8.2, or None."""
     if not isinstance(path, str):
@@ -108,7 +115,7 @@ def manifest_problems(manifest):
         if problem:
             out.append(problem)
             continue
-        folded = entry["path"].casefold()
+        folded = fold(entry["path"])
         if folded in seen:
             out.append(f"{entry['path']!r} twice, when case is ignored")
         seen.add(folded)
@@ -252,6 +259,27 @@ _GY = 4 * pow(5, _P - 2, _P) % _P
 _G = (_x(_GY, 0), _GY, 1, _x(_GY, 0) * _GY % _P)
 
 
+_TABLE = []         # _TABLE[i][j]: j * 16**i * G, made at the first use
+
+
+def _base(s):
+    """s * G, by windows of 4 bits over a table of G's multiples (the same point as _mul(s, _G), faster)."""
+    if not _TABLE:
+        point = _G
+        for _ in range(64):
+            row = [(0, 1, 1, 0), point]
+            for _ in range(14):
+                row.append(_add(row[-1], point))
+            _TABLE.append(row)
+            point = _add(row[-1], point)
+    q, i = (0, 1, 1, 0), 0
+    while s:
+        if s & 15:
+            q = _add(q, _TABLE[i][s & 15])
+        s, i = s >> 4, i + 1
+    return q
+
+
 def ed25519_verify(public, message, signature):
     """Whether `signature` (64 bytes) is `public`'s (32 bytes) over `message`."""
     if len(public) != 32 or len(signature) != 64:
@@ -263,7 +291,7 @@ def ed25519_verify(public, message, signature):
     if a is None or r is None or s >= _L or small_order(a) or small_order(r):
         return False
     h = int.from_bytes(hashlib.sha512(signature[:32] + public + message).digest(), "little") % _L
-    left, right = _mul(s, _G), _add(r, _mul(h, a))
+    left, right = _base(s), _add(r, _mul(h, a))
     return (left[0] * right[2] - right[0] * left[2]) % _P == 0 and (left[1] * right[2] - right[1] * left[2]) % _P == 0
 
 
@@ -555,15 +583,15 @@ def _secret(seed):
 
 def ed25519_public(seed):
     """The 32-byte public key of a 32-byte seed (the private key)."""
-    return _encode(_mul(_secret(seed)[0], _G))
+    return _encode(_base(_secret(seed)[0]))
 
 
 def ed25519_sign(seed, message):
     """The 64-byte Ed25519 signature of `message` by the key of `seed`."""
     a, prefix = _secret(seed)
-    public = _encode(_mul(a, _G))
+    public = _encode(_base(a))
     r = int.from_bytes(hashlib.sha512(prefix + message).digest(), "little") % _L
-    big_r = _encode(_mul(r, _G))
+    big_r = _encode(_base(r))
     k = int.from_bytes(hashlib.sha512(big_r + public + message).digest(), "little") % _L
     return big_r + ((r + k * a) % _L).to_bytes(32, "little")
 
@@ -649,6 +677,7 @@ def sign(seed, method, uri, authorization=None, body=b"", created=None, nonce=No
 # Grants and mirrors (SPEC.md § 19).
 
 PRIVATE_NETS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7", "fe80::/10")
+LOOPBACK_NETS = ("127.0.0.0/8", "::1/128")     # plain HTTP for testing (SPEC.md § 2, § 19.2)
 
 
 def grant_payload(uid, sha256, size, exp):
@@ -685,7 +714,7 @@ def read_grant(grant, keys, now):
 
 def mirror_ok(url):
     """Whether a client may read a mirror (SPEC.md § 19.2): HTTPS, or plain HTTP at an address of a private
-    network."""
+    network, or of loopback for testing (§ 2)."""
     import ipaddress
     from urllib.parse import urlsplit
     if not isinstance(url, str):
@@ -700,7 +729,7 @@ def mirror_ok(url):
         ip = ipaddress.ip_address((u.hostname or "").split("%")[0])
     except ValueError:
         return False
-    return u.scheme == "http" and any(ip in ipaddress.ip_network(n) for n in PRIVATE_NETS)
+    return u.scheme == "http" and any(ip in ipaddress.ip_network(n) for n in PRIVATE_NETS + LOOPBACK_NETS)
 
 
 # Sync (SPEC.md § 20.4).
@@ -717,7 +746,7 @@ def sync_time(text, now, skew):
     except ValueError:
         return None
     when = now if when > now + timedelta(seconds=skew) else when
-    return when.strftime("%Y-%m-%dT%H:%M:%S.") + f"{when.microsecond // 1000:03d}Z"
+    return f"{when.year:04d}-" + when.strftime("%m-%dT%H:%M:%S.") + f"{when.microsecond // 1000:03d}Z"
 
 
 def canonical(value):

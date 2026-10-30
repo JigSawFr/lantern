@@ -112,7 +112,7 @@ def export(server_module, library, out, page_size=100, language="en", name="Lant
                 put(rel, doc)
         by_title = {}
         for e in sorted(library.cheats.values(), key=lambda e: (e["doc"]["platform"], e["doc"]["title_id"],
-                                                                 e["doc"]["build_id"], e["doc"]["source"].casefold(),
+                                                                 e["doc"].get("build_id", ""), e["doc"]["source"].casefold(),
                                                                  e["doc"]["id"])):
             by_title.setdefault((e["doc"]["platform"], e["doc"]["title_id"]), []).append(e["doc"])
             blobs[("cheat", e["doc"]["id"])] = e["path"]

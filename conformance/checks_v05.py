@@ -104,6 +104,37 @@ class Stream:
                 pass
 
 
+class LongPoll:
+    """A long poll (SPEC.md § 18.3) from a token, `changes?since=&wait=`, made in a thread while other checks
+    run: it answers when an event comes, or once its wait passed."""
+    WAIT = 1
+
+    def __init__(self, suite, since):
+        self.response = self.error = None
+        self.took = 0.0
+        path = suite.api(f"/v1/changes?since={quote(since, safe='')}&wait={self.WAIT}")
+        self.thread = threading.Thread(target=self.run, args=(suite.http, path), daemon=True)
+        self.thread.start()
+
+    def run(self, through, path):
+        t0 = time.monotonic()
+        try:
+            self.response = through.request("GET", path)
+        except (OSError, http.client.HTTPException) as e:
+            self.error = e
+        self.took = time.monotonic() - t0
+
+    def result(self):
+        self.thread.join(self.WAIT + 30)
+        return self.response, self.took
+
+
+def caught_up(blocks):
+    """Whether a stream resumed from a token has given every event after it: the events after the token come
+    before the stream's first heartbeat (SPEC.md § 18.1, L-18.1-10)."""
+    return any("comment" in b for b in blocks)
+
+
 def events_of(blocks):
     return [b for b in blocks if "event" in b or "data" in b]
 
@@ -113,7 +144,7 @@ class NewFamilies:
 
     # Event streams (SPEC.md § 18).
 
-    def open_stream(self, path=None, auth="token", headers=None, platform=None, token=None, seed=None, retry=6,
+    def open_stream(self, path=None, auth="token", headers=None, platform=None, token=None, seed=None, retry=30,
                     http=None):
         """A Stream, or the Response of an error (logged like any)."""
         http = http or self.http
@@ -122,7 +153,7 @@ class NewFamilies:
         cls = http_client_class(u.scheme)
         kw = {"context": http.context} if u.scheme == "https" else {}
         conn = cls(u.hostname, u.port, timeout=http.timeout, **kw)
-        hdrs = {"User-Agent": "LanternConformance/0.5", "Accept": "text/event-stream", "Accept-Language": "en",
+        hdrs = {"User-Agent": f"LanternConformance/{self.version}", "Accept": "text/event-stream", "Accept-Language": "en",
                 **(headers or {})}
         if platform:
             hdrs["Lantern-Platform"] = platform
@@ -142,7 +173,7 @@ class NewFamilies:
             conn.close()
             res = self.response("GET", path, label, r, data, platform)
             if res.status == 429 and retry:     # a stream closed a moment ago: the server frees its slot soon
-                time.sleep(min(int(res.header("Retry-After") or 1), 1) / 2)
+                time.sleep(0.1)                 # 30 tries, 3 seconds in all
                 return self.open_stream(path, auth, headers, platform, token, seed, retry=retry - 1, http=http)
             return res
         self.response("GET", path, label, r, b"", platform, raw=True)
@@ -158,7 +189,9 @@ class NewFamilies:
 
     def ready(self, stream):
         """The stream's first blocks: retry, then the event ready; (its id, the blocks read)."""
-        blocks = stream.blocks(5, stop=lambda b: any(x.get("event") == "ready" for x in b))
+        # Up to ready, or to anything else first: a heartbeat or another event before ready is a stream that
+        # did not begin with it, which waiting longer cannot mend.
+        blocks = stream.blocks(5, stop=lambda b: any("comment" in x or "event" in x for x in b))
         fields = [b for b in blocks if "comment" not in b]
         expect(fields and "retry" in fields[0] and fields[0]["retry"].isdigit(),
                f"the stream does not begin with a retry field: {fields[:1]}")
@@ -203,6 +236,7 @@ class NewFamilies:
         r = self.http.request("GET", path)
         expect(r.status == 200, f"{r}: the id of ready is not a token changes takes" + problem_detail(r))
         self.validate(r.json(), "changes", str(r))
+        self.long_poll = LongPoll(self, rid)    # waits while the next checks run; events.long-poll reads it
         return f"ready {rid}; heartbeat {limits['heartbeat']} s, {limits['event_streams']} stream(s), wait {limits['wait']} s"
 
     def c_events_heartbeat(self):
@@ -283,7 +317,7 @@ class NewFamilies:
             expect(isinstance(other, Stream), f"{other}: ?since= wins over Last-Event-ID, expected a stream")
             try:
                 self.ready(other)
-                seen = other.blocks(2)
+                seen = other.blocks(2, stop=caught_up)
             finally:
                 other.close()
             if platform:
@@ -295,7 +329,7 @@ class NewFamilies:
                 if isinstance(a, Stream):
                     try:
                         self.ready(a)
-                        expect(not any(self.is_mine(b, kind, ident) for b in a.blocks(2)),
+                        expect(not any(self.is_mine(b, kind, ident) for b in a.blocks(2, stop=caught_up)),
                                "an anonymous stream got the event of an account")
                     finally:
                         a.close()
@@ -321,16 +355,15 @@ class NewFamilies:
         for query in ("wait=5", "since=x&wait=soon"):
             r = self.http.request("GET", self.api(f"/v1/changes?{query}"))
             self.expect_problem(r, [400], {"bad_request"})
-        start = getattr(self, "ready_id", None)
-        if start is None:
+        poll = getattr(self, "long_poll", None)
+        if poll is None:
             raise Skip("no token from a stream (events.stream)")
-        t0 = time.monotonic()
-        r = self.http.request("GET", self.api(f"/v1/changes?since={quote(start, safe='')}&wait=2"))
-        took = time.monotonic() - t0
+        r, took = poll.result()
+        expect(r is not None, f"the long poll of {LongPoll.WAIT} s failed: {poll.error}")
         expect(r.status == 200, f"{r}, expected 200" + problem_detail(r))
         self.validate(r.json(), "changes", str(r))
         expect(isinstance(r.json().get("events"), list), f"{r}: no events list with wait")
-        expect(took < 2 + 10, f"{r}: answered after {took:.1f} s for a wait of 2")
+        expect(took < LongPoll.WAIT + 10, f"{r}: answered after {took:.1f} s for a wait of {LongPoll.WAIT}")
         return f"{len(r.json()['events'])} event(s) after {took:.1f} s; without since or of another form, 400"
 
     def c_events_limit(self):
@@ -354,7 +387,8 @@ class NewFamilies:
         finally:
             for s in held:
                 s.close()
-        time.sleep(1.5)        # the server sees the streams closed
+        # The streams closed, the server frees their slots soon: a later stream of this token waits for one
+        # (open_stream() tries again after a 429).
         return f"{n} stream(s), then 429 with Retry-After {after}"
 
     def c_events_revoked(self):
@@ -524,20 +558,23 @@ class NewFamilies:
         if not self.args.discover:
             raise Skip("no --discover address given")
         port = self.args.peer_discover_port or self.args.discover_port
-        replies = self.datagrams({"schema": 1, "lantern": "discover", "peers": True}, port)
+        want = urlsplit(self.args.peer).port
+        replies = self.datagrams({"schema": 1, "lantern": "discover", "peers": True}, port,
+                                 stop=lambda d: d.get("lantern") == "peer" and d.get("port") == want)
         peers = [(d, a) for d, a in replies if d.get("lantern") == "peer"]
         expect(peers, f"no peer answered a datagram that asks for peers ({len(replies)} reply(ies))")
         for doc, _ in peers:
             self.validate(doc, "discovery-peer", "a peer's reply")
-        want = urlsplit(self.args.peer).port
         mine = [d for d, _ in peers if d["port"] == want]
         expect(mine, f"no peer's reply gives the port {want} of --peer")
         expect(self.hello["uid"] in mine[0]["servers"], "the peer's servers do not hold this server's uid")
+        self.peer_slots = mine[0]["slots"]
         quiet = [d for d, _ in self.datagrams({"schema": 1, "lantern": "discover"}, port) if d.get("lantern") == "peer"]
         expect(not quiet, "a peer answered a datagram that does not ask for peers")
         return f"{mine[0]['name']}: slots {mine[0]['slots']}, tls {mine[0]['tls']}"
 
-    def datagrams(self, doc, port, seconds=1.5):
+    def datagrams(self, doc, port, seconds=1.5, stop=None):
+        """The replies to a datagram within `seconds`, or until one for which stop(reply) is true."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         out = []
@@ -552,7 +589,9 @@ class NewFamilies:
                 try:
                     out.append((json.loads(data.decode("utf-8")), peer[0]))
                 except (UnicodeDecodeError, ValueError):
-                    pass
+                    continue
+                if stop and isinstance(out[-1][0], dict) and stop(out[-1][0]):
+                    break
         finally:
             sock.close()
         return out
@@ -760,7 +799,38 @@ class NewFamilies:
         listed = {u["name"] for u in self.admin_walk(self.api("/v1/admin/users"), "admin-users")}
         expect(name not in listed, f"{name} is still listed")
         self.made_account = None
-        return f"{name}: 400 without confirm, 409 for one's own; deleted: its token 401, its invitation 410{erased}"
+        reborn = self.reborn(name, gen if erased else None)
+        return (f"{name}: 400 without confirm, 409 for one's own; deleted: its token 401, its invitation "
+                f"410{erased}{reborn}")
+
+    def reborn(self, name, generation):
+        """An account made again with a deleted one's name inherits nothing of it (SPEC.md § 5.7, L-5.7-7): no
+        device, no sync data (L-20.5-3); then deleted again."""
+        r = self.http.request("POST", self.api("/v1/admin/users"), body={"schema": 1, "name": name,
+                                                                         "scopes": ["library", "sync.read"]})
+        expect(r.status == 201, f"{r}: the name made again, expected 201" + problem_detail(r))
+        path = self.api(f"/v1/admin/users/{quote(name, safe='')}")
+        try:
+            devices = self.admin_walk(self.api(f"/v1/admin/devices?user={quote(name, safe='')}"), "admin-devices")
+            expect(not devices, f"{len(devices)} device(s) of the deleted account under the new one")
+            if generation is None or not self.features(self.hello)["sync"]:
+                return "; made again, without its devices"
+            expires = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            r = self.http.request("POST", self.api("/v1/admin/invitations"), body={
+                "schema": 1, "user": name, "scopes": ["library", "sync.read"], "expires": expires, "devices": 1,
+                "note": "Lantern conformance"})
+            expect(r.status == 201, f"{r}, expected 201" + problem_detail(r))
+            seed, _, p = self.keyed_pairing(["library", "sync.read"], r.json()["code"])
+            expect(p.status == 200, f"{p}: redeeming, expected 200" + problem_detail(p))
+            token = self.collect(p.json()["poll"], seed)["token"]
+            r = self.http.request("GET", self.api("/v1/sync"), token=token, seed=seed)
+            expect(r.status == 200, f"{r}, expected 200" + problem_detail(r))
+            doc = r.json()
+            expect(doc["generation"] != generation and all(c["items"] == 0 for c in doc["collections"].values()),
+                   f"{r}: the deleted account's sync data under the new one")
+            return "; made again: no device, no sync data of the deleted one"
+        finally:
+            self.http.request("DELETE", path + "?confirm=" + quote(name, safe=""))
 
     # Rate limits of pairing (SPEC.md § 5.2, § 5.5), last: they leave the address limited for a while.
 

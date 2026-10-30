@@ -57,7 +57,9 @@ it is behind, is just as welcome.
   pip install -r tools/requirements.txt
   python3 tools/requirements.py
   python3 tools/check_schemas.py
+  python3 tools/make_vectors.py --check
   python3 -m unittest discover -s tests
+  actionlint
   python3 tools/build_site.py build && python3 tools/check_site.py build
   reuse lint
   ```

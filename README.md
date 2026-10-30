@@ -9,8 +9,9 @@ backups and cheats.
 
 Website: <https://lantern.boreale.dev/?utm_source=github&utm_medium=readme>.
 
-**Status: draft 0.5.** The text may still change before 1.0; comments and
-issues are welcome, from client and server authors especially.
+**Status: draft 0.6**, the draft that readies the text for 1.0. The text may
+still change before 1.0; comments and issues are welcome, from client and
+server authors especially.
 
 - **[The specification](SPEC.md)**: REST and JSON, versioned by path (`/v1/`)
   and by a `schema` in every document, so a client and a server of
@@ -70,6 +71,22 @@ issues are welcome, from client and server authors especially.
     a NAS or a USB key, which the reference server exports;
   - deleting an account, DNS-SD on the reference server, the ids of every
     profile in the schemas, and what 1.0 waits for (Annex C).
+- **What 0.6 settles and adds**, to ready the text for 1.0:
+  - **a core with no open question**: I-JSON documents, times in UTC with
+    `Z`, lower-case digests, names compared by Unicode's caseless match,
+    empty pages; paths without redirects, each query parameter once, empty
+    values absent, unknown ones ignored, `HEAD` on every `GET` route;
+    `If-Range` and `If-None-Match` as HTTP says; each settled point in
+    SPEC.md's Changes, and Annex C's list of open questions empty for the
+    core;
+  - **requests decided**: an admin declines one, with a reason its
+    requester reads, or marks it done; their states as a table, and an
+    event at each change;
+  - **a released, attested text**: each version a release of SPEC.md, the
+    schemas, examples, vectors, `openapi.yaml` and the suite, with SHA-256
+    sums and build provenance attestations (below);
+  - a suite that reads the mirrors' bytes (`--fetch-mirrors`) and fills a
+    peer's slots, and unit tests that run in a few minutes.
 - **What makes it solid**: versioned twice (path and `schema`); a token per
   device, approved on the server, revocable, and no password ever on the
   device; HTTPS everywhere, with the key of a server at home pinned at
@@ -102,8 +119,11 @@ and signatures, cheats, requests, resumable saves, errors, limits, signed reques
 stale and replayed signatures refused), compression, languages, the cold
 start's budget, and LAN discovery; with `admin`, the administration API,
 invitations and their limits, rating caps, and deleting an account; event
-streams and long polling, grants and mirrors, sync, encrypted backups, DNS-SD
-(`--dns-sd`), a peer (`--peer`), and the rate limits of pairing, last. Each check says PASS, FAIL,
+streams and long polling, grants and mirrors (their bytes with `--fetch-mirrors`), sync,
+encrypted backups, DNS-SD (`--dns-sd`), a peer and its slots (`--peer`), requests
+declined and done, the values and routes every server shares (I-JSON, times, `HEAD`,
+queries, redirects, `If-Range`, `If-None-Match`), and the rate limits of pairing,
+last. Each check says PASS, FAIL,
 WARN (a SHOULD) or SKIP, with its SPEC.md section and the requirement ids it
 covers; the exit code is 1 when one fails. On a server that offers pairing
 it asks for a few real pairing codes, which the server may show to its users
@@ -119,7 +139,7 @@ folder, and prints `Lantern Static` when it passes.
 ```sh
 pip install -r tools/requirements.txt   # jsonschema, for the schema checks
 python3 conformance/run.py https://shelf.example.org/ [--token et_… --key device.key] [--discover 192.168.1.255] \
-    [--pin <SPKI SHA-256>] [--dns-sd 192.168.1.10] [--peer http://192.168.1.20:47116/lantern]
+    [--pin <SPKI SHA-256>] [--dns-sd 192.168.1.10] [--peer http://192.168.1.20:47116/lantern] [--fetch-mirrors]
 python3 conformance/run.py --static https://lea.example.org/library/      # or a folder
 ```
 
@@ -131,7 +151,8 @@ its certificate.
 The **[reference server](server/lantern_server.py)** serves a folder of
 packages and homebrew, for the platforms with a profile, with the families
 `library`, `titles`, `changes`, `homebrew`, `cheats` (writing included),
-`saves` and `encrypted_saves`, `requests`, `events`, `peers` and `sync`, and
+`saves` and `encrypted_saves`, `requests` (declined or done by an admin),
+`events`, `peers` and `sync`, and
 `pairing` and `admin` when it has accounts; `sections` stays at 0. Its
 docstring says how it reads the folder. Standard library only; a
 reference, not a product:
@@ -156,12 +177,20 @@ python3 -m server.peer --folder ~/switch-sd --server https://shelf.example.org/ 
   `--dns-sd` advertises `_lantern._tcp` over multicast DNS, with the
   standard library alone.
 - `--export DIR` writes the library as a static library (SPEC.md § 21).
+- JSON goes compressed when a client asks: with zstd from Python 3.14,
+  whose standard library has it, and with **gzip only below 3.14** (never
+  br): the suite then warns that a SHOULD (`L-2.1-1`) is not met, and the
+  tests check both cases.
+- `--heartbeat N` sets `limits.heartbeat` (5 to 60 seconds, 15 by default);
+  `--test-heartbeat S`, for tests only, writes heartbeats more often than
+  that, so that a run need not wait for one.
 - [`server/peer.py`](server/peer.py) is a reference peer: it shares the
   files of a folder that are its server's, by their SHA-256, with the
   holders of a grant.
 
 `python3 -m unittest discover -s tests` runs the suite against it on a tiny
-fictional library, over plain HTTP on loopback and over TLS, as the
+fictional library, over plain HTTP on loopback and over TLS, in a few
+minutes, as the
 `conformance` workflow does; the workflow then runs the suite against the
 server twice, anonymously and with a token holding every scope, which
 `tools/pair_for_ci.py` gets by pairing through `/pair` as a user would,
@@ -174,6 +203,23 @@ requirements' decisions, rating caps, encrypted backups and recovery
 phrases, grants, sync's merge rule and the static layout;
 `tools/make_vectors.py` writes them, and the tests check them against the
 reference.
+
+## Releases
+
+Each version of the text is released on a tag `spec-v<version>`
+(SPEC.md § 3.6): SPEC.md, `openapi.yaml`, and zips of the schemas, the
+examples, the test vectors and the conformance suite, one zip of them all,
+and their SHA-256 sums. The release workflow builds them reproducibly from
+the tag and has GitHub attest their provenance; to check a file:
+
+```sh
+gh attestation verify lantern-0.6.zip --repo JigSawFr/lantern
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+`python3 tools/release.py --out dist` writes the same files locally. Each
+schema's `$id` is its stable address,
+`https://lantern.boreale.dev/schemas/v1/<name>.json`.
 
 ## Licences
 

@@ -11,10 +11,17 @@
 # (§ 21) serves the read routes as files, by the layout of § 21.1.
 # A client names its platform with Lantern-Platform on every call (SPEC.md
 # § 4.3); it is described once, as a parameter, on the routes it filters.
+# What every route shares (SPEC.md § 2.3, § 2.4) is said once here, not on
+# each: documents are I-JSON (a request document that is not gives 400),
+# times RFC 3339 in UTC with Z; each query parameter is given once (twice:
+# 400), an empty value is absent and an unknown parameter ignored; every
+# route that answers GET answers HEAD alike, without a body (but a
+# pairing's poll and the event stream, which may answer 405); no route
+# answers with a redirect, and a trailing / makes another path (404).
 openapi: 3.1.0
 info:
   title: Lantern protocol
-  version: 0.5.0
+  version: 0.6.0
   summary: An open protocol between homebrews and apps on every platform and self-hosted game library servers.
   license:
     name: MIT
@@ -329,6 +336,7 @@ paths:
       responses:
         "200": { description: "The titles known, and the ids unknown.", content: { application/json: { schema: { $ref: "schemas/v1/titles.json" } } } }
         "400": { $ref: "#/components/responses/Problem" }
+        "400": { $ref: "#/components/responses/Problem" }
         default: { $ref: "#/components/responses/Problem" }
   /v1/titles/changes:
     get:
@@ -488,7 +496,8 @@ paths:
         default: { $ref: "#/components/responses/Problem" }
   /v1/requests:
     get:
-      summary: The account's requests (§ 11)
+      summary: The account's requests (§ 11), newest first; a declined one with the admin's reason
+      parameters: [ { $ref: "#/components/parameters/Platform" }, { $ref: "#/components/parameters/PlatformQuery" } ]
       responses:
         "200": { description: "Requests.", content: { application/json: { schema: { $ref: "schemas/v1/requests.json" } } } }
         default: { $ref: "#/components/responses/Problem" }
@@ -589,4 +598,28 @@ paths:
       parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
       responses:
         "204": { description: "Revoked: its code gives 410." }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/admin/requests:
+    get:
+      summary: Every account's requests, newest first, each with its user (§ 11, § 5.7)
+      parameters:
+        - { name: status, in: query, schema: { enum: [open, done, declined] } }
+        - { name: user, in: query, schema: { type: string, pattern: "^[A-Za-z0-9._-]{1,64}$" } }
+        - { $ref: "#/components/parameters/PlatformQuery" }
+        - { $ref: "#/components/parameters/PageSize" }
+        - { $ref: "#/components/parameters/AdminCursor" }
+      responses:
+        "200": { description: "A page of requests.", content: { application/json: { schema: { $ref: "schemas/v1/admin-requests.json" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/admin/requests/{id}:
+    post:
+      summary: Decide an open request, declined (with a reason for its requester) or done (§ 11)
+      description: "Done and declined are final: a decision on a request no longer open gives 409. The event request goes to the account and to the scope admin (§ 18.2)."
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/admin-request-decision.json" } } } }
+      responses:
+        "200": { description: "The request as it now is, with its user.", content: { application/json: { schema: { $ref: "schemas/v1/request.json" } } } }
+        "400": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
         default: { $ref: "#/components/responses/Problem" }

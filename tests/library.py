@@ -19,6 +19,7 @@ import struct
 import sys
 import zipfile
 from pathlib import Path
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from server import ed25519
@@ -331,9 +332,18 @@ CHEATS = {
 }
 
 
-def make(root):
+# With large: a game of 16 MiB besides, whose download holds a peer's slot long enough for the suite to see
+# its slots fill (SPEC.md § 19.4).
+LARGE = ("Lumen Depths [0100D1D200070000][v0].nsp", 16 << 20)
+MIRRORED = "Moss and Ember [0100EFEF00020800][v131072].nsp"
+
+
+def make(root, large=False, mirror=None):
+    """The library in `root`. `large`: with LARGE besides; `mirror`: an address (http://127.0.0.1:8070/, say)
+    where the folder itself is served, given as MIRRORED's only mirror, so that the suite can read it
+    (--fetch-mirrors, SPEC.md § 19.2)."""
     root = Path(root)
-    for name, size in FILES:
+    for name, size in FILES + ([LARGE] if large else []):
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(os.urandom(size))
@@ -341,11 +351,20 @@ def make(root):
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    (root / "library.json").write_text(json.dumps(META, indent=1), encoding="utf-8")
+    meta = json.loads(json.dumps(META))
+    if mirror:
+        entry = next(e for e in meta["apps"] if e["file"] == MIRRORED)
+        entry["mirrors"] = [{"url": mirror.rstrip("/") + "/" + quote(MIRRORED)}]
+    (root / "library.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
     return root
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit("usage: tests/library.py DIR")
-    print(f"{make(sys.argv[1])}: {len(FILES)} packages, {len(HOMEBREW)} homebrew files, {len(CHEATS)} cheat files")
+    import argparse
+    p = argparse.ArgumentParser(prog="tests/library.py", description="A tiny fictional library.")
+    p.add_argument("dir")
+    p.add_argument("--large", action="store_true", help=f"also a game of {LARGE[1] >> 20} MiB, to fill a peer's slots")
+    p.add_argument("--mirror", metavar="URL", help="where DIR itself is served, given as a mirror of one app")
+    args = p.parse_args()
+    print(f"{make(args.dir, args.large, args.mirror)}: {len(FILES) + args.large} packages, {len(HOMEBREW)} homebrew "
+          f"files, {len(CHEATS)} cheat files")

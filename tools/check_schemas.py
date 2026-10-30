@@ -3,9 +3,10 @@
 
 Every schema must be a valid 2020-12 schema; every examples/v1/<name>.json
 must match schemas/v1/<name>.json; every examples/v1/invalid/<name>.<why>.json
-must not, so that the schemas keep refusing what SPEC.md forbids. The
-schemas refer to each other by their $id, resolved from the files here,
-offline.
+must not, so that the schemas keep refusing what SPEC.md forbids. Every
+schema's $id is its stable address, https://lantern.boreale.dev/schemas/v1/
+and its file's name (SPEC.md § 3.2). The schemas refer to each other by
+their $id, resolved from the files here, offline.
 
 Usage: tools/check_schemas.py [repo-root]   (needs jsonschema and referencing)
 """
@@ -26,7 +27,10 @@ def validator(name):
     return Draft202012Validator(schemas[name], registry=registry, format_checker=FormatChecker())
 
 
+ID_BASE = "https://lantern.boreale.dev/schemas/v1/"    # the schemas' stable addresses (SPEC.md § 3.2)
 for name, schema in schemas.items():
+    if schema.get("$id") != f"{ID_BASE}{name}.json":
+        errors.append(f"schemas/v1/{name}.json: $id {schema.get('$id')!r}, not {ID_BASE}{name}.json")
     try:
         Draft202012Validator.check_schema(schema)
     except Exception as e:  # noqa: BLE001 - reported, not raised
