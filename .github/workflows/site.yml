@@ -8,9 +8,9 @@ name: site
 on:
   push:
     branches: [ main ]
-    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "tools/site_layout.py", ".github/workflows/site.yml" ]
+    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "tools/site_layout.py", "tools/requirements.py", "conformance/run.py", ".github/workflows/site.yml" ]
   pull_request:
-    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "tools/site_layout.py", ".github/workflows/site.yml" ]
+    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "tools/site_layout.py", "tools/requirements.py", "conformance/run.py", ".github/workflows/site.yml" ]
   workflow_dispatch:
 
 permissions:

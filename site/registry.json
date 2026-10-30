@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "about": "The registry of Lantern implementations (SPEC.md § 17), shown on https://lantern.boreale.dev/implementations/. One entry per implementation, added by a pull request with the conformance suite's report.",
+  "implementations": [
+    {
+      "name": "Lantern reference server",
+      "kind": "server",
+      "url": "https://github.com/JigSawFr/lantern/tree/main/server",
+      "licence": "MIT",
+      "language": "Python (standard library)",
+      "draft": "0.4",
+      "levels": ["core", "titles", "homebrew", "saves", "cheats", "requests", "admin"],
+      "checked": "2026-10-30",
+      "note": "The text's own reference: a folder of packages and homebrew, served by the protocol. A reference, not a product."
+    }
+  ]
+}

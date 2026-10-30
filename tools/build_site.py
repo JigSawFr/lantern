@@ -9,9 +9,15 @@ each {{key}} is the key's text in the language's catalog,
 site/i18n/<language>.json. The fifteen languages of Boréale's sites
 (LANGUAGES): English at the root, each other one in its folder (fr/, fr-ca/,
 de/ ... zh-hant/). The specification is in English in every language: only
-the page around it is translated. errors/ lists the error types of SPEC.md's
-section "Errors" (ERRORS_HEADING), each at the address its `type` gives
-(errors/<name>/), in English.
+the page around it is translated; each requirement's id in it ([L-5.2-3]) is
+an anchor. errors/ lists the error types of SPEC.md's section "Errors"
+(ERRORS_HEADING), each at the address its `type` gives (errors/<name>/), in
+English. So are the pages of conformance (SPEC.md § 17), in English, read
+from the text and the suite: conformance/ (the levels), requirements/
+(traceability: each requirement and the suite's checks that cover it, from
+tools/requirements.py and conformance/run.py), implementations/ (the
+registry, site/registry.json) and badge/ (the "Lantern compatible" badges,
+written into assets/badges/ by badge_svg()).
 
 SITE_URL is the site's address (https://lantern.boreale.dev/ by default);
 the links inside the site are relative, so it works at another one too.
@@ -29,6 +35,10 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "conformance"))
+import requirements as spec_requirements  # noqa: E402  (tools/requirements.py)
+
 SITE = ROOT / "site"
 SPEC = ROOT / "SPEC.md"
 REPO = "https://github.com/JigSawFr/lantern"
@@ -85,6 +95,10 @@ HERE = "lantern"
 UTM_SOURCE = "lantern"
 
 KEY = re.compile(r"\{\{([a-z0-9_]+)\}\}")
+REQ = re.compile(r"\[(L-(?:\d+(?:\.\d+)?|[A-Z](?:\.\d+)?)-\d+)\]")
+DRAFT = "0.4"   # the draft the badges name (SPEC.md § 17)
+LEVELS = [("core", "Core"), ("titles", "+titles"), ("homebrew", "+homebrew"), ("saves", "+saves"),
+          ("cheats", "+cheats"), ("requests", "+requests"), ("admin", "+admin")]
 # SPEC.md's section of errors, whatever its number: "## 12. Errors".
 ERRORS_HEADING = re.compile(r"## (\d+)\. Errors$")
 
@@ -172,6 +186,8 @@ def inline(text: str, sections: dict, refs: bool = True) -> str:
     text = re.sub(r"`([^`]+)`", keep, text)
     text = html.escape(text, quote=False)
     text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+    if refs:   # a requirement's id: an anchor, which the traceability page links to (SPEC.md § 3.5)
+        text = REQ.sub(lambda m: f'<a class="req" id="{m.group(1)}" href="#{m.group(1)}">{m.group(1)}</a>', text)
 
     def link(m):
         label, href = m.group(1), m.group(2)
@@ -476,6 +492,196 @@ def error_body(spec: dict, error: dict, root: str) -> str:
             f'<a href="{root}spec/#{anchor}">The specification, §&nbsp;{number}</a></p>\n</section>')
 
 
+# ---- Conformance (SPEC.md § 17): the levels, the requirements and the checks
+# that cover them, the registry of implementations, and the badges.
+
+def suite_module():
+    """conformance/run.py, for its REQS, CLIENT_RULES and UNSEEN (it runs nothing on import)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("lantern_conformance", ROOT / "conformance" / "run.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def levels_table(spec: dict, root: str) -> str:
+    """§ 17's table of levels, as SPEC.md gives it, its § links leading to the specification."""
+    lines = SPEC.read_text(encoding="utf-8").split("\n")
+    start = next(i for i, line in enumerate(lines) if line.startswith("| Level | What |"))
+    rows = []
+    for line in lines[start:]:
+        if not line.startswith("|"):
+            break
+        rows.append(line)
+    return table(rows, spec["sections"], "Conformance levels").replace('href="#', f'href="{root}spec/#')
+
+
+def to_spec(text: str, root: str) -> str:
+    return text.replace('href="#', f'href="{root}spec/#')
+
+
+def badge_svg(level: str, label: str) -> str:
+    """The "Lantern compatible" badge of a level, after Boréale's brand (branding/README.md): a frame in the
+    aurora's colours around the night, the lantern in snow, the name in snow and the level in the aurora."""
+    name, tag = "Lantern compatible", f"{DRAFT} · {label}"
+    left = 30 + round(len(name) * 6.3) + 8
+    right = round(len(tag) * 6.8) + 18
+    width = left + right
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="28" viewBox="0 0 {width} 28" role="img" aria-label="{name} {tag}">
+  <title>{name} {tag}</title>
+  <defs><linearGradient id="aurora" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#00FFCC"/><stop offset="0.6" stop-color="#33BBFF"/><stop offset="1" stop-color="#8A5CFF"/></linearGradient></defs>
+  <rect x="1" y="1" width="{width - 2}" height="26" rx="7" fill="#0E1A33" stroke="url(#aurora)" stroke-width="2"/>
+  <line x1="{left}" y1="6" x2="{left}" y2="22" stroke="#22324F" stroke-width="1"/>
+  <g transform="translate(9 4.5) scale(0.15) translate(-92 -62)">
+    <path d="M114 78 A 14 14 0 0 1 142 78" fill="none" stroke="#E8EEF7" stroke-width="10" stroke-linecap="round"/>
+    <path d="M106 84 L 150 84 L 162 98 L 94 98 Z" fill="#E8EEF7" stroke="#E8EEF7" stroke-width="6" stroke-linejoin="round"/>
+    <rect x="102" y="106" width="52" height="64" rx="8" fill="none" stroke="#E8EEF7" stroke-width="12"/>
+    <path d="M128 118 C 137 128, 140 136, 140 144 A 12 12 0 0 1 116 144 C 116 136, 119 128, 128 118 Z" fill="#E8EEF7"/>
+    <rect x="92" y="178" width="72" height="12" rx="6" fill="#E8EEF7"/>
+  </g>
+  <text x="30" y="18.5" fill="#E8EEF7" font-family="Sora, 'Avenir Next', 'Segoe UI', system-ui, sans-serif" font-size="11.5" font-weight="600" letter-spacing="-0.1">{name}</text>
+  <text x="{left + 9}" y="18.5" fill="#00FFCC" font-family="'JetBrains Mono', ui-monospace, Menlo, monospace" font-size="11.5" font-weight="500">{html.escape(tag)}</text>
+</svg>
+"""
+
+
+def badge_file(level: str) -> str:
+    return f"lantern-{DRAFT}-{level}.svg"
+
+
+def conformance_body(spec: dict, root: str) -> str:
+    return f"""<section class="prose" lang="en">
+<p>A Lantern implementation is conformant at a level when the conformance suite, run against it, passes every
+check of that level (<a href="{root}spec/#17-conformance">the specification, §&nbsp;17</a>). Every level needs
+<code>Lantern Core</code>.</p>
+{levels_table(spec, root)}
+<h2 id="run">Run the suite</h2>
+<p>With a token that holds every scope the levels need, and its device key, and anonymously on a public server.
+At the end it prints the levels reached, and why it did not reach the others.</p>
+<pre tabindex="0"><code>pip install -r tools/requirements.txt
+python3 conformance/run.py https://shelf.example.org/ --token et_… --key device.key
+…
+Levels reached (SPEC.md § 17, draft {DRAFT}): Lantern Core +titles +homebrew</code></pre>
+<p>A level is reached when its family is offered to the caller, none of its checks fails, and none was left out for
+want of a token, a key or a scope. Each check names the requirements it covers: the
+<a href="{root}requirements/">traceability page</a> lists them all, and those only a client can keep.</p>
+<h2 id="name">The name and the badge</h2>
+<p>Only an implementation that passes the suite at a level may call itself “Lantern compatible” and show
+<a href="{root}badge/">the badge</a>, with that level and the version of the text it passed:
+“Lantern compatible {DRAFT} · Core +titles”.</p>
+<h2 id="registry">The registry</h2>
+<p><a href="{root}implementations/">The implementations that pass</a>, the reference server first; yours joins
+them by a pull request with the suite's report.</p>
+<h2 id="vectors">Test vectors</h2>
+<p>For client and server libraries, the bytes the text spells out, case by case, with what a reader decides:
+signed requests, homebrew signatures, Ed25519 signatures a verifier refuses, SPKI fingerprints, paths,
+<code>version_code</code> per profile, requirements and rating caps, in
+<a href="{REPO}/tree/main/vectors">vectors/</a>.</p>
+</section>"""
+
+
+def requirements_body(spec: dict, root: str) -> str:
+    found, problems = spec_requirements.requirements()
+    if problems:
+        sys.exit("build_site: SPEC.md's requirement ids: " + "; ".join(problems[:3]))
+    suite = suite_module()
+    checks = {}
+    for cid, ids in suite.REQS.items():
+        shown = cid + ".*" if cid in ("features", "apps.pages", "schema.refused") else cid
+        for rid in ids:
+            checks.setdefault(rid, []).append(shown)
+    client = {rid: rule for _, ids, rule in suite.CLIENT_RULES for rid in ids}
+    counts = {"suite": 0, "client": 0, "unseen": 0}
+    groups, current = [], None
+    for r in found:
+        if r["heading"] != current:
+            current = r["heading"]
+            groups.append((current, r["section"], []))
+        if r["id"] in checks:
+            kind, seen = "suite", "Checked by " + ", ".join(f"<code>{c}</code>" for c in checks[r["id"]])
+        elif r["id"] in client:
+            kind, seen = "client", "A client's rule: the suite cannot see it"
+        else:
+            kind, seen = "unseen", "Inside the server: the suite cannot see it (" + html.escape(suite.UNSEEN.get(r["id"], "")) + ")"
+        counts[kind] += 1
+        groups[-1][2].append(
+            f'<li id="{r["id"]}"><p class="req-head"><a class="req" href="{root}spec/#{r["id"]}">{r["id"]}</a>'
+            f'<span class="state">{r["level"]}</span><span class="seen {kind}">{seen}</span></p>'
+            f'<p>{to_spec(inline(r["text"], spec["sections"]), root)}</p></li>')
+    body = "\n".join(
+        f'<h2 id="s-{html.escape(section)}">{inline(heading, spec["sections"], refs=False)}</h2>\n<ul class="reqs">\n'
+        + "\n".join(items) + "\n</ul>" for heading, section, items in groups)
+    total = len(found)
+    return (f'<section class="prose wide" lang="en">\n<p>Every MUST and SHOULD of the specification has an id '
+            f'(<a href="{root}spec/#35-changes-and-proposals">§&nbsp;3.5</a>). Here is each one, and what sees it: the '
+            f'checks of the <a href="{REPO}/blob/main/conformance/run.py">conformance suite</a> that cover it, or why the '
+            f'suite cannot see it, a client\'s rule or one inside a server.</p>\n'
+            f'<dl class="facts"><div><dt>In all</dt><dd>{total} requirements</dd></div>'
+            f'<div><dt>Suite</dt><dd>{counts["suite"]} checked by the suite</dd></div>'
+            f'<div><dt>Clients</dt><dd>{counts["client"]} a client keeps</dd></div>'
+            f'<div><dt>Inside</dt><dd>{counts["unseen"]} inside a server</dd></div></dl>\n{body}\n</section>')
+
+
+def registry() -> list:
+    """site/registry.json's implementations; another schema is none (workbench's rule), never an error."""
+    data = json.loads((SITE / "registry.json").read_text(encoding="utf-8"))
+    if type(data.get("schema")) is not int or data["schema"] != 1:
+        return []
+    return [i for i in data.get("implementations", []) if isinstance(i, dict) and isinstance(i.get("name"), str)]
+
+
+def registry_body(root: str) -> str:
+    names = dict(LEVELS)
+    rows = "\n".join(
+        f'<tr><td><a href="{html.escape(i["url"])}">{html.escape(i["name"])}</a></td><td>{html.escape(i.get("kind", ""))}</td>'
+        f'<td>{" ".join(f"<span class=state>{html.escape(names.get(x, x))}</span>" for x in i.get("levels", []))}</td>'
+        f'<td class="num">{html.escape(i.get("draft", ""))}</td><td>{html.escape(i.get("licence", ""))}</td>'
+        f'<td class="num">{html.escape(i.get("checked", ""))}</td></tr>' for i in registry())
+    return f"""<section class="prose wide" lang="en">
+<p>The implementations that pass the conformance suite, with the levels they reach and the draft they passed
+(<a href="{root}conformance/">conformance levels</a>). The reference server comes first: it is the text's own, and
+it passes every level.</p>
+<div class="table" tabindex="0" role="region" aria-label="Implementations"><table>
+<thead><tr><th scope="col">Implementation</th><th scope="col">Kind</th><th scope="col">Levels</th>
+<th scope="col" class="num">Draft</th><th scope="col">Licence</th><th scope="col" class="num">Checked</th></tr></thead>
+<tbody>
+{rows}
+</tbody></table></div>
+<h2 id="add">Add yours</h2>
+<ol>
+<li>Run the suite against your server, at this draft, with a token that holds every scope and its device key
+(and anonymously, for a public server): <code>python3 conformance/run.py https://… --token … --key …</code>.</li>
+<li>Add an entry to <a href="{REPO}/blob/main/site/registry.json">site/registry.json</a>: its <code>name</code>,
+<code>kind</code> (server, client, library), <code>url</code>, <code>licence</code>, <code>language</code>, the
+<code>draft</code> it passed, the <code>levels</code> the suite printed, and the day it was <code>checked</code>.</li>
+<li>Open a pull request with the suite's report in its description. Its levels are those the report shows; a
+client library is listed with the levels of the vectors and checks it passes.</li>
+</ol>
+<p>An entry stays while it passes: with a new draft, run the suite again and update its <code>draft</code>.</p>
+</section>"""
+
+
+def badge_body(root: str) -> str:
+    imgs = "\n".join(f'<li><img src="{root}assets/badges/{badge_file(k)}" alt="Lantern compatible {DRAFT} · {label}" '
+                     f'height="28"><code>{badge_file(k)}</code></li>' for k, label in LEVELS)
+    url = f"{SITE_URL}assets/badges/{badge_file('core')}"
+    link = f"{SITE_URL}implementations/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=badge"
+    return f"""<section class="prose wide" lang="en">
+<p>An implementation that passes the conformance suite at a level may show its badge: the <code>Core</code> one,
+and one for each further level it reaches, with the draft it passed. Only then (<a href="{root}conformance/#name">the
+name and the badge</a>).</p>
+<ul class="badges">
+{imgs}
+</ul>
+<h2 id="use">In a README</h2>
+<pre tabindex="0"><code>[![Lantern compatible {DRAFT} · Core]({url})]({link.replace("&amp;", "&")})</code></pre>
+<pre tabindex="0"><code>{html.escape(f'<a href="{link.replace("&amp;", "&")}"><img src="{url}" alt="Lantern compatible {DRAFT} · Core" height="28"></a>')}</code></pre>
+<p>A badge says the draft it was checked against, and keeps saying it: with a new draft, run the suite again
+before you show the new one. The badges follow Boréale's brand: the frame in the aurora's colours around the
+night, the lantern in snow.</p>
+</section>"""
+
+
 def page_html(template: str, language: str, catalog: dict, path: str, page: str, spec: dict, versions: dict,
               body: str = "", extra: dict | None = None) -> str:
     depth = path.count("/") + (1 if language != "en" else 0)
@@ -538,6 +744,26 @@ def main() -> None:
         "lede": f"The <code>type</code> of each error a Lantern server returns, from the specification's §&nbsp;{spec['errors_section']}.",
         "description": "The error types of the Lantern protocol: each one's status, code and when a server returns it.",
         "lang_path": "spec/"}))
+    pages = [("conformance/", "Conformance levels", "Conformance · SPEC.md § 17", "Who may say “Lantern compatible”, at which level, and how the suite decides.",
+              "The conformance levels of the Lantern protocol, from Lantern Core to +admin, and how the suite decides.",
+              conformance_body(spec, "../")),
+             ("requirements/", "Requirements and their checks", "Traceability · SPEC.md § 3.5",
+              "Each requirement of the specification, by its id, and the conformance suite's checks that cover it.",
+              "Every MUST and SHOULD of the Lantern protocol, by id, and the conformance checks that cover it.",
+              requirements_body(spec, "../")),
+             ("implementations/", "Implementations", "Registry · SPEC.md § 17",
+              "The servers and clients that pass the conformance suite, and the levels they reach.",
+              "The registry of Lantern implementations and the conformance levels they reach.", registry_body("../")),
+             ("badge/", "The “Lantern compatible” badge", "Badge · SPEC.md § 17",
+              "For an implementation that passes the suite, at the level it reaches.",
+              "The Lantern compatible badges, one per conformance level, and how to show them.", badge_body("../"))]
+    for path, h1, eyebrow, lede, description, body in pages:
+        write(path, page_html(template, "en", en, path, "conformance", spec, versions, body, {
+            "title": f"{h1} · Lantern", "eyebrow": eyebrow, "h1": h1, "lede": lede, "description": description,
+            "lang_path": ""}))
+    (out / "assets" / "badges").mkdir(parents=True, exist_ok=True)
+    for key, label in LEVELS:
+        (out / "assets" / "badges" / badge_file(key)).write_text(badge_svg(key, label), encoding="utf-8")
     for error in spec["errors"]:
         write(f"errors/{error['name']}/", page_html(
             template, "en", en, f"errors/{error['name']}/", "errors", spec, versions, error_body(spec, error, "../../"), {
