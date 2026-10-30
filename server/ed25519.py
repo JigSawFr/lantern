@@ -1,10 +1,13 @@
-"""Ed25519 signature verification (RFC 8032, § 5.1.7), in pure Python, for
-the reference server to check a homebrew's signature before it serves it
-(SPEC.md § 8.4). It verifies only: the server never signs for an author.
+"""Ed25519 (RFC 8032), in pure Python: verification (§ 5.1.7), for the
+reference server to check a homebrew's signature before it serves it
+(SPEC.md § 8.4) and a request's (§ 5.4); and signing (§ 5.1.6), with the
+server's own grant key only (§ 19.3): it never signs for an author.
 
 Slow next to a C implementation (a few milliseconds a signature), which is
 enough for a check per homebrew, remembered while the entry does not change.
-It is not constant-time, and needs not be: it handles only public data.
+Verification is not constant-time, and needs not be: it handles only
+public data. Signing is not constant-time either: a reference, whose grant
+key signs statements worth a file for a few minutes.
 """
 import hashlib
 
@@ -96,3 +99,26 @@ def verify(public, message, signature):
         return False
     h = int.from_bytes(hashlib.sha512(signature[:32] + public + message).digest(), "little") % L
     return same(multiply(s, G), add(r, multiply(h, a)))
+
+
+def _secret(seed):
+    h = hashlib.sha512(seed).digest()
+    a = int.from_bytes(h[:32], "little")
+    a &= (1 << 254) - 8
+    a |= 1 << 254
+    return a, h[32:]
+
+
+def public_key(seed):
+    """The 32-byte public key of a 32-byte seed (RFC 8032 § 5.1.5)."""
+    return encode(multiply(_secret(seed)[0], G))
+
+
+def sign(seed, message):
+    """The 64-byte signature of `message` by the key of `seed` (RFC 8032 § 5.1.6)."""
+    a, prefix = _secret(seed)
+    public = encode(multiply(a, G))
+    r = int.from_bytes(hashlib.sha512(prefix + message).digest(), "little") % L
+    big_r = encode(multiply(r, G))
+    h = int.from_bytes(hashlib.sha512(big_r + public + message).digest(), "little") % L
+    return big_r + ((r + h * a) % L).to_bytes(32, "little")

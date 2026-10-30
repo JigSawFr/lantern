@@ -86,7 +86,8 @@ class Running:
             context.load_cert_chain(cert, key)
             spki, self.cafile = ls.spki_sha256(cert.read_text()), str(cert)
         self.server = ls.LanternServer(("127.0.0.1", 0), self.lib, ls.Accounts(users_path), rescan=0,
-                                       quiet=True, handler=handler, tls=context, spki=spki)
+                                       quiet=True, handler=handler, tls=context, spki=spki,
+                                       heartbeat=5)     # limits.heartbeat's least (SPEC.md § 18.4), for short runs
         self.port = self.server.server_address[1]
         self.url = f"{'https' if tls else 'http'}://127.0.0.1:{self.port}/"
         self.client_tls = ssl.create_default_context(cafile=self.cafile) if tls else None
@@ -222,9 +223,9 @@ class SuiteAgainstReference(unittest.TestCase):
                                      "admin.users", "admin.users-write", "admin.pairings", "admin.rating-cap",
                                      "admin.refuse", "admin.devices", "admin.invitations", "language.problem",
                                      "compression.files", "limits.depth", "budget.cold-start"])
-        self.assertIn("Levels reached (SPEC.md § 17, draft 0.4): Lantern Core +titles +homebrew +saves +cheats "
-                      "+requests +admin\n", report)
-        self.assertIn("2 backup(s) deleted", report)
+        self.assertIn("Levels reached (SPEC.md § 17, draft 0.5): Lantern Core +titles +homebrew +saves +cheats "
+                      "+requests +admin +events +peers +sync +encrypted_saves\n", report)
+        self.assertIn("4 backup(s) deleted", report)                     # two in clear, two encrypted (§ 9.4)
         self.assertIn("for another architecture", report)                # the Linux port's packages, read
         self.assertIn("posted, replaced and deleted", report)
         self.assertFalse((srv.root / "cheats" / "switch").exists())         # nor a cheat set
@@ -236,7 +237,7 @@ class SuiteAgainstReference(unittest.TestCase):
         self.assertEqual([r["device"] for _, r in devices], ["Mila's Switch"])
         self.assertEqual(srv.server.invitations.listed(), [])
         made = [n for n in srv.server.accounts.names() if n.startswith("lantern-conformance-")]
-        self.assertEqual([srv.server.accounts.get(n)["state"] for n in made], ["frozen"])   # --admin-writes
+        self.assertEqual(made, [])                                          # --admin-writes: made, then deleted
 
     def test_private_anonymously(self):
         srv = Running(USERS)

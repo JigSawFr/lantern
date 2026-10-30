@@ -25,6 +25,10 @@ for the conformance suite to apply to what a server serves.
   in pure Python), key_thumbprint(), signature_base() and sign(), which
   give a request its Content-Digest, Signature-Input and Signature;
 - rating caps (§ 5.6): rating_age() and above_cap(), what a server hides;
+- grants (§ 19.3): grant_payload() and read_grant(), what a peer checks
+  before it serves a file, and mirror_ok(), the mirrors a client may read
+  (§ 19.2);
+- sync (§ 20.4): sync_time() and sync_wins(), the merge rule;
 - version codes (Annex A): version_code() and version_name() per profile.
 
 The roots are those of the Switch's profile, and of the draft Linux one
@@ -640,6 +644,95 @@ def sign(seed, method, uri, authorization=None, body=b"", created=None, nonce=No
     if digest:
         headers["Content-Digest"] = digest
     return headers
+
+
+# Grants and mirrors (SPEC.md § 19).
+
+PRIVATE_NETS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7", "fe80::/10")
+
+
+def grant_payload(uid, sha256, size, exp):
+    """A grant's payload (SPEC.md § 19.3): these keys in this order, no space."""
+    return (f'{{"exp":{exp},"purpose":"lantern-grant-1","sha256":"{sha256}","size":{size},"uid":"{uid}"}}').encode()
+
+
+def _unb64url(text):
+    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+
+
+def read_grant(grant, keys, now):
+    """The payload of a grant a peer takes (SPEC.md § 19.4): it verifies by the grant key of the server it names,
+    among `keys` ({uid: the key's 32 bytes}), and `exp` is not before `now`; None otherwise."""
+    if not (isinstance(grant, str) and len(grant) <= 1024 and re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{86}", grant)):
+        return None
+    payload_b64, sig_b64 = grant.split(".")
+    try:
+        payload, signature = _unb64url(payload_b64), _unb64url(sig_b64)
+        doc = json.loads(payload.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not (isinstance(doc, dict) and doc.get("purpose") == "lantern-grant-1" and isinstance(doc.get("uid"), str)
+            and isinstance(doc.get("sha256"), str) and isinstance(doc.get("exp"), int)
+            and isinstance(doc.get("size"), int)):
+        return None
+    key = keys.get(doc["uid"])
+    if key is None or payload != grant_payload(doc["uid"], doc["sha256"], doc["size"], doc["exp"]):
+        return None
+    if doc["exp"] < now or not ed25519_verify(key, payload, signature):
+        return None
+    return doc
+
+
+def mirror_ok(url):
+    """Whether a client may read a mirror (SPEC.md § 19.2): HTTPS, or plain HTTP at an address of a private
+    network."""
+    import ipaddress
+    from urllib.parse import urlsplit
+    if not isinstance(url, str):
+        return False
+    try:
+        u = urlsplit(url)
+    except ValueError:
+        return False
+    if u.scheme == "https" and u.netloc:
+        return True
+    try:
+        ip = ipaddress.ip_address((u.hostname or "").split("%")[0])
+    except ValueError:
+        return False
+    return u.scheme == "http" and any(ip in ipaddress.ip_network(n) for n in PRIVATE_NETS)
+
+
+# Sync (SPEC.md § 20.4).
+
+def sync_time(text, now, skew):
+    """An item's updated (UTC, to the millisecond) as a server keeps it: one more than `skew` seconds ahead of
+    `now` (a datetime) is `now`; None when it is not such a time."""
+    from datetime import datetime, timedelta
+    m = re.fullmatch(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d{1,3})?Z", text or "")
+    if not m:
+        return None
+    try:
+        when = datetime.fromisoformat(m.group(1) + (m.group(2) or ".0").ljust(4, "0") + "+00:00")
+    except ValueError:
+        return None
+    when = now if when > now + timedelta(seconds=skew) else when
+    return when.strftime("%Y-%m-%dT%H:%M:%S.") + f"{when.microsecond // 1000:03d}Z"
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def sync_wins(sent, have):
+    """Whether the item sent replaces the one kept (SPEC.md § 20.4)."""
+    if have is None:
+        return True
+    if sent["updated"] != have["updated"]:
+        return sent["updated"] > have["updated"]
+    if bool(sent.get("deleted")) != bool(have.get("deleted")):
+        return bool(sent.get("deleted"))
+    return not sent.get("deleted") and canonical(sent["value"]) > canonical(have["value"])
 
 
 # Rating caps (SPEC.md § 5.6).

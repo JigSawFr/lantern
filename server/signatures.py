@@ -13,6 +13,7 @@ server/ed25519.py's.
 import base64
 import hashlib
 import re
+import secrets
 import threading
 import time
 
@@ -121,3 +122,15 @@ def check(method, uri, headers, public, with_token, body_length, nonces, skew=SK
                                            f"Date, and sign within {skew} s of it.")
     if not nonces.take(m.group(4), m.group(3)):
         raise Refused("signature_replayed", "This nonce was taken already: a new one for each request.")
+
+
+def sign(seed, public, method, uri, authorization=None, digest=None, created=None, nonce=None):
+    """The headers that sign a request by the key of `seed` (SPEC.md § 5.4): Signature-Input and Signature; the
+    caller adds Authorization and Content-Digest themselves."""
+    covered = components(authorization is not None, digest is not None)
+    params = ("(" + " ".join(f'"{c}"' for c in covered) + f");created={int(time.time()) if created is None else created}"
+              f';nonce="{nonce or base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip(b"=").decode()}"'
+              f';keyid="{thumbprint(public)}";alg="ed25519"')
+    message = base(method, uri, authorization, digest, params).encode()
+    return {"Signature-Input": "lantern=" + params,
+            "Signature": "lantern=:" + base64.b64encode(ed25519.sign(seed, message)).decode() + ":"}

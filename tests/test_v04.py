@@ -506,9 +506,9 @@ class Texts(Live):
         """L-2.2-1, L-2.2-2, L-2.2-3."""
         _, headers, body = self.srv.get("/api/lantern/v1/nowhere", headers={"Accept-Language": "fr-CA, en;q=0.5"})
         doc = json.loads(body)
-        self.assertEqual((doc["language"], doc["title"], headers["Content-Language"]), ("fr", "Introuvable", "fr"))
-        doc = json.loads(self.srv.get("/api/lantern/v1/nowhere", headers={"Accept-Language": "ja"})[2])
-        self.assertEqual((doc["language"], doc["title"]), ("en", "Not found"))
+        self.assertEqual((doc["language"], doc["title"], headers["Content-Language"]), ("fr-CA", "Introuvable", "fr-CA"))
+        doc = json.loads(self.srv.get("/api/lantern/v1/nowhere", headers={"Accept-Language": "sv"})[2])
+        self.assertEqual((doc["language"], doc["title"]), ("en", "Not found"))    # 0.5: fifteen languages, not Swedish
         self.srv.server.motd = {"en": "Two new co-op games.", "fr": "Deux nouveaux jeux à deux."}
         hello = json.loads(self.srv.get("/api/lantern/v1/", headers={"Accept-Language": "fr"})[2])
         self.assertEqual((hello["motd"], hello["language"]), ("Deux nouveaux jeux à deux.", "fr"))
@@ -616,7 +616,7 @@ class Requirements(unittest.TestCase):
         self.addCleanup(srv.close)
         code, report = run_suite(srv.url)
         self.assertEqual(code, 0, report)
-        self.assertIn("Levels reached (SPEC.md § 17, draft 0.4): Lantern Core +titles +homebrew\n", report)
+        self.assertIn("Levels reached (SPEC.md § 17, draft 0.5): Lantern Core +titles +homebrew +peers\n", report)
 
 
 class PairForCIKey(unittest.TestCase):

@@ -3,8 +3,11 @@
 # would, against the server started on a tiny fictional library: once
 # anonymously on a public server, once with a token holding every scope on a
 # private one, paired through its /pair page as a user would, with a device
-# key that its requests are signed with (SPEC.md § 5.4). Then a short run of
-# the fuzz harness on the server's parsers, another seed each time.
+# key that its requests are signed with (SPEC.md § 5.4); the public run
+# also checks DNS-SD and a reference peer (SPEC.md § 4.1, § 19.4). Then the
+# library exported as a static library, which the suite checks (§ 21), and
+# a short run of the fuzz harness on the server's parsers, another seed each
+# time.
 name: conformance
 
 on:
@@ -20,7 +23,7 @@ permissions:
 jobs:
   suite:
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The schema checker
@@ -33,13 +36,22 @@ jobs:
         run: |
           python3 tests/library.py "$RUNNER_TEMP/library"
           # The server needs only the standard library: the system Python runs it.
-          python3 -m server --library "$RUNNER_TEMP/library" --port 8080 --quiet --discovery &
+          # DNS-SD on a port of its own, so as not to meet the runner's own multicast DNS, if any.
+          python3 -m server --library "$RUNNER_TEMP/library" --port 8080 --quiet --discovery --dns-sd --dns-sd-port 15353 &
           for _ in $(seq 50); do
             curl -fsS http://127.0.0.1:8080/.well-known/lantern >/dev/null && break
             sleep 0.2
           done
+          # A peer holding the library's files, answering discovery on a port of its own (SPEC.md § 19).
+          python3 -m server.peer --folder "$RUNNER_TEMP/library" --server http://127.0.0.1:8080/ --port 8090 \
+            --discovery --discovery-port 47116 --quiet &
+          for _ in $(seq 50); do
+            curl -s -o /dev/null http://127.0.0.1:8090/lantern/v1/blobs/sha256/0 && break
+            sleep 0.2
+          done
           # Discovery on its own port, UDP 47115 (SPEC.md § 4.1).
-          "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8080/ --discover 127.0.0.1
+          "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8080/ --discover 127.0.0.1 \
+            --dns-sd 127.0.0.1:15353 --peer http://127.0.0.1:8090/lantern --peer-discover-port 47116
       - name: The suite against a private reference server, with a token holding every scope
         run: |
           # A fictional account, paired through /pair; the server keeps running in the background.
@@ -47,6 +59,10 @@ jobs:
           echo "::add-mask::$token"
           "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8081/ --token "$token" \
             --key "$RUNNER_TEMP/private/device.key" --admin-writes
+      - name: The library as a static library, against the suite
+        run: |
+          python3 -m server --library "$RUNNER_TEMP/library" --export "$RUNNER_TEMP/static" --page-size 4
+          "$RUNNER_TEMP/venv/bin/python" conformance/run.py --static "$RUNNER_TEMP/static"
       - name: The fuzz harness, a longer run
         run: python3 tests/fuzz.py --iterations 5000 --seed "${{ github.run_id }}"
       - name: The private server's log
