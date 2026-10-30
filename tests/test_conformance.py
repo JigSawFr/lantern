@@ -46,8 +46,10 @@ USERS = {"schema": 1, "public": False, "users": [
     {"name": "lea", "password": ls.hash_password("frost-lantern", 1000), "scopes": ["library"], "state": "active"},
     {"name": "noor", "password": ls.hash_password("moss-ember", 1000), "scopes": ["library"], "state": "frozen"},
     {"name": "ines", "password": ls.hash_password("paper-comet", 1000), "scopes": ["saves"], "state": "active"},
+    {"name": "mila", "password": ls.hash_password("ember-tide", 1000), "scopes": list(ls.SCOPES), "state": "active"},
 ]}
 PAIRING = {"schema": 1, "device": "Lea's Switch", "scopes": ["library", "saves"]}
+EVERY_SCOPE = {"schema": 1, "device": "Mila's Switch", "scopes": list(ls.SCOPES)}
 
 
 def self_signed(folder):
@@ -171,6 +173,19 @@ class SuiteAgainstReference(unittest.TestCase):
                             "pairing.offered", "pairing.code", "pairing.waiting", "pairing.slow-down",
                             "pairing.unknown", "schema.refused.pairing", "errors.www-authenticate"])
 
+    def test_private_with_every_scope(self):
+        srv = Running(USERS)
+        self.addCleanup(srv.close)
+        report = self.passes(srv, "--token", srv.pair("mila", EVERY_SCOPE),
+                             expect=["saves.upload", "saves.read", "saves.upload-digest", "saves.single",
+                                     "saves.cleanup", "schema.refused.saves", "schema.refused.homebrew",
+                                     "cheats.sets", "cheats.text", "titles.bulk", "titles.bulk-limit",
+                                     "homebrew.ports", "homebrew.signatures", "homebrew.updates",
+                                     "platforms.filter", "missing.no-platform"])
+        self.assertIn("2 backup(s) deleted", report)
+        self.assertEqual(srv.server.saves.index["saves"], [])         # the suite left nothing behind
+        self.assertEqual(srv.server.saves.index["uploads"], {})
+
     def test_private_anonymously(self):
         srv = Running(USERS)
         self.addCleanup(srv.close)
@@ -192,20 +207,133 @@ class SuiteAgainstReference(unittest.TestCase):
     def test_over_tls_with_a_self_signed_certificate(self):
         srv = Running(USERS, tls=True)
         self.addCleanup(srv.close)
-        report = self.passes(srv, "--cafile", srv.cafile, "--token", srv.pair("lea"),
-                             expect=["transport.https", "pairing.code", "files.ranges"])
+        report = self.passes(srv, "--cafile", srv.cafile, "--token", srv.pair("mila", EVERY_SCOPE),
+                             expect=["transport.https", "pairing.code", "files.ranges", "saves.upload",
+                                     "homebrew.packages"])
         self.assertNotIn("WARN  § 2 ", report)
 
 
 class SuiteCatchesFaults(unittest.TestCase):
     """The suite fails a server that breaks a MUST."""
 
-    def fails(self, handler, cid, users=None):
+    def fails(self, handler, cid, users=None, token_for=None, level="FAIL"):
         srv = Running(users, handler=handler)
         self.addCleanup(srv.close)
-        code, report = run_suite(srv.url)
-        self.assertEqual(code, 1, report)
-        self.assertRegex(report, rf"FAIL  § \S+\s+{cid} ", report)
+        args = ["--token", srv.pair(*token_for)] if token_for else []
+        code, report = run_suite(srv.url, *args)
+        if level == "FAIL":
+            self.assertEqual(code, 1, report)
+        self.assertRegex(report, rf"{level}  § \S+\s+{re.escape(cid)} ", report)
+
+    def test_missing_without_a_platform(self):
+        class AnyPlatform(ls.Handler):
+            def platform(self, query, required=False):
+                return super().platform(query) or ("switch" if required else None)
+        self.fails(AnyPlatform, "missing.no-platform")
+
+    def test_platform_ignored(self):
+        class Everything(ls.Handler):
+            def platform(self, query, required=False):
+                return "switch" if required else None
+        self.fails(Everything, "platforms.filter")
+
+    def test_titles_without_a_limit(self):
+        class Unbounded(ls.Handler):
+            def titles(self, query):
+                query = {**query, "ids": ",".join((query.get("ids") or "").split(",")[:ls.TITLES_AT_ONCE])}
+                super().titles(query)
+        self.fails(Unbounded, "titles.bulk-limit")
+
+    def edit_entry(self, change):
+        class Edited(ls.Handler):
+            def homebrew_view(self, entry, full):
+                doc = super().homebrew_view(entry, True)
+                change(doc)
+                if not full:
+                    doc["package"] = {k: v for k, v in doc["package"].items() if k != "manifest"}
+                return doc
+        return Edited
+
+    def test_manifest_outside_the_roots(self):
+        def outside(doc):
+            if doc["id"] == library.FROSTLINE and doc["platform"] == "switch":
+                manifest = doc["package"]["manifest"] + [{"path": "/bootloader/hekate_ipl.ini", "size": 1,
+                                                          "sha256": "0" * 64}]
+                doc["package"] = {**doc["package"], "manifest": manifest,
+                                  "manifest_sha256": ls.manifest_digest(manifest)}
+        self.fails(self.edit_entry(outside), "homebrew.manifests")
+
+    def test_port_data_served(self):
+        def shipped(doc):
+            if doc["id"] == library.PORT:
+                port = doc["port"]
+                data = port["requires_data"][0]
+                manifest = doc["package"]["manifest"] + [{"path": port["data_root"] + data["path"], "size": 1,
+                                                          "sha256": data["accept"][0]["sha256"]}]
+                doc["package"] = {**doc["package"], "manifest": manifest,
+                                  "manifest_sha256": ls.manifest_digest(manifest)}
+        self.fails(self.edit_entry(shipped), "homebrew.ports")
+
+    def test_port_data_root_outside_the_areas(self):
+        def outside(doc):
+            if doc["id"] == library.PORT:
+                doc["port"] = {**doc["port"], "data_root": "/atmosphere/frostline/"}
+        self.fails(self.edit_entry(outside), "homebrew.ports")
+
+    def test_port_data_path_escapes(self):
+        def escape(doc):
+            if doc["id"] == library.PORT:
+                doc["port"] = {**doc["port"], "requires_data": [{"path": "../../atmosphere/x"}]}
+        self.fails(self.edit_entry(escape), "homebrew.ports")
+
+    def test_unknown_kind_served(self):
+        def widget(doc):
+            if doc["id"] == "org.example.ember-widget":
+                doc["kind"] = "widget"
+        self.fails(self.edit_entry(widget), "homebrew.kinds")
+
+    def test_foreign_arch(self):
+        def x86(doc):
+            if doc["id"] == library.PORT:
+                doc["package"] = {**doc["package"], "arch": ["aarch64", "x86_64"]}
+        self.fails(self.edit_entry(x86), "homebrew.kinds")
+
+    def test_signature_that_does_not_verify(self):
+        def forged(doc):
+            if doc["id"] == library.PAPERLAMP:
+                doc["build"] = doc["build"] + 1
+        self.fails(self.edit_entry(forged), "homebrew.signatures", level="WARN")
+
+    def test_updates_of_every_build(self):
+        class Everything(ls.Handler):
+            def homebrew_updates(self, query):
+                doc = self.request_document(self.body())
+                self.body_data = json.dumps({**doc, "installed": [{**i, "build": 0} for i in doc["installed"]]}
+                                            ).encode()
+                super().homebrew_updates(query)
+        self.fails(Everything, "homebrew.updates")
+
+    def test_upload_digest_not_checked(self):
+        class Trusting(ls.Handler):
+            def upload(self, query, uid):
+                saves = self.server.saves
+                s = saves.session(uid, self.account["name"])
+                if s and self.method == "PATCH":
+                    whole = saves.part(uid).read_bytes() + self.body(saves.chunk)
+                    if len(whole) == s["size"]:
+                        s["sha256"] = hashlib.sha256(whole).hexdigest()    # whatever came is right
+                super().upload(query, uid)
+        self.fails(Trusting, "saves.upload-digest", USERS, ("mila", EVERY_SCOPE))
+
+    def test_single_save_without_digest_kept(self):
+        class Lax(ls.Handler):
+            def save_post(self, query, title_id):
+                if not self.headers.get("Content-Digest"):
+                    data = self.body(self.server.saves.body)
+                    self.headers["Content-Digest"] = "sha-256=:" + __import__("base64").b64encode(
+                        hashlib.sha256(data).digest()).decode() + ":"
+                super().save_post(query, title_id)
+        self.fails(Lax, "saves.single", USERS, ("mila", EVERY_SCOPE))
 
     def test_ranges_ignored(self):
         class NoRanges(ls.Handler):
@@ -295,10 +423,13 @@ class Server(unittest.TestCase):
         return srv
 
     def test_identity_from_names_and_library_json(self):
-        apps = {f'{a["app_id"]}{a["format"]}{a["version"]}': a for a in self.all_apps()}
+        apps = {f'{a["app_id"]}{a["format"]}{a["version_code"]}': a for a in self.all_apps()}
         self.assertEqual(len(apps), library.SERVED)
         moss = apps["0100EFEF00020000xci0"]
-        self.assertEqual((moss["name"], moss["display_version"], moss["type"]), ("Moss & Ember", "1.0.0", "base"))
+        self.assertEqual((moss["name"], moss["version_name"], moss["type"]), ("Moss & Ember", "1.0.0", "base"))
+        phone = apps["org.example.frostlinetalesapk12"]
+        self.assertEqual((phone["platform"], phone["title_id"], phone["type"]), ("android", phone["app_id"], "base"))
+        self.assertTrue(all(a["platform"] == "switch" for k, a in apps.items() if k != "org.example.frostlinetalesapk12"))
         update = apps["0100ABCD00010800nsz196608"]
         self.assertEqual((update["title_id"], update["type"]), ("0100ABCD00010000", "update"))
         self.assertEqual(apps["0100ABCD00011001nsp0"]["type"], "dlc")
@@ -339,7 +470,10 @@ class Server(unittest.TestCase):
     def test_hashes_are_kept(self):
         state = json.loads(self.srv.state.read_text())
         self.assertEqual(state["schema"], 1)
-        self.assertEqual(len(state["hashes"]), library.SERVED)
+        served = {a["path"].relative_to(self.srv.root).as_posix() for a in self.srv.lib.apps.values()}
+        self.assertEqual(len(served), library.SERVED)
+        self.assertLessEqual(served, set(state["hashes"]))
+        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", h["sha256"]) for h in state["hashes"].values()))
         again = ls.Library(self.srv.root, self.srv.state)
         self.assertEqual(again.uid, self.srv.lib.uid)
         self.assertEqual({a["doc"]["sha256"] for a in again.apps.values()},
@@ -575,7 +709,7 @@ class Server(unittest.TestCase):
 
     def test_a_bug_answers_500(self):
         class Broken(ls.Handler):
-            def route(self, method, path, query, body):
+            def route(self, method, path, query):
                 raise RuntimeError("a bug")
         srv = Running(handler=Broken)
         self.addCleanup(srv.close)

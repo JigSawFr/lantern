@@ -10,7 +10,14 @@ for the conformance suite to apply to what a server serves.
   § 8.4;
 - ed25519_verify(): RFC 8032's verification, in pure Python (slow, but a
   check per homebrew);
-- key_change(): the pinning rule of § 8.4.
+- key_change(): the pinning rule of § 8.4;
+- kind_of(), arch_ok(): an entry's kind (an unknown one is an app) and
+  whether a package's arch runs here (§ 8.1, § 8.2);
+- port_problems(): a port's object as a server must serve it (its data_root
+  under the profile's areas, its requires_data relative to it, never in the
+  package), and launch_check(): what a client checks of that data before it
+  starts the port, alternatives (one_of) and accepted hashes included
+  (§ 8.1).
 
 The roots are those of the profiles this text settles: the Switch's. A
 client installs nothing of a platform it has no profile for (§ 6.1).
@@ -19,10 +26,18 @@ import base64
 import hashlib
 import json
 
-# Annex A: the roots a homebrew may write to, "{id}" its id.
+# Annex A: the roots a homebrew may write to, "{id}" its id, and the areas a
+# port's data_root may lie in (the user approves that folder once).
 ROOTS = {
-    "switch": {"free": ("/switch/{id}/", "/config/{id}/"), "consent": ("/atmosphere/", "/switch/.overlays/")},
+    "switch": {"free": ("/switch/{id}/", "/config/{id}/"), "consent": ("/atmosphere/", "/switch/.overlays/"),
+               "areas": ("/switch/", "/config/")},
 }
+# A package's arch: a list of these; a profile may allow fewer (Annex A).
+ARCH_NAMES = ("aarch64", "armhf", "x86_64", "x86")
+ARCHES = {"switch": ("aarch64",)}
+ASSETS = ("included", "demo_included", "free_external", "user_owned")
+HASH_FORMS = {"sha256": 64, "sha1": 40, "md5": 32}
+KINDS = ("app", "game", "port", "emulator", "tool", "overlay", "sysmodule", "theme")
 MANIFEST_LIMIT = 4096
 
 
@@ -111,7 +126,7 @@ def install_plan(entry):
 def manifest_sha256(manifest):
     """The SHA-256 of the manifest's canonical form (SPEC.md § 8.2)."""
     entries = sorted(manifest, key=lambda e: e["path"].encode())
-    canonical = "[" + ",".join('{"path":%s,"sha256":"%s","size":%d}' % (
+    canonical = "[" + ",".join('{"path":%s,"sha256":"%s","size":%d}' % (  # noqa: UP031 - the canonical bytes, spelled out
         json.dumps(e["path"], ensure_ascii=False), e["sha256"], e["size"]) for e in entries) + "]"
     return hashlib.sha256(canonical.encode()).hexdigest()
 
@@ -119,7 +134,7 @@ def manifest_sha256(manifest):
 def signed_message(entry):
     """The bytes an author signs (SPEC.md § 8.4)."""
     p = entry["package"]
-    return ('{"build":%d,"id":"%s","manifest_sha256":"%s","platform":"%s","purpose":"lantern-homebrew-1",'
+    return ('{"build":%d,"id":"%s","manifest_sha256":"%s","platform":"%s","purpose":"lantern-homebrew-1",'  # noqa: UP031 - the canonical bytes, spelled out
             '"sha256":"%s"}' % (entry["build"], entry["id"], p["manifest_sha256"], entry["platform"],
                                 p["sha256"])).encode()
 
@@ -213,3 +228,157 @@ def ed25519_verify(public, message, signature):
     h = int.from_bytes(hashlib.sha512(signature[:32] + public + message).digest(), "little") % _L
     left, right = _mul(s, _G), _add(r, _mul(h, a))
     return (left[0] * right[2] - right[0] * left[2]) % _P == 0 and (left[1] * right[2] - right[1] * left[2]) % _P == 0
+
+
+# Kinds, arches and ports (SPEC.md § 8.1, § 8.2).
+
+def kind_of(entry):
+    """An entry's kind, as a client reads it: one it does not know is an app."""
+    kind = entry.get("kind")
+    return kind if kind in KINDS else "app"
+
+
+def arch_ok(package, platform, mine=None):
+    """Whether a package may run here: no arch, or a list that holds `mine`
+    (the device's), or, without `mine`, a list of known arches the profile
+    allows. A client skips the others."""
+    arch = package.get("arch")
+    if arch is None:
+        return True
+    if not (isinstance(arch, list) and arch and all(a in ARCH_NAMES for a in arch)):
+        return False
+    if mine is not None:
+        return mine in arch
+    return all(a in ARCHES.get(platform, ARCH_NAMES) for a in arch)
+
+
+def data_files(items):
+    """Every file a requires_data names, those of each alternative (one_of) included."""
+    for d in items if isinstance(items, list) else []:
+        if isinstance(d, dict) and isinstance(d.get("one_of"), list):
+            for option in d["one_of"]:
+                yield from option if isinstance(option, list) else []
+        else:
+            yield d
+
+
+def port_problems(entry):
+    """Every way a port's `port` object breaks SPEC.md § 8.1: no original or
+    engine, assets not of the list, a data_root outside the profile's areas,
+    a data path that is not relative to it (absolute, `..`, a part § 8.2
+    refuses), an alternative of one option, or a data file the package
+    itself serves (its path in the manifest, or an accepted sha256 that is
+    the package's or a manifest file's)."""
+    port = entry.get("port")
+    if not isinstance(port, dict):
+        return ["no port object"]
+    out = []
+    original, engine = port.get("original"), port.get("engine")
+    if not (isinstance(original, dict) and isinstance(original.get("name"), str) and original["name"]):
+        out.append("original has no name")
+    elif not isinstance(original.get("stores", []), list):
+        out.append("original.stores is not a list")
+    if not (isinstance(engine, dict) and isinstance(engine.get("name"), str) and engine["name"]):
+        out.append("engine has no name")
+    if port.get("assets") not in ASSETS:
+        out.append(f"assets {port.get('assets')!r} is not one of {', '.join(ASSETS)}")
+    root = port.get("data_root")
+    if not (isinstance(root, str) and root.endswith("/") and path_problem(root[:-1]) is None):
+        return out + [f"data_root {root!r} is not a folder's path"]
+    areas = (ROOTS.get(entry.get("platform")) or {}).get("areas")
+    if areas is not None and not any(root.startswith(a) and root != a for a in areas):
+        out.append(f"data_root {root!r} is not under {', '.join(areas)}")
+    items = port.get("requires_data", [])
+    if not isinstance(items, list):
+        return out + ["requires_data is not a list"]
+    for d in items:
+        if isinstance(d, dict) and "one_of" in d:
+            options = d["one_of"]
+            if not (isinstance(options, list) and len(options) >= 2 and all(isinstance(o, list) and o for o in options)):
+                out.append("one_of has fewer than two alternatives, or an empty one")
+    def paths(files):
+        return [f.get("path") for f in files if isinstance(f, dict)]
+    single = paths([d for d in items if not (isinstance(d, dict) and "one_of" in d)])
+    for group in [single] + [single + paths(o) for d in items if isinstance(d, dict) and isinstance(d.get("one_of"), list)
+                             for o in d["one_of"] if isinstance(o, list)]:
+        if len(set(map(str, group))) != len(group):
+            out.append("a data path twice")
+            break
+    package = entry.get("package") or {}
+    manifest = manifest_of(package) if isinstance(package, dict) else []
+    shipped = {m.get("path") for m in manifest if isinstance(m, dict)}
+    served = {package.get("sha256")} | {m.get("sha256") for m in manifest if isinstance(m, dict)}
+    for f in data_files(items):
+        if not isinstance(f, dict):
+            out.append("a data file is not an object")
+            continue
+        path = f.get("path")
+        if not isinstance(path, str) or path.startswith("/"):
+            out.append(f"data path {path!r} is not relative to data_root")
+            continue
+        problem = path_problem(root + path)
+        if problem:
+            out.append(f"data path {path!r}: {problem}")
+            continue
+        if root + path in shipped:
+            out.append(f"data {root + path!r} is in the package: Lantern never serves a port's data")
+        if "optional" in f and not isinstance(f["optional"], bool):
+            out.append(f"data {path!r}: optional is not true or false")
+        if "size" in f and not (isinstance(f["size"], int) and not isinstance(f["size"], bool) and f["size"] >= 0):
+            out.append(f"data {path!r}: size is not an integer")
+        accept = f.get("accept", [])
+        if not isinstance(accept, list):
+            out.append(f"data {path!r}: accept is not a list")
+            continue
+        for a in accept:
+            forms = [k for k in HASH_FORMS if isinstance(a, dict) and k in a]
+            if not (isinstance(a, dict) and isinstance(a.get("label"), str) and forms and all(
+                    isinstance(a[k], str) and len(a[k]) == HASH_FORMS[k]
+                    and all(c in "0123456789abcdef" for c in a[k]) for k in forms)):
+                out.append(f"data {path!r}: an accepted version without its label or a hash of a known form")
+            elif a.get("sha256") in served:
+                out.append(f"data {path!r}: the package serves a file of an accepted hash")
+    return out
+
+
+def file_hashes(data):
+    """The hashes a client compares a data file's accepted versions with."""
+    return {k: hashlib.new(k, data).hexdigest() for k in HASH_FORMS}
+
+
+def accepted(f, hashes):
+    """Whether a present file (its file_hashes) is one of `f`'s accepted versions; any, without a list."""
+    return not f.get("accept") or any(all(a[k] == hashes.get(k) for k in HASH_FORMS if k in a) for a in f["accept"])
+
+
+def launch_check(entry, present):
+    """What a client checks before it starts a port (SPEC.md § 8.1). `present`
+    maps a path relative to data_root (exact, case included) to file_hashes()
+    of the file there. Returns {"missing", "wrong", "absent_optional",
+    "choices"}: the port starts only when missing and wrong are both empty;
+    for a one_of group none of whose alternatives is complete and right,
+    "missing" names the group's first files, and "choices" every alternative,
+    so that the client can guide the user."""
+    out = {"missing": [], "wrong": [], "absent_optional": [], "choices": []}
+
+    def check(files, into):
+        for f in files:
+            if f["path"] not in present:
+                (into["absent_optional"] if f.get("optional") else into["missing"]).append(f["path"])
+            elif not accepted(f, present[f["path"]]):
+                into["wrong"].append(f["path"])
+
+    for d in (entry.get("port") or {}).get("requires_data", []):
+        if "one_of" in d:
+            tries = []
+            for option in d["one_of"]:
+                result = {"missing": [], "wrong": [], "absent_optional": []}
+                check(option, result)
+                tries.append(result)
+            if not any(not t["missing"] and not t["wrong"] for t in tries):
+                out["missing"] += tries[0]["missing"] or [f["path"] for f in d["one_of"][0]]
+                out["wrong"] += [w for t in tries for w in t["wrong"]]
+                out["choices"].append([[f["path"] for f in o] for o in d["one_of"]])
+        else:
+            check([d], out)
+    return out

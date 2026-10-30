@@ -33,15 +33,47 @@ Homebrew (SPEC.md § 8): every .nro, .3dsx, .zip, .apk, .vpk, .pkg and .cia
 below DIR/homebrew/. An .nro's name, author and version come from its NACP
 (server/nro.py); a homebrew.json next to a package gives the rest:
 
-    {"schema": 1, "id": "org.example.frostline", "build": 10400,
+    {"schema": 1, "id": "org.example.frostline", "build": 10400, "kind": "tool",
      "license": "MIT", "source": "https://code.example.org/noor/frostline",
      "category": "tool", "summary": "…", "requires": {"text": "…", "min": {"atmosphere": "1.7.0"}},
+     "arch": ["aarch64"], "system_id": "…",
      "signature": {"alg": "ed25519", "public_key": "…", "value": "…"}}
+
+`kind` is app, game, port, emulator, tool, overlay, sysmodule or theme (an
+unknown one is read as app). `arch` is a list (aarch64, armhf, x86_64, x86;
+aarch64 alone on a Switch), `assets_license` an SPDX expression, `system_id`
+the platform's own id of the homebrew where it has one, and
+`requires.homebrew` the homebrew it needs: [{"id", "min_build"}]. The NACP
+has no integer version: `build` comes from homebrew.json (without one, this
+server derives its own from the version, 1.4.2 giving 1004002). A port
+groups the rest under `port`:
+
+    {"schema": 1, "id": "org.example.frostline-port", "kind": "port", "build": 300,
+     "arch": ["aarch64"],
+     "port": {
+       "original": {"name": "Frostline Tales", "year": 2004, "developer": "Fjord Works",
+                    "stores": [{"store": "example", "id": "frostline", "url": "https://store.example.org/frostline"}]},
+       "engine": {"name": "Lanternlight", "version": "0.3.0", "license": "GPL-2.0-or-later"},
+       "data_root": "/switch/frostline/",
+       "assets": "user_owned",
+       "requires_data": [
+         {"path": "frost.pak", "size": 896,
+          "accept": [{"label": "1.0", "sha256": "<hex>"}, {"label": "1.1", "md5": "<hex>"}],
+          "hint": {"en": "frost.pak, in the folder the game is installed in."}},
+         {"one_of": [[{"path": "music.pak"}], [{"path": "music-demo.pak"}]]}]}}
+
+`data_root` is the folder the port expects its data in, under the profile's
+areas (/switch/ or /config/ on a Switch); each requires_data path is
+relative to it, exact, case included. The server never serves those files: a
+package that holds one of them, by path or by sha256, is not served.
 
 A .zip's manifest is its files, each at "/" + its name in the archive; one
 whose paths break SPEC.md § 8.2 or leave the platform's roots is not
-served. A signature is served as given, never made here. Without an id, a
-homebrew gets `local.<its file's name>`.
+served. A signature is served as given, never made here, and only when it
+verifies (server/ed25519.py): a package whose signature does not verify is
+not served. Without an id, a homebrew gets `local.<its file's name>`. A
+homebrew.json of a newer schema is treated as absent: the packages next to
+it are not served, since what it says of them is unknown.
 
 Cheats (SPEC.md § 10): DIR/cheats/[<platform>/]<title id>/<build id>/<source>.txt,
 one set per file (the Switch when no platform is named).
@@ -109,8 +141,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 try:
-    from server import nro
+    from server import ed25519, nro
 except ImportError:     # run as server/lantern_server.py
+    import ed25519
     import nro
 
 VERSION = "0.3.0"
@@ -144,15 +177,18 @@ TID_IN_NAME = re.compile(r"\[([0-9A-Fa-f]{16})\]")
 VERSION_IN_NAME = re.compile(r"\[v(\d+)\]")
 # The profiles of SPEC.md's Annex A, as far as this server needs them: the
 # id's form, the types and formats of apps, whether a newer base replaces the
-# old one (§ 6.3), and for homebrew, each format's place (a folder for a
-# single file, None for an archive and its manifest, "system" for a package
-# the platform's installer installs) and the roots a manifest may write to.
+# old one (§ 6.3), and for homebrew, each format's place (a single file's
+# path, None for an archive and its manifest, "system" for a package the
+# platform's installer installs), the roots a manifest may write to, and the
+# areas a port's data_root may lie in (which the user approves once).
 PROFILES = {
     "switch": {"id": ID16, "types": ("base", "update", "dlc"), "formats": ("nsp", "nsz", "xci", "xcz"),
-               "build_id": re.compile(r"^[0-9A-F]{1,64}$"), "homebrew": {"nro": "/switch/{id}/", "zip": None},
-               "roots": ("/switch/{id}/", "/config/{id}/", "/atmosphere/", "/switch/.overlays/")},
+               "build_id": re.compile(r"^[0-9A-F]{1,64}$"), "homebrew": {"nro": "/switch/{id}/{id}.nro", "zip": None},
+               "roots": ("/switch/{id}/", "/config/{id}/", "/atmosphere/", "/switch/.overlays/"),
+               "areas": ("/switch/", "/config/")},
     "3ds": {"id": ID16, "types": ("base", "update", "dlc"), "formats": ("cia",),
-            "homebrew": {"3dsx": "/3ds/{id}/", "zip": None, "cia": "system"}, "roots": ("/3ds/{id}/", "/luma/")},
+            "homebrew": {"3dsx": "/3ds/{id}/{id}.3dsx", "zip": None, "cia": "system"}, "roots": ("/3ds/{id}/", "/luma/"),
+            "areas": ("/3ds/",)},
     "vita": {"id": re.compile(r"^[A-Z]{4}[0-9]{5}$"), "types": ("base", "update", "dlc"), "formats": ("vpk",),
              "homebrew": {"vpk": "system"}, "roots": ()},
     "ps4": {"id": re.compile(r"^[A-Z]{4}[0-9]{5}$"), "types": ("base", "update", "dlc"), "formats": ("pkg",),
@@ -166,6 +202,14 @@ HOMEBREW_EXT = {"nro": "switch", "zip": "switch", "3dsx": "3ds", "cia": "3ds", "
 GENRES = ("action", "adventure", "rpg", "strategy", "simulation", "sports", "racing", "puzzle", "platformer",
           "shooter", "fighting", "music", "party", "education", "other")
 CATEGORIES = ("game", "emulator", "tool", "media", "system", "other")
+KINDS = ("app", "game", "port", "emulator", "tool", "overlay", "sysmodule", "theme")   # unknown: app
+ARCHES = ("aarch64", "armhf", "x86_64", "x86")    # a package's arch, a list of these
+PROFILE_ARCH = {"switch": ("aarch64",)}           # where a profile allows one only
+ASSETS = ("included", "demo_included", "free_external", "user_owned")    # a port's game data
+DATA_LIMIT = 64         # files a port's requires_data names, alternatives included
+ACCEPT_LIMIT = 16       # accepted versions of one data file
+HASH_FORMS = {"sha256": 64, "sha1": 40, "md5": 32}  # an accepted version's hashes, lower-case hex
+SPDX = re.compile(r"^[A-Za-z0-9.+:() -]{1,256}$")
 SAVE_KINDS = ("account", "device", "bcat", "cache", "other")
 RATING_SYSTEM = re.compile(r"^[A-Z][A-Z0-9-]{1,15}$")
 CHUNK = 1 << 20
@@ -325,9 +369,135 @@ def device_path_ok(path):
 def manifest_digest(manifest):
     """The SHA-256 of a manifest's canonical form (SPEC.md § 8.2)."""
     entries = sorted(manifest, key=lambda e: e["path"].encode())
-    canonical = "[" + ",".join('{"path":%s,"sha256":"%s","size":%d}' % (
+    canonical = "[" + ",".join('{"path":%s,"sha256":"%s","size":%d}' % (  # noqa: UP031 - the canonical bytes, spelled out
         json.dumps(e["path"], ensure_ascii=False), e["sha256"], e["size"]) for e in entries) + "]"
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def hex_of(value, length):
+    return isinstance(value, str) and len(value) == length and all(c in "0123456789abcdef" for c in value)
+
+
+def https_url(value):
+    return isinstance(value, str) and len(value) <= 4096 and urlsplit(value).scheme == "https" \
+        and bool(urlsplit(value).netloc)
+
+
+def data_file_problem(d, root):
+    """Why one file of a port's requires_data breaks SPEC.md § 8.1, or None:
+    {path, size?, accept?: [{sha256?, sha1?, md5?, label}], hint?, optional?},
+    the path relative to data_root, exact, case included."""
+    if not isinstance(d, dict):
+        return "a data file is not an object"
+    path = d.get("path")
+    if not isinstance(path, str) or path.startswith("/") or not device_path_ok(root + path):
+        return f"{str(path)[:80]!r} is not a path relative to data_root (SPEC.md § 8.2)"
+    accept = d.get("accept", [])
+    if not isinstance(accept, list) or len(accept) > ACCEPT_LIMIT:
+        return f"{path[:80]!r}: accept is a list of {ACCEPT_LIMIT} versions at most"
+    for a in accept:
+        if not (isinstance(a, dict) and plain(a.get("label"), 120)):
+            return f"{path[:80]!r}: each accepted version has its label"
+        hashes = [k for k in HASH_FORMS if k in a]
+        if not hashes or not all(hex_of(a[k], HASH_FORMS[k]) for k in hashes):
+            return f"{path[:80]!r}: an accepted version gives sha256, sha1 or md5, in lower-case hex"
+    if "size" in d and not is_int(d["size"]):
+        return f"{path[:80]!r}: size is an integer"
+    if "optional" in d and not isinstance(d["optional"], bool):
+        return f"{path[:80]!r}: optional is true or false"
+    if "hint" in d and localizable(d["hint"]) is None:
+        return f"{path[:80]!r}: hint is a text, or one per language"
+    return None
+
+
+def clean(value, key=None):
+    """A copy of a document from a file, its texts without control characters
+    and within SPEC.md § 13's limits; paths, urls and hashes kept exact."""
+    if isinstance(value, dict):
+        return {k: clean(v, k) for k, v in value.items() if isinstance(k, str)}
+    if isinstance(value, list):
+        return [clean(v, key) for v in value]
+    if isinstance(value, str) and key not in ("path", "data_root", "url", "source", "sha256", "sha1", "md5"):
+        return plain(value, 512 if key == "name" else 120 if key == "label" else 4096) or ""
+    return value
+
+
+def data_files(items):
+    """Every file a requires_data names, those of each alternative included."""
+    for d in items:
+        if isinstance(d, dict) and "one_of" in d:
+            for option in d["one_of"]:
+                yield from option
+        else:
+            yield d
+
+
+def port_problem(port, areas):
+    """Why a port's object breaks SPEC.md § 8.1, or None."""
+    if not isinstance(port, dict):
+        return "no port object"
+    original, engine = port.get("original"), port.get("engine")
+    if not (isinstance(original, dict) and plain(original.get("name"))):
+        return "original names the game"
+    if "year" in original and not (is_int(original["year"]) and 1950 <= original["year"] <= 2200):
+        return "original.year is a year"
+    stores = original.get("stores", [])
+    if not (isinstance(stores, list) and len(stores) <= 32 and all(
+            isinstance(x, dict) and isinstance(x.get("store"), str) and WORD.match(x["store"])
+            and https_url(x.get("url")) and ("id" not in x or plain(x["id"], 128)) for x in stores)):
+        return "original.stores is a list of {store, id?, url}, an HTTPS url each"
+    title = original.get("title")
+    if title is not None and not (isinstance(title, dict) and PLATFORM.match(str(title.get("platform", "")))
+                                  and title_id_ok(title["platform"], title.get("title_id"))):
+        return "original.title is {platform, title_id}, of that platform's form"
+    if not (isinstance(engine, dict) and plain(engine.get("name"))):
+        return "engine names the engine"
+    if "source" in engine and not https_url(engine["source"]):
+        return "engine.source is an HTTPS url"
+    if "license" in engine and not (isinstance(engine["license"], str) and SPDX.match(engine["license"])):
+        return "engine.license is an SPDX expression"
+    if port.get("assets") not in ASSETS:
+        return "assets is " + ", ".join(ASSETS)
+    root = port.get("data_root")
+    if not (isinstance(root, str) and root.endswith("/") and device_path_ok(root[:-1])):
+        return f"data_root {str(root)[:80]!r} is not a folder's path (SPEC.md § 8.2)"
+    if not any(root.startswith(a) and root != a for a in areas):
+        return f"data_root {root[:80]!r} is not under " + (", ".join(areas) or "an area of this platform")
+    items = port.get("requires_data", [])
+    if not isinstance(items, list):
+        return "requires_data is not a list"
+    count = 0
+    for d in items:
+        if isinstance(d, dict) and "one_of" in d:
+            options = d["one_of"]
+            if not (isinstance(options, list) and len(options) >= 2
+                    and all(isinstance(o, list) and o for o in options)):
+                return "one_of is a list of two alternatives or more, each a list of files"
+            files = [f for o in options for f in o]
+            if any(isinstance(f, dict) and "one_of" in f for f in files):
+                return "one_of does not nest"
+        else:
+            files = [d]
+        for f in files:
+            problem = data_file_problem(f, root)
+            if problem:
+                return problem
+        count += len(files)
+    if count > DATA_LIMIT:
+        return f"{count} data files, above {DATA_LIMIT}"
+    plain_paths = [d["path"] for d in items if "one_of" not in d]
+    groups = [plain_paths] + [plain_paths + [f["path"] for f in o] for d in items if "one_of" in d for o in d["one_of"]]
+    for paths in groups:
+        if len(set(paths)) != len(paths):
+            return "a data path twice"
+    return None
+
+
+def signed_bytes(doc):
+    """The bytes an author signs (SPEC.md § 8.4)."""
+    p = doc["package"]
+    return ('{"build":%d,"id":"%s","manifest_sha256":"%s","platform":"%s","purpose":"lantern-homebrew-1",'  # noqa: UP031 - the canonical bytes, spelled out
+            '"sha256":"%s"}' % (doc["build"], doc["id"], p["manifest_sha256"], doc["platform"], p["sha256"])).encode()
 
 
 def build_of(version):
@@ -510,6 +680,7 @@ class Library:
         self.floor = 0                      # tokens below it are gone
         self.apps, self.files, self.titles, self.homebrew, self.cheats = {}, {}, {}, {}, {}
         self.manifests = {}                 # (rel, size, mtime) -> a zip's manifest, or None when refused
+        self.signatures = {}                # (signed bytes, key, value) -> whether it verifies
         self.cursors = OrderedDict()
         self.skipped = set()                # files not served, reported once
         self.scanned = None
@@ -678,7 +849,7 @@ class Library:
     def scan_titles(self, apps, entries, initial):
         """The titles of the apps (SPEC.md § 7): a name, a release, the entries' metadata, and when it changed."""
         groups = {}
-        for aid, e in apps.items():
+        for e in apps.values():
             groups.setdefault((e["doc"]["platform"], e["doc"]["title_id"]), []).append(e)
         known, titles = self.state["titles"], {}
         for (platform, title_id), mine in groups.items():
@@ -721,6 +892,10 @@ class Library:
                 folders.setdefault(path.parent, []).append(path)
         for folder, packages in folders.items():
             meta = read_versioned(folder / "homebrew.json", "homebrew.json")
+            if meta is None and (folder / "homebrew.json").exists():
+                for path in packages:   # a homebrew.json it cannot read says nothing it may serve
+                    self.skip(path.relative_to(self.root).as_posix(), "its homebrew.json is newer or unreadable")
+                continue
             for path in packages:
                 mine = meta if meta and (meta.get("file") == path.name
                                          or (not meta.get("file") and len(packages) == 1)) else None
@@ -765,7 +940,7 @@ class Library:
                 return None
             package["manifest"] = manifest
         else:
-            target = meta.get("path") if device_path_ok(meta.get("path")) else place.format(id=hid) + path.name
+            target = meta.get("path") if device_path_ok(meta.get("path")) else place.format(id=hid)
             if not device_path_ok(target):
                 self.skip(rel, f"no place for it on the device ({target})")
                 return None
@@ -795,6 +970,42 @@ class Library:
             if isinstance(requires.get("min"), dict):
                 doc["requires"]["min"] = {k: v for k, v in requires["min"].items()
                                           if isinstance(k, str) and WORD.match(k) and isinstance(v, str) and DOTTED.match(v)}
+            if isinstance(requires.get("homebrew"), list):
+                doc["requires"]["homebrew"] = [{"id": h["id"], "min_build": h["min_build"]} for h in requires["homebrew"]
+                                               if isinstance(h, dict) and HOMEBREW_ID.match(str(h.get("id", "")))
+                                               and is_int(h.get("min_build"))]
+        kind = meta.get("kind")
+        doc["kind"] = kind if kind in KINDS else "app"     # SPEC.md § 8.1: an unknown kind is an app
+        arch = meta.get("arch")
+        if arch is not None:
+            allowed = PROFILE_ARCH.get(platform, ARCHES)
+            if not (isinstance(arch, list) and arch and all(a in allowed for a in arch) and len(set(arch)) == len(arch)):
+                self.skip(rel, f"arch is a list of {', '.join(allowed)} ({str(arch)[:40]})")
+                return None
+            package["arch"] = arch
+        if meta.get("assets_license") is not None:
+            if not (isinstance(meta["assets_license"], str) and SPDX.match(meta["assets_license"])):
+                self.skip(rel, "assets_license is an SPDX expression")
+                return None
+            package["assets_license"] = meta["assets_license"]
+        if meta.get("system_id") is not None:
+            if not (isinstance(meta["system_id"], str) and CORE_ID.match(meta["system_id"])):
+                self.skip(rel, "system_id is an id of the platform's form")
+                return None
+            doc["system_id"] = meta["system_id"]
+        if doc["kind"] == "port":
+            port = meta.get("port")
+            problem = port_problem(port, profile.get("areas", ()))
+            if problem:
+                self.skip(rel, f"port: {problem}")
+                return None
+            shipped = {m["path"] for m in manifest}
+            served = {sha} | {m["sha256"] for m in manifest}
+            for f in data_files(port.get("requires_data", [])):
+                if port["data_root"] + f["path"] in shipped or any(a.get("sha256") in served for a in f.get("accept", [])):
+                    self.skip(rel, "it holds a file the user brings from their own copy (requires_data)")
+                    return None
+            doc["port"] = clean(port)       # a copy; its hints are localized when served
         mtimes = [st.st_mtime_ns]
         try:
             mtimes.append((path.parent / "homebrew.json").stat().st_mtime_ns)
@@ -806,12 +1017,27 @@ class Library:
         if isinstance(signature, dict) and signature.get("alg") == "ed25519" \
                 and re.fullmatch(r"[A-Za-z0-9+/]{43}=", str(signature.get("public_key", ""))) \
                 and re.fullmatch(r"[A-Za-z0-9+/]{86}==", str(signature.get("value", ""))):
-            doc["signature"] = {"alg": "ed25519", "public_key": signature["public_key"], "value": signature["value"]}
+            signature = {"alg": "ed25519", "public_key": signature["public_key"], "value": signature["value"]}
+            if not self.verified(signed_bytes(doc), signature):
+                self.skip(rel, "its signature does not verify (SPEC.md § 8.4)")
+                return None
+            doc["signature"] = signature
         elif signature is not None:
-            log(f"{rel}: its signature is not an ed25519 one; served without it")
+            self.skip(rel, "its signature is not an ed25519 one")
+            return None
         texts = {k: localizable(meta.get(k)) for k in ("summary", "description") if localizable(meta.get(k))}
         files[fid] = {"path": path, "size": st.st_size, "sha256": sha}
         return {"doc": doc, "texts": texts, "keys": {"name": (name.casefold(), platform, hid)}}
+
+    def verified(self, message, signature):
+        """Whether an author's signature verifies, remembered (SPEC.md § 8.4)."""
+        memo = (message, signature["public_key"], signature["value"])
+        if memo not in self.signatures:
+            public, value = base64.b64decode(signature["public_key"]), base64.b64decode(signature["value"])
+            self.signatures[memo] = ed25519.verify(public, message, value)
+            if len(self.signatures) > 10000:
+                self.signatures.pop(next(iter(self.signatures)))
+        return self.signatures[memo]
 
     def zip_manifest(self, path, rel, st):
         """A zip's manifest: every file in it, at "/" + its name; None when one breaks SPEC.md § 8.2."""
@@ -1031,7 +1257,7 @@ class Saves:
     makes the family unavailable, and is never written over."""
 
     PUBLIC = ("platform", "title_id", "save_id", "created", "size", "sha256", "kind", "game_version_code",
-              "profile", "note", "device")
+              "profile", "slot", "note", "device")
 
     def __init__(self, folder, body=SAVE_BODY, size=SAVE_SIZE, chunk=SAVE_CHUNK, kept=SAVES_KEPT,
                  hours=UPLOAD_HOURS):
@@ -1083,6 +1309,8 @@ class Saves:
             return [self.public(e) for e in out + list(reversed(group))]
 
     def find(self, user, title_id, save_id, platform):
+        """The backup `save_id` of `title_id`; None when there is none. Its id is
+        the server's own, so it never names backups on two platforms."""
         with self.lock:
             return next((e for e in self.mine(user) if e["save_id"] == save_id and e.get("title_id") == title_id
                          and (platform is None or e.get("platform") == platform)), None)
@@ -1507,7 +1735,7 @@ class Handler(BaseHTTPRequestHandler):
         return data
 
     # Routes: the path below <base>/v1/, "{}" one segment; the first match wins.
-    ROUTES = [
+    ROUTES = (
         ("pairing", ("POST",), "pairing", "pair_start"),
         ("pairing/{}", ("GET",), "pairing", "pair_poll"),
         ("apps", ("GET", "HEAD"), "library", "apps"),
@@ -1527,7 +1755,7 @@ class Handler(BaseHTTPRequestHandler):
         ("cheats", ("GET", "HEAD"), "cheats", "cheats_list"),
         ("cheats/{}", ("GET", "HEAD"), "cheats", "cheat_text"),
         ("files/{}", ("GET", "HEAD"), "library", "file"),
-    ]
+    )
 
     def route(self, method, path, query):
         v1 = BASE + "/v1"
@@ -1707,20 +1935,28 @@ class Handler(BaseHTTPRequestHandler):
             language = language or lang
         if language:
             doc["language"] = language
+        if "port" in doc:
+            doc["port"] = json.loads(json.dumps(doc["port"]))
+            for f in data_files(doc["port"].get("requires_data", [])):
+                if "hint" in f:
+                    f["hint"] = localized(localizable(f["hint"]), self.prefs())[0]
         return doc
 
     def homebrew_list(self, query):
         platform = self.platform(query)
-        q, category = query.get("q"), query.get("category")
+        q, category, kind = query.get("q"), query.get("category"), query.get("kind")
         if category is not None and category not in CATEGORIES:
             raise bad_request("category is " + ", ".join(CATEGORIES) + ".")
+        if kind is not None and not WORD.match(kind):
+            raise bad_request("kind is a lower-case word: " + ", ".join(KINDS) + ".")
         _, size, cursor = self.listing_args(query, ("name",))
         lib = self.server.library
         with lib.lock:
             entries = [e for (p, _), e in lib.homebrew.items()
                        if (platform is None or p == platform) and (category is None or e["doc"]["category"] == category)
+                       and (kind is None or e["doc"]["kind"] == kind)
                        and (not q or q.casefold() in e["doc"]["name"].casefold())]
-            self.send_doc(200, lib.page(entries, "name", size, cursor, ("homebrew", platform, q, category),
+            self.send_doc(200, lib.page(entries, "name", size, cursor, ("homebrew", platform, q, category, kind),
                                         lambda e: self.homebrew_view(e, False)))
 
     def homebrew_entry(self, query, hid):
@@ -1766,17 +2002,18 @@ class Handler(BaseHTTPRequestHandler):
             raise bad_request(f"{name}: {limit} bytes at most, without control characters.")
         return value or None
 
-    def save_fields(self, platform, title_id, kind, version, profile, note):
+    def save_fields(self, platform, title_id, kind, version, profile, note, slot=None):
         if kind is not None and kind not in SAVE_KINDS:
             raise bad_request("kind is " + ", ".join(SAVE_KINDS) + ".")
         if version is not None and not is_int(version):
             raise bad_request("game_version_code is an integer.")
-        for value, limit, what in ((profile, 64, "profile"), (note, 120, "note")):
+        for value, limit, what in ((profile, 64, "profile"), (note, 120, "note"), (slot, 64, "slot")):
             if value is not None and (not isinstance(value, str) or len(value.encode()) > limit
                                       or any(ord(c) < 32 or ord(c) == 127 for c in value)):
                 raise bad_request(f"{what}: {limit} bytes at most, without control characters.")
         fields = {"platform": platform, "title_id": title_id, "kind": kind, "game_version_code": version,
-                  "profile": profile or None, "note": note or None, "device": (self.record or {}).get("device")}
+                  "profile": profile or None, "slot": slot or None, "note": note or None,
+                  "device": (self.record or {}).get("device")}
         return {k: v for k, v in fields.items() if v is not None}
 
     def saves_list(self, query):
@@ -1797,7 +2034,8 @@ class Handler(BaseHTTPRequestHandler):
             raise bad_request("Lantern-Game-Version is an integer.")
         fields = self.save_fields(platform, title_id, self.headers.get("Lantern-Save-Kind"),
                                   int(version) if version is not None else None,
-                                  self.text_header("Lantern-Profile", 64), self.text_header("Lantern-Note", 120))
+                                  self.text_header("Lantern-Profile", 64), self.text_header("Lantern-Note", 120),
+                                  self.text_header("Lantern-Save-Slot", 64))
         data = self.body(saves.body)
         if not hmac.compare_digest(hashlib.sha256(data).digest(), digest):
             raise digest_mismatch("The body's SHA-256 is not the one Content-Digest gives.")
@@ -1823,7 +2061,7 @@ class Handler(BaseHTTPRequestHandler):
         if size > saves.size:
             raise Problem(413, "too_large", "Too large", f"A save is {saves.size} bytes at most here.")
         fields = self.save_fields(platform, title_id, doc.get("kind"), doc.get("game_version_code"),
-                                  doc.get("profile"), doc.get("note"))
+                                  doc.get("profile"), doc.get("note"), doc.get("slot"))
         uid, expires = saves.open(self.account["name"], fields, size, sha)
         self.send_doc(201, {"schema": 1, "upload": f"{BASE}/v1/uploads/{uid}", "chunk_size": saves.chunk,
                             "offset": 0, "expires": expires}, {"Location": f"{BASE}/v1/uploads/{uid}"})
