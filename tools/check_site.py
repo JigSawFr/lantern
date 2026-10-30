@@ -196,7 +196,8 @@ def main() -> None:
             errors.append(f"site/registry.json: {entry.get('name', '?')} lacks {', '.join(lacking)}")
         if "core" not in entry.get("levels", []):
             errors.append(f"site/registry.json: {entry.get('name', '?')} without Lantern Core, which every level needs")
-    for level in ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin"):
+    for level in ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
+                  "encrypted_saves", "static"):
         if not list((site / "assets" / "badges").glob(f"lantern-*-{level}.svg")):
             errors.append(f"assets/badges: no badge for {level}")
     for path in sorted(site.rglob("*")):

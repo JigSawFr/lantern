@@ -96,9 +96,10 @@ UTM_SOURCE = "lantern"
 
 KEY = re.compile(r"\{\{([a-z0-9_]+)\}\}")
 REQ = re.compile(r"\[(L-(?:\d+(?:\.\d+)?|[A-Z](?:\.\d+)?)-\d+)\]")
-DRAFT = "0.4"   # the draft the badges name (SPEC.md § 17)
+DRAFT = "0.5"   # the draft the badges name (SPEC.md § 17)
 LEVELS = [("core", "Core"), ("titles", "+titles"), ("homebrew", "+homebrew"), ("saves", "+saves"),
-          ("cheats", "+cheats"), ("requests", "+requests"), ("admin", "+admin")]
+          ("cheats", "+cheats"), ("requests", "+requests"), ("admin", "+admin"), ("events", "+events"),
+          ("peers", "+peers"), ("sync", "+sync"), ("encrypted_saves", "+encrypted_saves"), ("static", "Static")]
 # SPEC.md's section of errors, whatever its number: "## 12. Errors".
 ERRORS_HEADING = re.compile(r"## (\d+)\. Errors$")
 
@@ -552,8 +553,9 @@ def badge_file(level: str) -> str:
 def conformance_body(spec: dict, root: str) -> str:
     return f"""<section class="prose" lang="en">
 <p>A Lantern implementation is conformant at a level when the conformance suite, run against it, passes every
-check of that level (<a href="{root}spec/#17-conformance">the specification, §&nbsp;17</a>). Every level needs
-<code>Lantern Core</code>.</p>
+check of that level (<a href="{root}spec/#17-conformance">the specification, §&nbsp;17</a>). Every level of a
+server needs <code>Lantern Core</code>; <code>Lantern Static</code> stands alone, for a static library
+(<a href="{root}spec/#21-static-libraries">§&nbsp;21</a>), which the suite checks with <code>--static</code>.</p>
 {levels_table(spec, root)}
 <h2 id="run">Run the suite</h2>
 <p>With a token that holds every scope the levels need, and its device key, and anonymously on a public server.
@@ -561,7 +563,10 @@ At the end it prints the levels reached, and why it did not reach the others.</p
 <pre tabindex="0"><code>pip install -r tools/requirements.txt
 python3 conformance/run.py https://shelf.example.org/ --token et_… --key device.key
 …
-Levels reached (SPEC.md § 17, draft {DRAFT}): Lantern Core +titles +homebrew</code></pre>
+Levels reached (SPEC.md § 17, draft {DRAFT}): Lantern Core +titles +homebrew +events
+python3 conformance/run.py --static https://lea.example.org/library/
+…
+Levels reached (SPEC.md § 17, draft {DRAFT}): Lantern Static</code></pre>
 <p>A level is reached when its family is offered to the caller, none of its checks fails, and none was left out for
 want of a token, a key or a scope. Each check names the requirements it covers: the
 <a href="{root}requirements/">traceability page</a> lists them all, and those only a client can keep.</p>
@@ -575,7 +580,8 @@ them by a pull request with the suite's report.</p>
 <h2 id="vectors">Test vectors</h2>
 <p>For client and server libraries, the bytes the text spells out, case by case, with what a reader decides:
 signed requests, homebrew signatures, Ed25519 signatures a verifier refuses, SPKI fingerprints, paths,
-<code>version_code</code> per profile, requirements and rating caps, in
+<code>version_code</code> per profile, requirements, rating caps, encrypted backups and recovery phrases, grants,
+sync's merge rule and the static layout, in
 <a href="{REPO}/tree/main/vectors">vectors/</a>.</p>
 </section>"""
 
@@ -587,7 +593,7 @@ def requirements_body(spec: dict, root: str) -> str:
     suite = suite_module()
     checks = {}
     for cid, ids in suite.REQS.items():
-        shown = cid + ".*" if cid in ("features", "apps.pages", "schema.refused") else cid
+        shown = cid + ".*" if cid in ("features", "apps.pages", "schema.refused", "static.pages") else cid
         for rid in ids:
             checks.setdefault(rid, []).append(shown)
     client = {rid: rule for _, ids, rule in suite.CLIENT_RULES for rid in ids}
@@ -745,7 +751,7 @@ def main() -> None:
         "description": "The error types of the Lantern protocol: each one's status, code and when a server returns it.",
         "lang_path": "spec/"}))
     pages = [("conformance/", "Conformance levels", "Conformance · SPEC.md § 17", "Who may say “Lantern compatible”, at which level, and how the suite decides.",
-              "The conformance levels of the Lantern protocol, from Lantern Core to +admin, and how the suite decides.",
+              "The conformance levels of the Lantern protocol, from Lantern Core to +encrypted_saves, Lantern Static, and how the suite decides.",
               conformance_body(spec, "../")),
              ("requirements/", "Requirements and their checks", "Traceability · SPEC.md § 3.5",
               "Each requirement of the specification, by its id, and the conformance suite's checks that cover it.",
