@@ -556,7 +556,8 @@ architecture of its platform (a package for a runtime, such as a script or
 bytecode, has none). Each package of `packages` has an `arch`, and a
 `signature` when the entry is signed (§ 8.4). A client takes a package
 whose `arch` lists its own, or else one without `arch`; it skips the others,
-and installs nothing when none fits.
+and installs nothing when none fits. On a platform with one architecture
+(Annex A says so), a package MUST NOT carry `arch`.
 
 Where the profile says so (Android), a package also carries
 `signer_sha256`: the SHA-256, lower-case hex, of the certificate the
@@ -663,14 +664,17 @@ An entry of kind `port` has a `port` object:
 - `data_root`: the folder where the port expects its data, as an absolute
   path (§ 8.2) that ends with `/`. It lies under the profile's areas for
   ports' data (Annex A); the user approves it once, at the first install.
+  From then on the client may write the user's data files there without
+  asking again; the port's own files still follow the manifest's roots
+  (§ 8.3).
 - `requires_data`: the files the user supplies, each either a file or a
   group:
   - a file: `path`, relative to `data_root`, exact (case included): parts
     separated by `/`, as § 8.2 says, but without the leading `/`, and with
     no drive letter; `size`, optional, in bytes; `accept`, optional, the
     known versions of the file the port takes, each with a `label` and one
-    or more of `sha256`, `sha1` and `md5` (lower-case hex); `hint`, where
-    the user finds it in their copy, localized like `description`, and
+    or more of `sha256`, `sha1` and `md5` (lower-case hex); `hint`, REQUIRED,
+    where the user finds it in their copy, localized like `description`, and
     never pointing at a download of it; and `optional`, `true` when the
     port runs without it (`false` when absent);
   - a group: `one_of`, two or more lists of files, of which one is enough,
@@ -733,9 +737,9 @@ For a save of at most `limits.save_body` bytes:
 - `Content-Digest: sha-256=:<base64>:` (RFC 9530), REQUIRED: without it,
   `400`. The server checks it and answers `422` `digest_mismatch` when the
   body does not match.
-- `Lantern-Save-Kind`, `Lantern-Save-Slot`, `Lantern-Game-Version` (the
-  integer `game_version_code`), `Lantern-Profile` and `Lantern-Note` (UTF-8,
-  percent-encoded, within § 13's limits).
+- `Lantern-Save-Kind`, `Lantern-Save-Slot` and `Lantern-Game-Version` (the
+  integer `game_version_code`), in ASCII as they are; `Lantern-Profile` and
+  `Lantern-Note` (UTF-8, percent-encoded); all within § 13's limits.
 
 → `201` with the save entry. A larger body gives `413`.
 
@@ -935,7 +939,7 @@ are open: no profile yet (Annex A.6).
   save filesystem's files as they are in it, at the root of the archive.
 - **Homebrew.** Formats `nro` (a single file, at `/switch/<id>/<id>.nro`:
   the homebrew menu takes a folder's `.nro` of the folder's name, or its
-  only one), `ovl` (an overlay, a single file in `/switch/.overlays/`) and
+  only one), `ovl` (an overlay, a single file in `/switch/.overlays/`, under its own file name, which some loaders expect) and
   `zip`; an archive puts at most one `.nro` in a folder, or one of the
   folder's name. No `system_id`. One architecture, so no `arch`.
   Roots without consent: `/switch/<id>/` and `/config/<id>/` (a
@@ -980,7 +984,7 @@ To be reviewed by someone who knows the platform.
 - **Homebrew.** Formats `3dsx` (a single file, at `/3ds/<id>/<id>.3dsx`)
   and `zip`; a `cia` is installed by the system as a title, which installs
   it without asking: the client always asks the user first, and its
-  `system_id` is the title id. A server reads a `3dsx`'s name and author
+  `system_id` is the title id. A server MAY read a `3dsx`'s name and author
   from its SMDH, which has no version: `build` comes from the author.
   One architecture, so no `arch`. Roots without consent: `/3ds/<id>/`.
   Roots that need consent: `/luma/` (plugins, titles' patches,
