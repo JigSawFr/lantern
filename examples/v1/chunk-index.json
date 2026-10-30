@@ -1,0 +1,59 @@
+{
+  "chunker": {
+    "alg": "lantern-cdc-1",
+    "size": 65536
+  },
+  "chunks": [
+    [
+      48083,
+      "ece35ba27a95d0167eee454f8339e82d1ac226a0111e15bf98cb617cf1fea7ab"
+    ],
+    [
+      39083,
+      "775fb5ffbc7d01fd56b603a9ae8cb4fef7ed3ce8fbc4d0d888ce92248ba9c426"
+    ],
+    [
+      136252,
+      "c236d967a7efd11e825445de14723f21e20a4ddce4cbd55323a58a91aa7e5d43"
+    ],
+    [
+      140242,
+      "6a33abce89ba33d5a884e99d3bdd9689de0d94c3ee43f3af972034a517dc8bd2"
+    ],
+    [
+      50656,
+      "e66db6b7a351a7056a0146a4a43cca3f4199112b87eb115bec0a6e552e32c361"
+    ],
+    [
+      113642,
+      "912d1b8a2ca8cf712e4dd72db9b0e49aef91e733454f3fa8370edbc2c8290003"
+    ],
+    [
+      238791,
+      "bf48d97ebac91582dc41c446e62fa57c44d2b32e633ec03ef41f76d2ab73f43a"
+    ],
+    [
+      89459,
+      "b12c7f34a31ad19b7072c5c33fb76295788646190472f09c6d342310b2fb2d57"
+    ],
+    [
+      64670,
+      "ae3355a7297d1e86908efc264caf32f5865de21347c88241a070a65649880bea"
+    ],
+    [
+      29357,
+      "fc962aadbbaadbf38d402d395bddf782e880820645a509d4c0a9b70b6ec71b00"
+    ],
+    [
+      44539,
+      "22772472cd2c323fe4010b80b5a99043582dc933584b74e9f21944b570a44abc"
+    ],
+    [
+      5226,
+      "534498499ca835311b25906daa0f0606dae2e9f9eb46612833b17e6dc09afbe7"
+    ]
+  ],
+  "schema": 1,
+  "sha256": "85592ec891f0b51408128247d9536981d6bf0d0d3df31e59ad2a31bf402abbc5",
+  "size": 1000000
+}

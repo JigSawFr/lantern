@@ -28,7 +28,15 @@ for the conformance suite to apply to what a server serves.
 - grants (§ 19.3): grant_payload() and read_grant(), what a peer checks
   before it serves a file, and mirror_ok(), the mirrors a client may read
   (§ 19.2);
-- sync (§ 20.4): sync_time() and sync_wins(), the merge rule;
+- sync (§ 20.4): sync_time() and sync_wins(), the merge rule, and canonical(),
+  the canonical JSON of § 2.3 (RFC 8785);
+- differential updates (§ 22): cdc_cut(), lantern-cdc-1's chunks;
+  chunk_index(), a file's index; read_chunk_index(), what a client checks of
+  one before it uses it; delta_plan() and assemble(), a file put together
+  from the chunks of what the client holds and ranges of the file, checked
+  chunk by chunk, then whole;
+- static libraries (§ 21.3): find_library(), the server or the static
+  library an address names;
 - version codes (Annex A): version_code() and version_name() per profile.
 
 The roots are those of the Switch's profile, and of the draft Linux one
@@ -749,8 +757,66 @@ def sync_time(text, now, skew):
     return f"{when.year:04d}-" + when.strftime("%m-%dT%H:%M:%S.") + f"{when.microsecond // 1000:03d}Z"
 
 
+def es_number(x):
+    """A JSON number as ECMAScript writes it (RFC 8785 § 3.2.2.3): an integer without a fraction or an exponent
+    (1.0 is 1), the others in their shortest form that reads back the same (0.5, 1e+21, 1e-7)."""
+    from decimal import Decimal
+    if isinstance(x, bool) or not isinstance(x, (int, float)):
+        raise TypeError("not a number")
+    if isinstance(x, int):
+        try:
+            x = float(x) if abs(x) > (1 << 53) - 1 else x
+        except OverflowError:
+            raise ValueError("a number beyond a double's range is not I-JSON") from None
+        if isinstance(x, int):
+            return str(x)
+    if x != x or x in (float("inf"), float("-inf")):
+        raise ValueError("JSON has no NaN nor infinity")
+    if x == 0:
+        return "0"
+    sign = "-" if x < 0 else ""
+    t = Decimal(repr(abs(x))).as_tuple()     # repr: the shortest digits that read back the same
+    digits = "".join(map(str, t.digits)).rstrip("0") or "0"
+    n = len("".join(map(str, t.digits))) + t.exponent     # the value is 0.<digits> x 10^n
+    k = len(digits)
+    if k <= n <= 21:
+        body = digits + "0" * (n - k)
+    elif 0 < n <= 21:
+        body = digits[:n] + "." + digits[n:]
+    elif -6 < n <= 0:
+        body = "0." + "0" * -n + digits
+    else:
+        e = n - 1
+        body = digits[0] + ("." + digits[1:] if k > 1 else "") + "e" + ("+" if e >= 0 else "-") + str(abs(e))
+    return sign + body
+
+
+def canonical_text(value):
+    """`value`'s canonical JSON (SPEC.md § 2.3): RFC 8785's scheme. No space; an object's members sorted by their
+    names as UTF-16 code units; strings with only what JSON must escape escaped (the short escapes, the other
+    control characters as \\u00xx), the rest as it is; numbers as ECMAScript writes them."""
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, (int, float)):
+        return es_number(value)
+    if isinstance(value, list):
+        return "[" + ",".join(canonical_text(v) for v in value) + "]"
+    if isinstance(value, dict):
+        keys = sorted(value, key=lambda k: k.encode("utf-16-be", "surrogatepass"))
+        return "{" + ",".join(json.dumps(k, ensure_ascii=False) + ":" + canonical_text(value[k]) for k in keys) + "}"
+    raise TypeError(f"not JSON: {type(value).__name__}")
+
+
 def canonical(value):
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    """A value's canonical JSON (SPEC.md § 2.3), as UTF-8 bytes: what sync's merge rule compares (§ 20.4) and a
+    chunk index is written in (§ 22.1)."""
+    return canonical_text(value).encode("utf-8")
 
 
 def sync_wins(sent, have):
@@ -761,7 +827,215 @@ def sync_wins(sent, have):
         return sent["updated"] > have["updated"]
     if bool(sent.get("deleted")) != bool(have.get("deleted")):
         return bool(sent.get("deleted"))
-    return not sent.get("deleted") and canonical(sent["value"]) > canonical(have["value"])
+    return not sent.get("deleted") and canonical(sent["value"]) > canonical(have["value"])  # the same: kept
+
+
+# Differential updates (SPEC.md § 22): chunk indexes and the chunker.
+
+CDC_ALG = "lantern-cdc-1"
+CDC_SIZES = tuple(1 << b for b in range(16, 23))     # a chunker's size: 64 KiB to 4 MiB
+CHUNKS_LIMIT = 100000       # chunks in an index (SPEC.md § 13)
+INDEX_LIMIT = 8 << 20       # an index's bytes (SPEC.md § 13)
+_MASK64 = (1 << 64) - 1
+GEAR = tuple(int.from_bytes(hashlib.sha256(CDC_ALG.encode() + bytes([i])).digest()[:8], "big") for i in range(256))
+
+
+def cdc_bounds(size):
+    """(min, max, mask) of lantern-cdc-1 for a chunker of `size` (SPEC.md § 22.2)."""
+    if size not in CDC_SIZES:
+        raise ValueError(f"a chunker's size is a power of two from 65536 to 4194304, not {size}")
+    bits = size.bit_length() - 1
+    return size >> 2, size << 2, ((1 << bits) - 1) << (64 - bits)
+
+
+def cdc_cut(data, size):
+    """lantern-cdc-1 (SPEC.md § 22.2): the (offset, length) of each chunk of `data`. A chunk ends at the end of the
+    data, or after the first byte from its min-th on whose gear hash has its top bits clear, or at its max-th."""
+    low, high, mask = cdc_bounds(size)
+    gear, out, start, n = GEAR, [], 0, len(data)
+    view = memoryview(data)
+    while start < n:
+        if n - start <= low:
+            out.append((start, n - start))
+            break
+        end = min(start + high, n)
+        cut, h, i = end, 0, start + low
+        for byte in view[start + low:end]:
+            h = ((h << 1) + gear[byte]) & _MASK64
+            i += 1
+            if not h & mask:
+                cut = i
+                break
+        out.append((start, cut - start))
+        start = cut
+    return out
+
+
+def chunk_size_for(length):
+    """The chunker's size a server may choose for a file of `length` bytes: the smallest from 64 KiB whose chunks
+    stay about 16,384 and, whatever the bytes, within the limit of 100,000; None for a file too large for any."""
+    for size in CDC_SIZES:
+        low = size >> 2
+        if length // (low + 1) + 1 <= CHUNKS_LIMIT and length <= size * 16384:
+            return size
+    size = CDC_SIZES[-1]
+    return size if length // ((size >> 2) + 1) + 1 <= CHUNKS_LIMIT else None
+
+
+def chunk_index(data, size=None):
+    """The chunk index of a file (SPEC.md § 22.1): (its document, its canonical bytes). `size`: the chunker's,
+    by default chunk_size_for()'s."""
+    size = size or chunk_size_for(len(data))
+    if size is None:
+        raise ValueError("a file too large for a chunk index")
+    chunks = [[length, hashlib.sha256(data[o:o + length]).hexdigest()] for o, length in cdc_cut(data, size)]
+    doc = {"schema": 1, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data),
+           "chunker": {"alg": CDC_ALG, "size": size}, "chunks": chunks}
+    return doc, canonical(doc)
+
+
+def chunks_ref(url, index_bytes):
+    """An app's or a package's `chunks` (SPEC.md § 22.1): where its index is, and the index's size and SHA-256."""
+    return {"url": url, "size": len(index_bytes), "sha256": hashlib.sha256(index_bytes).hexdigest()}
+
+
+class Unusable(Exception):
+    """A chunk index a client cannot use: it takes the whole file instead (SPEC.md § 22.4)."""
+
+
+def read_chunk_index(raw, ref, sha256, size):
+    """The index a client may use for the file of `sha256` and `size`, from the bytes `raw` it read at
+    `ref["url"]` (SPEC.md § 22.4): their size and SHA-256 those of `ref`, a document of schema 1 that names that
+    file, a chunker it knows, chunks of 1 byte to the chunker's max whose sizes add up to the file's, 100,000 at
+    most. Raises Unusable otherwise; a schema above 1 is unusable too, as absent (§ 3.2)."""
+    if not (isinstance(ref, dict) and isinstance(ref.get("sha256"), str) and isinstance(ref.get("size"), int)):
+        raise Unusable("no chunk index to compare it with")
+    if len(raw) != ref["size"] or len(raw) > INDEX_LIMIT:
+        raise Unusable(f"{len(raw)} bytes, not the {ref['size']} the document gives (or above {INDEX_LIMIT})")
+    if hashlib.sha256(raw).hexdigest() != ref["sha256"]:
+        raise Unusable("its SHA-256 is not the one the document gives")
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise Unusable("not JSON") from None
+    if not isinstance(doc, dict) or type(doc.get("schema")) is not int:
+        raise Unusable("not a document")
+    if doc["schema"] != 1:
+        raise Unusable(f"schema {doc['schema']}, which this client does not read")
+    chunker = doc.get("chunker")
+    if not (isinstance(chunker, dict) and chunker.get("alg") == CDC_ALG and chunker.get("size") in CDC_SIZES
+            and type(chunker.get("size")) is int):
+        raise Unusable("a chunker this client does not know")
+    if doc.get("sha256") != sha256 or doc.get("size") != size or type(doc.get("size")) is not int:
+        raise Unusable("the index of another file")
+    chunks = doc.get("chunks")
+    _, high, _ = cdc_bounds(chunker["size"])
+    if not isinstance(chunks, list) or len(chunks) > CHUNKS_LIMIT:
+        raise Unusable(f"chunks: a list of {CHUNKS_LIMIT} at most")
+    total = 0
+    for c in chunks:
+        if not (isinstance(c, list) and len(c) == 2 and type(c[0]) is int and 1 <= c[0] <= high
+                and isinstance(c[1], str) and re.fullmatch(r"[0-9a-f]{64}", c[1])):
+            raise Unusable(f"a chunk of another form: {str(c)[:80]}")
+        total += c[0]
+    if total != size:
+        raise Unusable(f"its chunks add up to {total} bytes, not the file's {size}")
+    return doc
+
+
+def seed_chunks(seed, size):
+    """{sha256: (offset, length)} of the chunks of `seed`, bytes the client holds (an older package, say), cut by
+    the chunker of the index it reads (SPEC.md § 22.4)."""
+    out = {}
+    for o, length in cdc_cut(seed, size):
+        out.setdefault(hashlib.sha256(seed[o:o + length]).hexdigest(), (o, length))
+    return out
+
+
+def delta_plan(index, seeds):
+    """What a client takes from where (SPEC.md § 22.4): [(offset, length, sha256, source)] for each chunk of the
+    index, `source` (n, offset) for the n-th seed's bytes at that offset, or None for a range of the file to
+    read. Adjacent chunks to read are kept apart here; a client may ask for them in one range."""
+    found = [seed_chunks(s, index["chunker"]["size"]) for s in seeds]
+    plan, offset = [], 0
+    for length, digest in index["chunks"]:
+        source = next(((n, f[digest][0]) for n, f in enumerate(found)
+                       if digest in f and f[digest][1] == length), None)
+        plan.append((offset, length, digest, source))
+        offset += length
+    return plan
+
+
+def ranges_of(plan, gap=0):
+    """The ranges a client asks for, (start, end) inclusive, chunks to read merged when at most `gap` bytes apart."""
+    out = []
+    for offset, length, _, source in plan:
+        if source is not None:
+            continue
+        if out and offset - out[-1][1] - 1 <= gap:
+            out[-1] = (out[-1][0], offset + length - 1)
+        else:
+            out.append((offset, offset + length - 1))
+    return out
+
+
+def assemble(index, seeds, read_range, sha256, size):
+    """The file an index describes (SPEC.md § 22.4): each chunk from a seed or read by `read_range(start, end)`
+    (the file's bytes from start to end, inclusive), checked by its SHA-256 as it comes, then the whole file by
+    the document's `sha256` and `size`, before anything of it is used. Raises Refused when a chunk or the file
+    does not match: the client then reads the whole file (§ 6.6)."""
+    plan = delta_plan(index, seeds)
+    out = bytearray()
+    fetched = {}
+    for start, end in ranges_of(plan):
+        data = read_range(start, end)
+        if len(data) != end - start + 1:
+            raise Refused(f"the range {start}-{end} gave {len(data)} bytes")
+        fetched[start] = data
+    pending = sorted(fetched)
+    for offset, length, digest, source in plan:
+        if source is not None:
+            n, at = source
+            piece = bytes(seeds[n][at:at + length])
+        else:
+            base = max(s for s in pending if s <= offset)
+            piece = fetched[base][offset - base:offset - base + length]
+        if hashlib.sha256(piece).hexdigest() != digest:
+            raise Refused(f"the chunk at {offset} does not match its SHA-256")
+        out += piece
+    if len(out) != size or hashlib.sha256(out).hexdigest() != sha256:
+        raise Refused("the file put together does not match its sha256: read it whole")
+    return bytes(out)
+
+
+# Static libraries (SPEC.md § 21.3).
+
+def find_library(address, read):
+    """Where a client given an address finds its library (SPEC.md § 21.3): ("server", handshake) when the origin's
+    /.well-known/lantern answers a server's handshake, else ("static", handshake, root) when <address>lantern.json
+    is a static library's, else None. `read(url)` gives a document's bytes, or None when it has none (an error, a
+    folder without the file). A document this client cannot read (not JSON, a schema above 1) is passed over, and
+    a static library's handshake at /.well-known/lantern never makes the origin's root a library."""
+    from urllib.parse import urlsplit
+
+    def handshake(url):
+        raw = read(url)
+        try:
+            doc = json.loads(raw.decode("utf-8")) if raw is not None else None
+        except (UnicodeDecodeError, ValueError):
+            return None
+        return doc if isinstance(doc, dict) and doc.get("schema") == 1 and type(doc["schema"]) is int else None
+
+    u = urlsplit(address)
+    if u.scheme in ("http", "https"):
+        hello = handshake(f"{u.scheme}://{u.netloc}/.well-known/lantern")
+        if hello is not None and "static" not in hello:
+            return ("server", hello)
+    root = address if address.endswith("/") else address + "/"
+    hello = handshake(root + "lantern.json")
+    if hello is not None and isinstance(hello.get("static"), dict):
+        return ("static", hello, root)
+    return None
 
 
 # Rating caps (SPEC.md § 5.6).

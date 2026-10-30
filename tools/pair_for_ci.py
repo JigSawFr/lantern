@@ -58,8 +58,9 @@ def call(url, data=None, form=None, timeout=10, headers=None):
         return e.code, e.read()
 
 
-def start(library, workdir, port):
-    """The server, private, in the background; the account's name and password."""
+def start(library, workdir, port, cors=()):
+    """The server, private, in the background, allowing the pages of the origins `cors` (SPEC.md § 2.5); the
+    account's name and password."""
     password = secrets.token_urlsafe(18)
     users = {"schema": 1, "public": False, "users": [
         {"name": "mila", "password": ls.hash_password(password), "scopes": list(ls.SCOPES), "state": "active"}]}
@@ -67,7 +68,7 @@ def start(library, workdir, port):
     process = subprocess.Popen(
         [sys.executable, "-m", "server", "--library", str(library), "--port", str(port), "--quiet",
          "--users", str(workdir / "users.json"), "--state", str(workdir / "state.json"),
-         "--saves", str(workdir / "saves")],
+         "--saves", str(workdir / "saves"), *(x for o in cors for x in ("--cors-origin", o))],
         cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
         stderr=(workdir / "server.log").open("ab"), start_new_session=True)
     (workdir / "server.pid").write_text(f"{process.pid}\n", encoding="ascii")
@@ -120,10 +121,11 @@ def main(argv=None):
     p.add_argument("--library", required=True, help="the folder of packages (tests/library.py makes one)")
     p.add_argument("--workdir", required=True, help="where users.json, the state and server.pid go")
     p.add_argument("--port", type=int, default=8081)
+    p.add_argument("--cors-origin", action="append", default=[], help="an origin whose pages may read the server")
     args = p.parse_args(argv)
     workdir = Path(args.workdir)
     workdir.mkdir(parents=True, exist_ok=True)
-    process, name, password = start(Path(args.library).resolve(), workdir, args.port)
+    process, name, password = start(Path(args.library).resolve(), workdir, args.port, args.cors_origin)
     origin = f"http://127.0.0.1:{args.port}"
     seed, _ = client.ed25519_keypair()
     key = workdir / "device.key"

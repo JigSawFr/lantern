@@ -333,7 +333,7 @@ def main() -> None:
     errors += check_drafts_and_demo(site)
     errors += check_schemas(site)
     for level in ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
-                  "encrypted_saves", "static"):
+                  "encrypted_saves", "deltas", "static"):
         if not list((site / "assets" / "badges").glob(f"lantern-*-{level}.svg")):
             errors.append(f"assets/badges: no badge for {level}")
     for path in sorted(site.rglob("*")):

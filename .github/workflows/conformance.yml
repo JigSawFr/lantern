@@ -9,7 +9,9 @@
 # HTTP server on loopback (--fetch-mirrors, § 19.2). Then the
 # library exported as a static library, which the suite checks (§ 21), and
 # a short run of the fuzz harness on the server's parsers, another seed each
-# time.
+# time. The servers allow the pages of one origin (--cors-origin), whose
+# answers the suite checks (--origin, SPEC.md § 2.5); they cut their files
+# into chunks for differential updates (§ 22), which the suite checks too.
 name: conformance
 
 on:
@@ -41,7 +43,8 @@ jobs:
           python3 -m http.server 8070 --bind 127.0.0.1 --directory "$RUNNER_TEMP/library" >/dev/null 2>&1 &
           # The server needs only the standard library: the system Python runs it.
           # DNS-SD on a port of its own, so as not to meet the runner's own multicast DNS, if any.
-          python3 -m server --library "$RUNNER_TEMP/library" --port 8080 --quiet --discovery --dns-sd --dns-sd-port 15353 &
+          python3 -m server --library "$RUNNER_TEMP/library" --port 8080 --quiet --discovery --dns-sd --dns-sd-port 15353 \
+            --cors-origin https://app.example.org &
           for _ in $(seq 50); do
             curl -fsS http://127.0.0.1:8080/.well-known/lantern >/dev/null && break
             sleep 0.2
@@ -55,14 +58,16 @@ jobs:
           done
           # Discovery on its own port, UDP 47115 (SPEC.md § 4.1).
           "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8080/ --discover 127.0.0.1 \
-            --dns-sd 127.0.0.1:15353 --peer http://127.0.0.1:8090/lantern --peer-discover-port 47116 --fetch-mirrors
+            --dns-sd 127.0.0.1:15353 --peer http://127.0.0.1:8090/lantern --peer-discover-port 47116 --fetch-mirrors \
+            --origin https://app.example.org
       - name: The suite against a private reference server, with a token holding every scope
         run: |
           # A fictional account, paired through /pair; the server keeps running in the background.
-          token=$(python3 tools/pair_for_ci.py --library "$RUNNER_TEMP/library" --workdir "$RUNNER_TEMP/private" --port 8081)
+          token=$(python3 tools/pair_for_ci.py --library "$RUNNER_TEMP/library" --workdir "$RUNNER_TEMP/private" --port 8081 \
+            --cors-origin https://app.example.org)
           echo "::add-mask::$token"
           "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8081/ --token "$token" \
-            --key "$RUNNER_TEMP/private/device.key" --admin-writes
+            --key "$RUNNER_TEMP/private/device.key" --admin-writes --origin https://app.example.org
       - name: The library as a static library, against the suite
         run: |
           python3 -m server --library "$RUNNER_TEMP/library" --export "$RUNNER_TEMP/static" --page-size 4

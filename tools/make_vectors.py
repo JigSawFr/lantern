@@ -26,7 +26,13 @@ decides.
   HChaCha20 and XChaCha20-Poly1305 cases, save keys with their id, phrase
   and QR text, backups whole, and those a reader refuses;
 - grants.json: grants (§ 19.3), and what a peer decides of each (§ 19.4);
-- sync-merge.json: sync's merge rule (§ 20.4), item by item;
+- sync-merge.json: sync's merge rule (§ 20.4), item by item, numbers of
+  several forms included;
+- canonical-json.json: values and their canonical JSON (§ 2.3, RFC 8785),
+  numbers as ECMAScript writes them;
+- chunks.json: lantern-cdc-1 (§ 22.2): its gear table, files cut into
+  chunks and their indexes' bytes, a newer version put together from an
+  older one, and the indexes a client refuses (§ 22.4);
 - static-layout.json: each read route's file in a static library, and the
   paths a document may point at (§ 21.1).
 
@@ -51,6 +57,7 @@ sys.path.insert(0, str(ROOT / "conformance"))
 import lantern_client as client
 import lantern_e2e as e2e
 
+from server import cdc
 from server import ed25519 as server_ed25519
 from server import lantern_server as ls
 from server import static
@@ -493,6 +500,17 @@ def sync_vectors():
          {"value": noted, "updated": "2026-10-30T09:00:01Z"}),
         ("An updated an hour ahead is the server's time", {"value": wish, "updated": "2026-10-30T09:29:00.000Z"},
          {"value": noted, "updated": "2026-10-30T10:30:00.000Z"}),
+        # Numbers in canonical JSON (SPEC.md § 2.3): 1.0 and 1 are the same; then compared as bytes, 1e+21 is
+        # greater than 100000000000000000000 and 0.5 than 0.25.
+        ("The same updated: 1.0 and 1 are the same canonical JSON, and the server keeps its own",
+         {"value": {**wish, "x-example-priority": 1}, "updated": "2026-10-30T09:00:00.000Z"},
+         {"value": {**wish, "x-example-priority": 1.0}, "updated": "2026-10-30T09:00:00.000Z"}),
+        ("The same updated: 0.5 is written 0.5, greater than 0.25",
+         {"value": {**wish, "x-example-priority": 0.25}, "updated": "2026-10-30T09:00:00.000Z"},
+         {"value": {**wish, "x-example-priority": 0.5}, "updated": "2026-10-30T09:00:00.000Z"}),
+        ("The same updated: 1e21 is written 1e+21, greater than 1e20, written 100000000000000000000",
+         {"value": {**wish, "x-example-priority": 1e21}, "updated": "2026-10-30T09:00:00.000Z"},
+         {"value": {**wish, "x-example-priority": 1e20}, "updated": "2026-10-30T09:00:00.000Z"}),
     ]
     out = []
     for name, have, sent in cases:
@@ -504,11 +522,126 @@ def sync_vectors():
         case = {"name": name, "have": have, "sent": sent, "replaced": wins, "kept": kept}
         if have and "value" in have and "value" in sent:
             case["canonical"] = {"have": ls.canonical(have["value"]).decode(), "sent": ls.canonical(sent["value"]).decode()}
+            assert case["canonical"]["have"] == client.canonical(have["value"]).decode()
+            assert case["canonical"]["sent"] == client.canonical(sent["value"]).decode()
         out.append(case)
     return doc("sync-merge", "Sync's merge rule (SPEC.md § 20.4), item by item: the item a server keeps of the one "
                "it has (have) and the one sent, at the server's time below, with auth.skew 300 seconds; replaced "
-               "says whether the item sent is the one kept (and takes the next rev).",
+               "says whether the item sent is the one kept (and takes the next rev). canonical gives both values' "
+               "canonical JSON (SPEC.md § 2.3): a reader keeps the numbers of a value as the JSON writes them "
+               "(1.0, 1e+21), and canonicalizes them as ECMAScript writes numbers.",
                server_time=server_now, skew=SKEW, cases=out)
+
+
+def canonical_vectors():
+    """Values, as JSON text (so that 1.0 stays 1.0), and their canonical JSON (SPEC.md § 2.3, RFC 8785)."""
+    texts = [
+        ("Members sorted, no space", '{ "title_id": "0100ABCD00010000", "platform": "switch" }'),
+        ("Integers as they are; 1.0 is 1, -0.0 is 0", '{"a": 1.0, "b": -0.0, "c": 9007199254740991, "d": -42}'),
+        ("Fractions in their shortest form", '{"a": 0.5, "b": 0.1, "c": 4.50, "d": 333333333.33333329}'),
+        ("Exponents: 1e21 and above, below 1e-6", '{"a": 1e21, "b": 1E20, "c": 1e-7, "d": 0.000001, "e": 1.5e300, '
+                                                  '"f": 5e-324}'),
+        ("Strings: only what JSON must escape is escaped",
+         '{"note": "Lea\\u0027s \\"save\\" \\u00e9t\\u00e9 \\t\\u0001 \\u2028 \\/ \\ud83c\\udfae"}'),
+        ("Members by UTF-16 code units, not code points", '{"\\uffff": 1, "\\ud83c\\udfae": 2, "z": 3, "Z": 4, "\\u00e9": 5}'),
+        ("Arrays keep their order; literals", '[3, 1, 2, true, false, null, {}, []]'),
+    ]
+    cases = []
+    for name, value_text in texts:
+        value = json.loads(value_text)
+        canonical = client.canonical(value)
+        assert canonical == cdc.canonical(value), name
+        cases.append({"name": name, "json": value_text, "canonical": canonical.decode(),
+                      "sha256": hashlib.sha256(canonical).hexdigest()})
+    return doc("canonical-json", "Canonical JSON (SPEC.md § 2.3): RFC 8785's JSON Canonicalization Scheme. Each json "
+               "is a value as a document holds it (read it with a JSON reader that keeps 1.0 a number of its own); "
+               "canonical is the value's canonical JSON, and sha256 the SHA-256 of its UTF-8 bytes.", cases=cases)
+
+
+def stream(seed, size):
+    """The bytes of a vector's file: SHA-256(seed ‖ i, 8 bytes big-endian) for i = 0, 1, …, cut to `size`."""
+    out = bytearray()
+    i = 0
+    while len(out) < size:
+        out += hashlib.sha256(seed.encode() + i.to_bytes(8, "big")).digest()
+        i += 1
+    return bytes(out[:size])
+
+
+def chunk_vectors():
+    gear_bytes = b"".join(g.to_bytes(8, "big") for g in client.GEAR)
+    assert client.GEAR == cdc.GEAR
+    base = stream("lantern-cdc-1 vector", 1000000)
+    edited = base[:300000] + stream("an insertion", 777) + base[300000:700000] + base[710000:]
+    files = [
+        ("An empty file: no chunk", b"", 65536, {"seed": "", "size": 0}),
+        ("A file below the least chunk: one chunk", stream("lantern-cdc-1 vector", 1000), 65536,
+         {"seed": "lantern-cdc-1 vector", "size": 1000}),
+        ("1,000,000 bytes, a chunker of 64 KiB", base, 65536, {"seed": "lantern-cdc-1 vector", "size": 1000000}),
+        ("The same bytes, a chunker of 128 KiB", base, 131072, {"seed": "lantern-cdc-1 vector", "size": 1000000}),
+        ("Their newer version: 777 bytes inserted at 300,000, and 10,000 removed at 700,000", edited, 65536,
+         {"edit": "the 1,000,000 bytes above; then stream('an insertion', 777) inserted at 300000, and bytes 700000 "
+                  "to 709999 of the original removed"}),
+        ("A million zero bytes: no cut but at the most, 262,144", bytes(1000000), 65536, {"zeros": 1000000}),
+    ]
+    cases = []
+    for name, data, size, made in files:
+        index, raw = client.chunk_index(data, size)
+        assert raw == cdc.index(data, size)[1], name
+        case = {"name": name, "file": made, "file_sha256": hashlib.sha256(data).hexdigest(), "file_size": len(data),
+                "chunker": {"alg": client.CDC_ALG, "size": size},
+                "cuts": [o for o, _ in client.cdc_cut(data, size)],
+                "chunks": index["chunks"], "index_size": len(raw), "index_sha256": hashlib.sha256(raw).hexdigest()}
+        if len(raw) <= 2048:
+            case["index"] = raw.decode()
+        cases.append(case)
+    new_index, _ = client.chunk_index(edited, 65536)
+    plan = client.delta_plan(new_index, [base])
+    update = {"name": "The newer version from the older one: the chunks found in the older bytes, cut by the newer "
+                      "index's chunker, and the ranges of the newer file to read",
+              "seed": "the 1,000,000 bytes above", "index_sha256": cases[4]["index_sha256"],
+              "plan": [{"offset": o, "size": n, "sha256": h, "from": f"seed at {src[1]}" if src else "read"}
+                       for o, n, h, src in plan],
+              "ranges": [f"bytes={a}-{b}" for a, b in client.ranges_of(plan)],
+              "read": sum(n for _, n, _, src in plan if src is None)}
+    small = stream("lantern-cdc-1 vector", 1000)
+    good, good_raw = client.chunk_index(small, 65536)
+
+    def ref(raw):
+        return {"url": "v1/chunks/sha256/" + good["sha256"] + ".json", "size": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest()}
+    bad_docs = [
+        ("Its bytes are not those whose SHA-256 the document gives", good_raw + b" ", ref(good_raw)),
+        ("A schema above 1: absent", client.canonical({**good, "schema": 2}), None),
+        ("A chunker this client does not know", client.canonical({**good, "chunker": {"alg": "x-other-cdc", "size": 65536}}), None),
+        ("A chunker's size that is not one of lantern-cdc-1's", client.canonical({**good, "chunker": {"alg": "lantern-cdc-1", "size": 65535}}), None),
+        ("The index of another file", client.canonical({**good, "sha256": "0" * 64}), None),
+        ("Chunks that add up to more than the file", client.canonical({**good, "chunks": good["chunks"] * 2}), None),
+        ("A chunk of 0 bytes", client.canonical({**good, "chunks": [[0, "0" * 64]] + good["chunks"]}), None),
+        ("A chunk above the chunker's most (4 times its size)",
+         client.canonical({**good, "size": 262145, "chunks": [[262145, "0" * 64]]}), None),
+        ("A chunk's SHA-256 in upper case", client.canonical({**good, "chunks": [[1000, good["chunks"][0][1].upper()]]}), None),
+    ]
+    refused = []
+    for name, raw, given in bad_docs:
+        given = given or ref(raw)
+        try:
+            client.read_chunk_index(raw, given, good["sha256"], len(small))
+            raise AssertionError(f"accepted: {name}")
+        except client.Unusable:
+            pass
+        refused.append({"name": name, "file_sha256": good["sha256"], "file_size": len(small), "chunks": given,
+                        "index": raw.decode(), "usable": False})
+    client.read_chunk_index(good_raw, ref(good_raw), good["sha256"], len(small))
+    return doc("chunks", "Differential updates (SPEC.md § 22): lantern-cdc-1's gear table (each value the first 8 "
+               "bytes, big-endian, of SHA-256('lantern-cdc-1' ‖ the byte)), files cut into chunks (each file's bytes "
+               "are SHA-256(seed ‖ i, i on 8 bytes big-endian) for i = 0, 1, …, cut to its size, unless said "
+               "otherwise), with each chunk's offset, size and SHA-256 and the index's canonical bytes (§ 22.1); a "
+               "newer version put together from an older one; then indexes a client refuses, and so reads the file "
+               "whole (§ 22.4).",
+               gear={"first": [f"{g:016x}" for g in client.GEAR[:4]], "last": f"{client.GEAR[255]:016x}",
+                     "sha256": hashlib.sha256(gear_bytes).hexdigest()},
+               cases=cases, update=update, refused=refused)
 
 
 def static_vectors():
@@ -526,6 +659,8 @@ def static_vectors():
          static.layout_path("cheats", "switch", "0100ABCD00010000")),
         ("A cheat set's text", "GET <base>/v1/cheats/cs_Jt3Vx0", static.layout_path("cheat", ident="cs_Jt3Vx0")),
         ("A file", "GET <file> of sha256 3a7b…", static.layout_path("blob", ident="3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817")),
+        ("A file's chunk index", "GET <base>/v1/chunks/sha256/3a7b…",
+         static.layout_path("chunks", ident="3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817")),
     ]
     paths = [("v1/blobs/sha256/3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817", True),
              ("media/icons/frostline.png", True), ("/v1/blobs/sha256/3a7b", False),
@@ -545,7 +680,8 @@ def everything():
     return {"signatures": signature_vectors(), "homebrew-signatures": homebrew_vectors(), "spki": spki_vectors(),
             "paths": path_vectors(), "version-codes": version_vectors(), "requires": requires_vectors(),
             "rating-caps": cap_vectors(), "ed25519-refused": ed25519_vectors(), "encrypted-saves": e2e_vectors(),
-            "grants": grant_vectors(), "sync-merge": sync_vectors(), "static-layout": static_vectors()}
+            "grants": grant_vectors(), "sync-merge": sync_vectors(), "static-layout": static_vectors(),
+            "canonical-json": canonical_vectors(), "chunks": chunk_vectors()}
 
 
 def text(doc):

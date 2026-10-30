@@ -94,8 +94,9 @@ PAGES = {"": "home", "spec/": "spec", "demo/": "demo"}
 # The last draft may be (draft, None, None) while it is not merged yet: its
 # page is then the working tree's SPEC.md (which must say "Draft <draft>,"),
 # without a commit or a pull request, and its links lead to main. Once draft
-# 0.6 is merged, a pull request replaces its None, None with the commit on
-# main that finished it and its pull request's number, as for 0.1 to 0.5;
+# 0.7 is merged, a pull request replaces its None, None with the commit on
+# main that finished it and its pull request's number, as for 0.1 to 0.6
+# (and points site/translations/SPEC.fr.md's header at that commit);
 # check_site.py then pins the page to that commit like the others.
 DRAFTS = [
     ("0.1", "fda0f52aebef05bc3dbb9e8e2917c7e32eb15094", 6),
@@ -104,6 +105,7 @@ DRAFTS = [
     ("0.4", "442cc07ac7f86a37b5145e2940a0962bd6b8fe2a", 10),
     ("0.5", "ca10e3146a6300cc99814e2290de5da97c735965", 11),
     ("0.6", "9871962a35d336b3fb0906cd4e049858817962cb", 13),
+    ("0.7", None, None),    # not merged yet: SPEC.md as it is (see above)
 ]
 # The specification's informative translations (site/translations/), by
 # the catalogs whose spec/ page shows them; each says the English commit it
@@ -130,10 +132,11 @@ UTM_SOURCE = "lantern"
 
 KEY = re.compile(r"\{\{([a-z0-9_]+)\}\}")
 REQ = re.compile(r"\[(L-(?:\d+(?:\.\d+)?|[A-Z](?:\.\d+)?)-\d+)\]")
-DRAFT = "0.6"   # the draft the badges name (SPEC.md § 17)
+DRAFT = "0.7"   # the draft the badges name (SPEC.md § 17)
 LEVELS = [("core", "Core"), ("titles", "+titles"), ("homebrew", "+homebrew"), ("saves", "+saves"),
           ("cheats", "+cheats"), ("requests", "+requests"), ("admin", "+admin"), ("events", "+events"),
-          ("peers", "+peers"), ("sync", "+sync"), ("encrypted_saves", "+encrypted_saves"), ("static", "Static")]
+          ("peers", "+peers"), ("sync", "+sync"), ("encrypted_saves", "+encrypted_saves"), ("deltas", "+deltas"),
+          ("static", "Static")]
 # SPEC.md's section of errors, whatever its number: "## 12. Errors".
 ERRORS_HEADING = re.compile(r"## (\d+)\. Errors$")
 
@@ -850,6 +853,29 @@ def read_translation(name: str) -> dict:
     return {**fields, "name": name, "text": text[m.end():]}
 
 
+FRENCH_BEFORE = re.compile(r" ([:;?!»])")
+FRENCH_AFTER = re.compile(r"« ")
+
+
+def french_spaces(text: str) -> str:
+    """French typography in a rendered translation: the space before « : », « ; », « ? », « ! » and « »
+    », and after « «, made non-breaking (a narrow one before ; ? !), so that a sign never wraps alone onto a
+    line of its own. Only in the text: never inside a tag, <code> or <pre>, where a space is the code's."""
+    out, depth = [], 0
+    for part in re.split(r"(<[^>]+>)", text):
+        if part.startswith("<"):
+            m = re.match(r"<(/?)(code|pre)\b", part)
+            if m:
+                depth += -1 if m.group(1) else 1
+            out.append(part)
+        elif depth:
+            out.append(part)
+        else:
+            part = FRENCH_BEFORE.sub(lambda m: ("\u202f" if m.group(1) in ";?!" else "\u00a0") + m.group(1), part)
+            out.append(FRENCH_AFTER.sub("«\u00a0", part))
+    return "".join(out)
+
+
 def footer_translation(language: str, root: str) -> str:
     """The footer's link to the specification in the other language: French, or English from French."""
     if language in TRANSLATIONS:
@@ -1122,6 +1148,8 @@ def main() -> None:
                 t, translated = translations[TRANSLATIONS[language]]
                 body = spec_body(translated, catalog, lang=t["language"], source=f"{REPO}/blob/main/site/translations/{t['name']}",
                                  label=html.escape(t["source"]))
+                if t["language"].split("-")[0] == "fr":
+                    body = french_spaces(body)
                 extra = {"translation": {"lang": t["language"], "banner": t["banner"], "english": t["english"]}}
             write(folder(language) + path, page_html(template, language, catalog, path, page, spec, versions, body, extra))
     en = catalogs["en"]
@@ -1166,7 +1194,7 @@ def main() -> None:
         "description": "The error types of the Lantern protocol: each one's status, code and when a server returns it.",
         "lang_path": "spec/"}))
     pages = [("conformance/", "Conformance levels", "Conformance · SPEC.md § 17", "Who may say “Lantern compatible”, at which level, and how the suite decides.",
-              "The conformance levels of the Lantern protocol, from Lantern Core to +encrypted_saves, Lantern Static, and how the suite decides.",
+              "The conformance levels of the Lantern protocol, from Lantern Core to +deltas, Lantern Static, and how the suite decides.",
               conformance_body(spec, "../")),
              ("requirements/", "Requirements and their checks", "Traceability · SPEC.md § 3.5",
               "Each requirement of the specification, by its id, and the conformance suite's checks that cover it.",

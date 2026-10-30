@@ -18,10 +18,18 @@
 # route that answers GET answers HEAD alike, without a body (but a
 # pairing's poll and the event stream, which may answer 405); no route
 # answers with a redirect, and a trailing / makes another path (404).
+# Browsers (SPEC.md § 2.5): to an origin its owner allows, a server answers
+# every route with Access-Control-Allow-Origin (that origin, with Vary:
+# Origin, or *) and Access-Control-Expose-Headers, and a preflight (OPTIONS
+# with Access-Control-Request-Method, on any route, without a token) with
+# 204, Access-Control-Allow-Methods and -Headers, the request headers this
+# text gives named one by one (Authorization included); never
+# Access-Control-Allow-Credentials, and never a credential in a cookie. The
+# preflight is described once, on the handshake's route.
 openapi: 3.1.0
 info:
   title: Lantern protocol
-  version: 0.6.0
+  version: 0.7.0
   summary: An open protocol between homebrews and apps on every platform and self-hosted game library servers.
   license:
     name: MIT
@@ -163,6 +171,22 @@ paths:
       responses:
         "200": { description: "The server, its platforms and what it offers this caller.", content: { application/json: { schema: { $ref: "schemas/v1/handshake.json" } } } }
         default: { $ref: "#/components/responses/Problem" }
+    options:
+      summary: A browser's preflight, which every route of an allowed origin answers alike (§ 2.5)
+      security: []
+      parameters:
+        - { name: Origin, in: header, required: true, schema: { type: string } }
+        - { name: Access-Control-Request-Method, in: header, required: true, schema: { type: string } }
+        - { name: Access-Control-Request-Headers, in: header, schema: { type: string } }
+      responses:
+        "204":
+          description: "What a page of that origin may send: the methods, the headers it asked for that this text gives, how long the browser keeps the answer."
+          headers:
+            Access-Control-Allow-Origin: { required: true, schema: { type: string } }
+            Access-Control-Allow-Methods: { required: true, schema: { type: string } }
+            Access-Control-Allow-Headers: { schema: { type: string } }
+            Access-Control-Max-Age: { schema: { type: integer, minimum: 600 } }
+        "405": { $ref: "#/components/responses/Problem" }
   /v1/:
     get:
       summary: The handshake (§ 4.2)
@@ -255,6 +279,14 @@ paths:
       parameters: [ { name: hex, in: path, required: true, schema: { $ref: "schemas/v1/common.json#/$defs/sha256" } }, { $ref: "#/components/parameters/Platform" } ]
       responses:
         "200": { description: "The grant, signed by the server's grant key.", content: { application/json: { schema: { $ref: "schemas/v1/grant.json" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/chunks/sha256/{hex}:
+    get:
+      summary: The chunk index of a file, for a differential update (§ 22; feature deltas, scope library)
+      parameters: [ { name: hex, in: path, required: true, schema: { $ref: "schemas/v1/common.json#/$defs/sha256" } }, { $ref: "#/components/parameters/Platform" } ]
+      responses:
+        "200": { description: "The index, in canonical JSON (§ 2.3): the bytes whose size and SHA-256 the app's or package's chunks gives.", content: { application/json: { schema: { $ref: "schemas/v1/chunk-index.json" } } } }
         "404": { $ref: "#/components/responses/Problem" }
         default: { $ref: "#/components/responses/Problem" }
   /v1/blobs/sha256/{hex}:
@@ -427,7 +459,7 @@ paths:
     head:
       summary: Where the upload stands (§ 9.3)
       responses:
-        "204": { description: "Its offset and length.", headers: { Upload-Offset: { $ref: "#/components/headers/UploadOffset" }, Upload-Length: { schema: { type: integer } } } }
+        "204": { description: "Its offset and length.", headers: { Upload-Offset: { $ref: "#/components/headers/UploadOffset" }, Upload-Length: { schema: { type: integer } }, Lantern-Chunk-Size: { description: "The upload's chunk_size (§ 9.3).", required: true, schema: { type: integer, minimum: 1 } } } }
         default: { $ref: "#/components/responses/Problem" }
     patch:
       summary: Send a chunk at the server's offset (§ 9.3)

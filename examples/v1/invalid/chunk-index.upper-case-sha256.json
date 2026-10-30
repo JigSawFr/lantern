@@ -1,0 +1,15 @@
+{
+  "chunker": {
+    "alg": "lantern-cdc-1",
+    "size": 65536
+  },
+  "chunks": [
+    [
+      1000,
+      "B5CA432F78AA497417836CB44D9BDC03D4ECFF920E68A86138E9A353A75D99B7"
+    ]
+  ],
+  "schema": 1,
+  "sha256": "b5ca432f78aa497417836cb44d9bdc03d4ecff920e68a86138e9a353a75d99b7",
+  "size": 1000
+}

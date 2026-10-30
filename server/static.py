@@ -5,7 +5,9 @@ files, for a web host (GitHub Pages, a NAS), a USB key or an SD card.
 
 OUT gets lantern.json and v1/: the pages of apps, titles and homebrew per
 platform, each title and homebrew entry, the cheat sets per title and their
-texts, and every file by its SHA-256 (v1/blobs/sha256/<hex>). An export
+texts, every file by its SHA-256 (v1/blobs/sha256/<hex>), the titles' images
+of the library's folder among them, and the chunk index of each file the
+server cut (v1/chunks/sha256/<hex>.json, SPEC.md § 22). An export
 replaces the lantern.json and v1/ of an earlier one, and nothing else in
 OUT; the same library gives the same pages. Texts are in one language.
 Standard library only.
@@ -25,7 +27,7 @@ RELATIVE = re.compile(r"^(?![a-zA-Z][a-zA-Z0-9+.-]*:)(?!/)(?!.*(?:^|/)\.\.(?:/|$
 
 def layout_path(kind, platform=None, ident=None, page=None):
     """The file of a read route (SPEC.md § 21.1): kind is handshake, apps, titles, title, homebrew, entry,
-    cheats, cheat or blob."""
+    cheats, cheat, blob or chunks (a file's chunk index, § 22)."""
     if kind == "handshake":
         return HANDSHAKE
     if kind in ("apps", "titles", "homebrew"):
@@ -40,6 +42,8 @@ def layout_path(kind, platform=None, ident=None, page=None):
         return f"v1/cheats/{ident}.txt"
     if kind == "blob":
         return f"v1/blobs/sha256/{ident}"
+    if kind == "chunks":
+        return f"v1/chunks/sha256/{ident}.json"
     raise ValueError(kind)
 
 
@@ -67,11 +71,31 @@ def export(server_module, library, out, page_size=100, language="en", name="Lant
     if (out / "v1").exists():
         shutil.rmtree(out / "v1")       # the earlier export's tree: replaced whole, nothing of it kept
     prefs = [language]
-    files, blobs = {}, {}
+    files, blobs, indexes = {}, {}, {}
 
     def blob(sha256, path):
         blobs[sha256] = path
         return layout_path("blob", ident=sha256)
+
+    def chunked(doc, path):
+        """A document (an app, a package) with its file and its chunk index, if any, at their paths."""
+        doc["file"] = blob(doc["sha256"], path)
+        raw = library.indexes.get(doc["sha256"])
+        if doc.get("chunks") and raw is not None:
+            indexes[doc["sha256"]] = raw
+            doc["chunks"] = dict(doc["chunks"], url=layout_path("chunks", ident=doc["sha256"]))
+        else:
+            doc.pop("chunks", None)
+        return doc
+
+    def imaged(doc):
+        """A title with its images of the library's folder at their paths, as files by their SHA-256."""
+        for key in ("icon", "banner", "screenshots"):
+            for img in (doc.get(key) if key == "screenshots" else [doc.get(key)]) or []:
+                media = library.media.get((img or {}).get("sha256")) if not (img or {}).get("external") else None
+                if media is not None:
+                    img["url"] = blob(img["sha256"], media["path"])
+        return doc
 
     def put(rel, doc):
         files[rel] = doc
@@ -83,14 +107,13 @@ def export(server_module, library, out, page_size=100, language="en", name="Lant
             mine = []
             for e in apps:
                 if e["doc"]["platform"] == p:
-                    doc = dict(e["doc"], file=blob(e["doc"]["sha256"], e["path"]))
-                    mine.append(doc)
+                    mine.append(chunked(json.loads(json.dumps(e["doc"])), e["path"]))
             for rel, doc in pages(mine, page_size, "apps", p,
                                   lambda c, n, t: {"schema": 1, "items": c, "total": t, "next": n}):
                 put(rel, doc)
             titles = sorted((k for k, t in library.titles.items() if t["platform"] == p),
                             key=lambda k: (library.titles[k]["name"].casefold(), library.titles[k]["title_id"]))
-            docs = [library.title_doc(k, prefs) for k in titles]
+            docs = [imaged(json.loads(json.dumps(library.title_doc(k, prefs)))) for k in titles]
             for d in docs:
                 put(layout_path("title", p, d["title_id"]), {"schema": 1, **d})
             for rel, doc in pages(docs, page_size, "titles", p,
@@ -104,7 +127,7 @@ def export(server_module, library, out, page_size=100, language="en", name="Lant
                 full, short = (json.loads(json.dumps(ls.homebrew_view(e, f, prefs))) for f in (True, False))
                 for doc in (full, short):
                     for package in [doc["package"], *doc.get("packages", [])]:
-                        package["file"] = blob(package["sha256"], paths[package["sha256"]])
+                        chunked(package, paths[package["sha256"]])
                 put(layout_path("entry", p, e["doc"]["id"]), {"schema": 1, **full})
                 listed.append(short)
             for rel, doc in pages(listed, page_size, "homebrew", p,
@@ -119,7 +142,7 @@ def export(server_module, library, out, page_size=100, language="en", name="Lant
         for (p, t), sets in by_title.items():
             put(layout_path("cheats", p, t), {"schema": 1, "cheats": sets})
         features = {f: 0 for f in ls.FAMILIES}
-        features.update(library=1, titles=1, homebrew=1, cheats=1 if by_title else 0)
+        features.update(library=1, titles=1, homebrew=1, cheats=1 if by_title else 0, deltas=1 if indexes else 0)
         generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         put(HANDSHAKE, {"schema": 1, "uid": library.uid, "name": name,
                         "software": {"name": "Lantern reference server", "version": ls.VERSION},
@@ -131,8 +154,12 @@ def export(server_module, library, out, page_size=100, language="en", name="Lant
         target = out / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    for sha256, raw in indexes.items():
+        target = out / layout_path("chunks", ident=sha256)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)      # its bytes as kept: those whose SHA-256 the documents give (SPEC.md § 22.1)
     for key, path in blobs.items():
         target = out / (layout_path("cheat", ident=key[1]) if isinstance(key, tuple) else layout_path("blob", ident=key))
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, target)
-    return {"documents": len(files), "files": len(blobs), "platforms": platforms}
+    return {"documents": len(files), "files": len(blobs), "indexes": len(indexes), "platforms": platforms}

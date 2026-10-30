@@ -36,6 +36,11 @@
     "size": 482113,
     "sha256": "66be54ee71174fccdd55efddbbf0bf3a8cb467b774c5a6187c3676e02d1ac9a8",
     "manifest_sha256": "009dc459107edbdec10ad80d28f531e9080b74f3c27ffee59cc8c3d146ab5dc9",
+    "chunks": {
+      "url": "/api/lantern/v1/chunks/sha256/66be54ee71174fccdd55efddbbf0bf3a8cb467b774c5a6187c3676e02d1ac9a8",
+      "size": 1043,
+      "sha256": "5b0c66a6f8d2e7c04a1f9b3d2e6c8a7f1b4d9e0c3a2f5e8d7b6c1a0f9e8d7c6b"
+    },
     "manifest": [
       {
         "path": "/config/org.example.frostline/settings.ini",

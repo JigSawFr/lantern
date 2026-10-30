@@ -42,7 +42,8 @@
     "events": 1,
     "peers": 1,
     "sync": 0,
-    "encrypted_saves": 1
+    "encrypted_saves": 1,
+    "deltas": 1
   },
   "language": "en",
   "auth": {

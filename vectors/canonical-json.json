@@ -1,0 +1,50 @@
+{
+ "schema": 1,
+ "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
+ "vectors": "canonical-json",
+ "description": "Canonical JSON (SPEC.md § 2.3): RFC 8785's JSON Canonicalization Scheme. Each json is a value as a document holds it (read it with a JSON reader that keeps 1.0 a number of its own); canonical is the value's canonical JSON, and sha256 the SHA-256 of its UTF-8 bytes.",
+ "cases": [
+  {
+   "name": "Members sorted, no space",
+   "json": "{ \"title_id\": \"0100ABCD00010000\", \"platform\": \"switch\" }",
+   "canonical": "{\"platform\":\"switch\",\"title_id\":\"0100ABCD00010000\"}",
+   "sha256": "8c9009ed696ed1f5a7581af270091c3cadd750bb8ffeb7adde484df2fb829411"
+  },
+  {
+   "name": "Integers as they are; 1.0 is 1, -0.0 is 0",
+   "json": "{\"a\": 1.0, \"b\": -0.0, \"c\": 9007199254740991, \"d\": -42}",
+   "canonical": "{\"a\":1,\"b\":0,\"c\":9007199254740991,\"d\":-42}",
+   "sha256": "fb173ffae113f1c4658bc2bbfa3f27e45b52270d50e8ccf5281e3d84f64dc453"
+  },
+  {
+   "name": "Fractions in their shortest form",
+   "json": "{\"a\": 0.5, \"b\": 0.1, \"c\": 4.50, \"d\": 333333333.33333329}",
+   "canonical": "{\"a\":0.5,\"b\":0.1,\"c\":4.5,\"d\":333333333.3333333}",
+   "sha256": "99c96a4e702487ca954bc4cc3bab4f53c182808089d1196a2a6cfdc0b78d22a0"
+  },
+  {
+   "name": "Exponents: 1e21 and above, below 1e-6",
+   "json": "{\"a\": 1e21, \"b\": 1E20, \"c\": 1e-7, \"d\": 0.000001, \"e\": 1.5e300, \"f\": 5e-324}",
+   "canonical": "{\"a\":1e+21,\"b\":100000000000000000000,\"c\":1e-7,\"d\":0.000001,\"e\":1.5e+300,\"f\":5e-324}",
+   "sha256": "92f53c9db73af151a477dc83ec83f39a5e69c86bee35fc4dccc819d2d281b2c5"
+  },
+  {
+   "name": "Strings: only what JSON must escape is escaped",
+   "json": "{\"note\": \"Lea\\u0027s \\\"save\\\" \\u00e9t\\u00e9 \\t\\u0001 \\u2028 \\/ \\ud83c\\udfae\"}",
+   "canonical": "{\"note\":\"Lea's \\\"save\\\" été \\t\\u0001   / 🎮\"}",
+   "sha256": "d1043384f3f278e4da08c4a9b710594446f49ad90990a94ce83a7881a7c80a24"
+  },
+  {
+   "name": "Members by UTF-16 code units, not code points",
+   "json": "{\"\\uffff\": 1, \"\\ud83c\\udfae\": 2, \"z\": 3, \"Z\": 4, \"\\u00e9\": 5}",
+   "canonical": "{\"Z\":4,\"z\":3,\"é\":5,\"🎮\":2,\"￿\":1}",
+   "sha256": "dd27da639143a71a618a4cc77e9782ab76640da7ebb0cf59bc4e78b892c2c703"
+  },
+  {
+   "name": "Arrays keep their order; literals",
+   "json": "[3, 1, 2, true, false, null, {}, []]",
+   "canonical": "[3,1,2,true,false,null,{},[]]",
+   "sha256": "3aae7d9fc9c0e7420ef48921ee6c4e55d1733489501bf4afaf8b585306d2625c"
+  }
+ ]
+}

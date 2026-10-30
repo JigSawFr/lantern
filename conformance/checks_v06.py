@@ -21,7 +21,7 @@ from urllib.parse import quote, urljoin, urlsplit
 import lantern_client as client
 
 # run.py's own (bind() sets them).
-Fail = Skip = Blind = Warn = problem_detail = None
+Fail = Skip = Blind = Warn = problem_detail = TITLES_AT_ONCE = None
 
 INT_LIMIT = (1 << 53) - 1
 TIME = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$")
@@ -354,14 +354,35 @@ class Sweep:
         expect(len(set(tokens)) == len(tokens), "the same token given twice")
         return f"{len(tokens)} token(s) of {min(map(len, tokens))} characters or more"
 
-    def c_images(self):
+    def own_images(self, titles):
+        """The URLs of the images on the server's origin among `titles`, in their order."""
         images = []
-        for t in getattr(self, "titles_read", []):
+        for t in titles:
             for key in ("icon", "banner"):
                 if isinstance(t.get(key), dict) and not t[key].get("external"):
                     images.append(t[key]["url"])
             images += [s["url"] for s in t.get("screenshots", []) if isinstance(s, dict) and not s.get("external")]
-        images = list(dict.fromkeys(i for i in images if isinstance(i, str)))[:3]
+        return list(dict.fromkeys(i for i in images if isinstance(i, str)))
+
+    def c_images(self):
+        # The titles of every platform of the library, not only those titles.bulk read: these are of the platform
+        # of the app the server lists first, and which one that is among apps of the same name depends on their
+        # ids (SPEC.md § 6.2), which a server draws as it likes.
+        titles = list(getattr(self, "titles_read", []))
+        read = {(t.get("platform"), t.get("title_id")) for t in titles}
+        for platform in sorted({a["platform"] for a in self.apps or []}):
+            if len(self.own_images(titles)) >= 3:
+                break
+            ids = list(dict.fromkeys(a["title_id"] for a in self.apps if a["platform"] == platform
+                                     and (platform, a["title_id"]) not in read))[:TITLES_AT_ONCE]
+            if not ids:
+                continue
+            path = self.api("/v1/titles?ids=" + ",".join(quote(i, safe="") for i in ids))
+            _, doc = self.get_json(path, "titles", platform=platform)
+            for t in doc["titles"]:
+                self.check_title(t, f"title {t['title_id']}")
+            titles += doc["titles"]
+        images = self.own_images(titles)[:3]
         if not images:
             raise Skip("no image on the server's origin among the titles read")
         bad = []

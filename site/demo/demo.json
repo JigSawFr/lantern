@@ -20,7 +20,7 @@
    "name": "Frostline Tales"},
   {"file": "switch/Frostline Tales Harbor Pack [0100ABCD00011001][v0].nsp", "size": 512,
    "name": "Frostline Tales: Harbor Pack"},
-  {"file": "switch/Moss and Ember [0100EFEF00020000][v0].nsp", "size": 4096, "version_name": "1.0.0",
+  {"file": "switch/Moss and Ember [0100EFEF00020000][v0].nsp", "size": 524288, "version_name": "1.0.0",
    "name": "Moss & Ember", "release": "2025-11-02", "publisher": "Little Thaw", "developer": "Ember Lane Studio",
    "genres": ["rpg"], "tags": ["forest", "turn-based"], "players": {"min": 1, "max": 1},
    "ratings": [{"system": "PEGI", "rating": "12"}],

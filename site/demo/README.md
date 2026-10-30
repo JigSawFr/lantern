@@ -27,7 +27,10 @@ never a real game's name, characters, logo or icon.
 ## Placeholders, not software
 
 **Nothing in it is software, and nothing in it can be installed.** An app's
-file is a few hundred bytes of text saying that it is a placeholder; a
+file is text saying that it is a placeholder, a few hundred bytes (Moss &
+Ember's, half a megabyte, numbers its lines with a digest of each, so that
+the reference server's export gives it a chunk index of several chunks for
+trying differential updates, SPEC.md § 22); a
 homebrew archive holds a README and nothing else; a cheat set writes to
 addresses of games that do not exist. A client may download, check and
 "install" them to try its own code; a console's installer refuses them, and

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """The files of a release of the specification (SPEC.md § 3.6).
 
-    python3 tools/release.py --out dist [--tag spec-v0.6] [--notes notes.md]
+    python3 tools/release.py --out dist [--tag spec-v0.7] [--notes notes.md]
 
-Writes into --out, for the version SPEC.md gives ("Draft 0.6" is 0.6):
+Writes into --out, for the version SPEC.md gives ("Draft 0.7" is 0.7):
 
 - SPEC.md and openapi.yaml, as they are;
 - lantern-schemas-<v>.zip (schemas/v1/), lantern-examples-<v>.zip
@@ -17,7 +17,7 @@ Writes into --out, for the version SPEC.md gives ("Draft 0.6" is 0.6):
 The zips are reproducible: their entries sorted, of fixed modes, dated by
 SOURCE_DATE_EPOCH (the release workflow gives the tagged commit's time), so
 that the same tree gives the same bytes. With --tag, the tag must name the
-version SPEC.md gives (spec-v0.6), or nothing is written. With --notes, the
+version SPEC.md gives (spec-v0.7), or nothing is written. With --notes, the
 release's notes: SPEC.md's "Changes" for this version, and how to verify
 the files. The release workflow (.github/workflows/release.yml) runs it on
 a tag, then attests every file it wrote. Standard library only.
@@ -37,11 +37,11 @@ SITE = "https://lantern.boreale.dev"
 
 
 def version():
-    """The text's version, from SPEC.md's first lines: "Draft 0.6" or "Version 1.0" gives "0.6" or "1.0"."""
+    """The text's version, from SPEC.md's first lines: "Draft 0.7" or "Version 1.0" gives "0.7" or "1.0"."""
     head = (ROOT / "SPEC.md").read_text(encoding="utf-8")[:2000]
     m = re.search(r"^(?:Draft|Version) (\d+\.\d+(?:\.\d+)?),", head, re.MULTILINE)
     if not m:
-        sys.exit("release: SPEC.md does not say its version (Draft 0.6, …)")
+        sys.exit("release: SPEC.md does not say its version (Draft 0.7, …)")
     return m.group(1)
 
 
