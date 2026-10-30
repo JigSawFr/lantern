@@ -2,15 +2,17 @@
 # (conformance/): the unit tests, then the suite run as a server author
 # would, against the server started on a tiny fictional library: once
 # anonymously on a public server, once with a token holding every scope on a
-# private one, paired through its /pair page as a user would.
+# private one, paired through its /pair page as a user would, with a device
+# key that its requests are signed with (SPEC.md § 5.4). Then a short run of
+# the fuzz harness on the server's parsers, another seed each time.
 name: conformance
 
 on:
   push:
     branches: [ main ]
-    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", "tools/pair_for_ci.py", ".github/workflows/conformance.yml" ]
+    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", "tools/pair_for_ci.py", "tools/requirements.py", "tools/make_vectors.py", "vectors/**", "SPEC.md", ".github/workflows/conformance.yml" ]
   pull_request:
-    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", "tools/pair_for_ci.py", ".github/workflows/conformance.yml" ]
+    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", "tools/pair_for_ci.py", "tools/requirements.py", "tools/make_vectors.py", "vectors/**", "SPEC.md", ".github/workflows/conformance.yml" ]
 
 permissions:
   contents: read
@@ -43,7 +45,10 @@ jobs:
           # A fictional account, paired through /pair; the server keeps running in the background.
           token=$(python3 tools/pair_for_ci.py --library "$RUNNER_TEMP/library" --workdir "$RUNNER_TEMP/private" --port 8081)
           echo "::add-mask::$token"
-          "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8081/ --token "$token"
+          "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8081/ --token "$token" \
+            --key "$RUNNER_TEMP/private/device.key" --admin-writes
+      - name: The fuzz harness, a longer run
+        run: python3 tests/fuzz.py --iterations 5000 --seed "${{ github.run_id }}"
       - name: The private server's log
         if: failure()
         run: cat "$RUNNER_TEMP/private/server.log" || true

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Starts the reference server as a private one, pairs a device with it as
-a user would, and prints the device's token: for running the conformance
-suite with a token (CI).
+a user would, with a device key, and prints the device's token: for running
+the conformance suite with a token and its key (CI).
 
     python3 tools/pair_for_ci.py --library DIR --workdir DIR [--port 8081]
+    python3 conformance/run.py http://127.0.0.1:8081/ --token TOKEN --key DIR/device.key
 
 It writes WORKDIR/users.json (one fictional account, "mila", holding every
 scope, with a password made for this run), starts `python3 -m server` on
@@ -11,11 +12,15 @@ that library, private, its state and save backups in WORKDIR (so that it
 shares nothing with another server on the same library), and leaves it
 running: its process id is in WORKDIR/server.pid, its log in
 WORKDIR/server.log. Then it pairs as SPEC.md
-§ 5.2 says, over HTTP on loopback: the console asks for a code; the user
-signs in on /pair, types the code, and approves; the console polls and gets
-its token, which this script prints on stdout, alone. Standard library only.
+§ 5.2 says, over HTTP on loopback: the console makes an Ed25519 key
+(SPEC.md § 5.4), kept in WORKDIR/device.key (its 32-byte seed, base64),
+and asks for a code with it; the user signs in on /pair, types the code, and
+approves; the console polls, its polls signed by its key, and gets its
+token, bound to the key, which this script prints on stdout, alone.
+Standard library only.
 """
 import argparse
+import base64
 import json
 import re
 import secrets
@@ -29,14 +34,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "conformance"))
+import lantern_client as client
+
 from server import lantern_server as ls
 
 DEVICE = {"schema": 1, "device": "Lantern CI", "scopes": list(ls.SCOPES)}
 
 
-def call(url, data=None, form=None, timeout=10):
+def call(url, data=None, form=None, timeout=10, headers=None):
     """(status, body) of a request to the server; a JSON body for `data`, a form for `form`."""
-    headers = {"User-Agent": "LanternCI/1.0"}
+    headers = {"User-Agent": "LanternCI/1.0", **(headers or {})}
     if data is not None:
         body, headers["Content-Type"] = json.dumps(data).encode(), "application/json"
     elif form is not None:
@@ -80,9 +88,12 @@ def wait_for(origin, process, seconds=20):
     sys.exit("pair_for_ci: the server did not answer in time")
 
 
-def pair(origin, name, password):
-    """A device's token, paired as a console and its user would (SPEC.md § 5.2)."""
-    status, body = call(origin + ls.BASE + "/v1/pairing", data=DEVICE)
+def pair(origin, name, password, seed):
+    """A device's token, paired as a console and its user would (SPEC.md § 5.2), bound to the key of
+    `seed` (§ 5.4)."""
+    public = client.ed25519_public(seed)
+    device = {**DEVICE, "key": {"alg": "ed25519", "public_key": base64.b64encode(public).decode()}}
+    status, body = call(origin + ls.BASE + "/v1/pairing", data=device)
     if status != 200:
         sys.exit(f"pair_for_ci: pairing refused ({status}): {body[:200]!r}")
     code = json.loads(body)
@@ -95,7 +106,7 @@ def pair(origin, name, password):
         sys.exit(f"pair_for_ci: approving failed ({status})")
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
-        status, body = call(origin + code["poll"])
+        status, body = call(origin + code["poll"], headers=client.sign(seed, "GET", origin + code["poll"]))
         if status == 200:
             return json.loads(body)["token"]
         if status != 202:
@@ -114,9 +125,13 @@ def main(argv=None):
     workdir.mkdir(parents=True, exist_ok=True)
     process, name, password = start(Path(args.library).resolve(), workdir, args.port)
     origin = f"http://127.0.0.1:{args.port}"
+    seed, _ = client.ed25519_keypair()
+    key = workdir / "device.key"
+    key.write_text(base64.b64encode(seed).decode() + "\n", encoding="ascii")
+    key.chmod(0o600)
     try:
         wait_for(origin, process)
-        print(pair(origin, name, password))
+        print(pair(origin, name, password, seed))
     except BaseException:
         process.terminate()
         raise

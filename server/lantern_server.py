@@ -102,7 +102,8 @@ name, "_" for a space), PUT replaces its text and note, DELETE removes it;
 notes are kept in DIR/cheats/index.json. A set is for a build, 1 MiB at
 most, and on a Switch or a 3DS holds only [names] and words of 8 hex digits.
 
-Requests (SPEC.md § 11): each account's, kept in the state file.
+Requests (SPEC.md § 11): each account's, kept in the state file; an account
+withdraws its own with DELETE.
 
 Save backups (SPEC.md § 9): kept under --saves (default DIR/.lantern-saves/),
 an index.json and the archives, sent in one request or by resumable upload.
@@ -113,9 +114,15 @@ Every file this server reads or writes has a `schema`: one newer than it
 knows is treated as absent and never written over, and the keys it does
 not know are kept.
 
-Families offered: library, titles, changes, homebrew, cheats, saves and
-requests (to an account with the scope), and pairing when there are
-accounts. Sections stay at 0: their routes answer 404.
+Families offered: library, titles, changes, homebrew, cheats, saves,
+requests and admin (to an account with the scope), and pairing and
+signatures when there are accounts. Sections stay at 0: their routes answer
+404.
+
+library.json's and homebrew.json's entries may also give `atlas` (the
+game's Atlas id, a Wikidata item such as "Q900001", SPEC.md § 6.1),
+`installed_size` (an app's bytes once installed) and, for a homebrew,
+`ratings` ([{"system": "PEGI", "rating": "3"}]), which rating caps read.
 
 Accounts (SPEC.md § 5): without --users, the server is public, every caller
 reads the library anonymously, and nobody pairs. With --users FILE:
@@ -127,10 +134,24 @@ reads the library anonymously, and nobody pairs. With --users FILE:
 `python3 -m server --hash-password` prints a password's hash. `state` is
 `active` or `frozen`. A password is only ever typed on the server's own
 page, /pair: a console gets a token by pairing (SPEC.md § 5.2), which the
-user approves there, signed in, with the code the console shows. Tokens are
-kept hashed in the state file ("tokens"); `--tokens` lists them and
-`--revoke ID` revokes one, even while the server runs. `--token-days N`
-makes new tokens expire after N days.
+user approves there, signed in, with the code the console shows (or that
+`verify_complete`, a QR code on the console, fills in), choosing a rating
+cap if they want one (§ 5.6). An account with the scope admin may also
+approve pairings, list and revoke devices, freeze accounts, make accounts
+without a password and invitations, through the administration API
+(SPEC.md § 5.5, § 5.7); what it changes is kept in the state file
+("accounts", "invitations"), never in users.json. Tokens are kept hashed in
+the state file ("tokens"), with the device's public key when it sent one at
+pairing, which binds the token: its requests are then signed (SPEC.md
+§ 5.4, server/signatures.py). `--bound-only` issues and takes only bound
+tokens. `--tokens` lists them and `--revoke ID` revokes one, even while the
+server runs. `--token-days N` makes new tokens expire after N days.
+
+Languages (SPEC.md § 2.2): errors' titles and details in English or French,
+as Accept-Language asks; `--motd FILE` gives the handshake's message,
+{"schema": 1, "motd": {"en": "…", "fr": "…"}} (or one text). JSON is sent
+compressed when the client asks (gzip, and zstd where Python has it); files
+never are (SPEC.md § 2.1).
 
 TLS: give --tls-cert and --tls-key; /pair then shows the short fingerprint
 of the key (SPEC.md § 5.3). Without them the server speaks plain HTTP, and
@@ -144,6 +165,7 @@ DNS-SD is not advertised: the standard library has no mDNS.
 import argparse
 import base64
 import getpass
+import gzip
 import hashlib
 import hmac
 import html
@@ -160,6 +182,7 @@ import time
 import traceback
 import uuid
 import zipfile
+import zlib
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -167,21 +190,30 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 try:
-    from server import ed25519, nro
+    from server import ed25519, nro, signatures
 except ImportError:     # run as server/lantern_server.py
     import ed25519
     import nro
+    import signatures
 
-VERSION = "0.3.0"
+try:                    # Python 3.14 and later: zstd in the standard library (SPEC.md § 2.1)
+    from compression import zstd
+except ImportError:
+    zstd = None
+
+VERSION = "0.4.0"
 BASE = "/api/lantern"
-FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing")
+FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
+            "signatures", "admin")
 OFFERED = {"library": 1, "titles": 1, "changes": 1, "homebrew": 1, "saves": 1, "cheats": 1,
-           "requests": 1}  # the schema written
+           "requests": 1, "admin": 1}  # the schema written
 SCOPE_OF = {"library": "library", "titles": "library", "changes": "library", "homebrew": "library",
-            "saves": "saves", "cheats": "cheats", "cheats.write": "cheats.write", "requests": "requests"}
+            "saves": "saves", "cheats": "cheats", "cheats.write": "cheats.write", "requests": "requests",
+            "admin": "admin"}
 PAGE_LIMIT = 500        # limits.page_size
 PAGE_DEFAULT = 100
 BODY_LIMIT = 1 << 20    # a request document, well under SPEC.md § 13's 32 MiB
+DEPTH_LIMIT = 16        # a request document's nesting (SPEC.md § 13)
 DRAIN_LIMIT = 4 << 20   # a body left unread is read and dropped up to this, else the connection is closed
 JOURNAL_LIMIT = 10000   # changes kept for /v1/changes and /v1/titles/changes; older tokens are gone
 CURSOR_LIMIT = 10000    # cursors kept; older ones are gone
@@ -266,9 +298,24 @@ CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"  # 5 bits a symbol; no 0, O, 
 CODE_SYMBOLS = 8        # 40 bits
 PAIR_EXPIRES = 600      # seconds a code lives (SPEC.md § 5.2: 10 minutes at most)
 PAIR_INTERVAL = 5       # seconds between polls
-PAIR_RATE = (10, 60.0)          # pairing requests per address, per window
+PAIR_RATE = (30, 60.0)          # pairing requests per address, per window
 PAIR_ATTEMPTS = (10, 600.0)     # failed sign-ins or codes on /pair per address, per window
 PENDING_LIMIT = 1000            # pairings waiting at once
+INVITATION_SYMBOLS = 16         # 80 bits (SPEC.md § 5.5)
+INVITATION_DAYS = 30            # an invitation lives 30 days at most
+INVITATIONS_LIMIT = 1000        # invitations kept at once
+ACCOUNT_NAME = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+ATLAS = re.compile(r"^Q[1-9][0-9]{0,15}$")     # an Atlas id: a Wikidata item (SPEC.md § 6.1)
+# Rating caps (SPEC.md § 5.6): each system's ratings, and the age each one means.
+RATING_AGES = {
+    "PEGI": {"3": 3, "7": 7, "12": 12, "16": 16, "18": 18},
+    "ESRB": {"EC": 3, "E": 6, "E10+": 10, "T": 13, "M": 17, "AO": 18},
+    "CERO": {"A": 0, "B": 12, "C": 15, "D": 17, "Z": 18},
+    "USK": {"0": 0, "6": 6, "12": 12, "16": 16, "18": 18},
+    "ACB": {"G": 0, "PG": 8, "M": 15, "MA15+": 15, "R18+": 18, "X18+": 18},
+    "CLASSIND": {"L": 0, "10": 10, "12": 12, "14": 14, "16": 16, "18": 18},
+    "GRAC": {"ALL": 0, "12": 12, "15": 15, "18": 18},
+}
 # check_password() against this when the name is unknown, so that it takes as long.
 NO_USER = "pbkdf2-sha256$600000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
@@ -433,8 +480,14 @@ def hex_of(value, length):
 
 
 def https_url(value):
-    return isinstance(value, str) and len(value) <= 4096 and urlsplit(value).scheme == "https" \
-        and bool(urlsplit(value).netloc)
+    """An absolute HTTPS URL; a malformed one (an unclosed IPv6 bracket…) is none, never an error."""
+    if not (isinstance(value, str) and len(value) <= 4096):
+        return False
+    try:
+        u = urlsplit(value)
+    except ValueError:
+        return False
+    return u.scheme == "https" and bool(u.netloc)
 
 
 def data_file_problem(d, root):
@@ -608,9 +661,44 @@ def localizable(value, limit=4096):
 
 def image(value):
     """An image from a file: an absolute URL elsewhere, served as `external` (SPEC.md § 7.1)."""
-    if isinstance(value, str) and urlsplit(value).scheme == "https" and len(value) <= 4096:
+    if https_url(value):
         return {"url": value, "external": True}
     return None
+
+
+# Errors in French (SPEC.md § 2.2): each code's title, and a detail for
+# people, which stands for the English one's specifics.
+FRENCH = {
+    "bad_request": ("Requête incorrecte", "La requête est mal formée ; sa documentation dit la forme attendue."),
+    "key_required": ("Clé de l’appareil requise", ("Ce serveur n’associe un jeton qu’à une clé de l’appareil : "
+                                                   "envoyez-en une à l’appairage.")),
+    "unauthorized": ("Non autorisé", "Jeton absent, inconnu, révoqué ou expiré : appairez cet appareil."),
+    "signature_required": ("Signature requise", "Ce jeton est lié à la clé de l’appareil : signez la requête."),
+    "signature_invalid": ("Signature invalide", "La signature ne se vérifie pas, ou n’a pas la forme attendue."),
+    "signature_expired": ("Signature périmée", ("L’heure de la signature est trop loin de celle du serveur : "
+                                                "réglez-la sur son en-tête Date.")),
+    "signature_replayed": ("Signature rejouée", "Ce nonce a déjà servi : un nouveau pour chaque requête."),
+    "forbidden": ("Interdit", "Ce compte n’a pas la portée nécessaire."),
+    "account_frozen": ("Compte gelé", "Ce compte ne peut rien faire pour l’instant."),
+    "not_found": ("Introuvable", "Rien de tel sur ce serveur."),
+    "conflict": ("Conflit", "Cela existe déjà, ou l’envoi n’en est pas là."),
+    "gone": ("Disparu", "Expiré, révoqué, épuisé ou inconnu."),
+    "too_large": ("Trop grand", "Au-delà des limites de ce serveur."),
+    "unsupported_schema": ("Schéma non pris en charge", "Ce serveur ne lit pas ce schéma de document."),
+    "digest_mismatch": ("Empreinte différente", "Le SHA-256 du corps n’est pas celui annoncé."),
+    "slow_down": ("Ralentissez", "Trop de requêtes : réessayez après le délai indiqué."),
+    "internal": ("Erreur interne", "Le serveur a échoué ; réessayez plus tard."),
+    "unavailable": ("Indisponible", "Le serveur est occupé ou en maintenance ; réessayez plus tard."),
+}
+LANGUAGES = ("en", "fr")     # the languages this server writes its own texts in
+
+
+def best_language(prefs, have=LANGUAGES):
+    """The first of the client's languages this server has (its primary subtag), else English."""
+    for tag in prefs:
+        if tag.split("-")[0] in have:
+            return tag.split("-")[0]
+    return "en"
 
 
 class Problem(Exception):
@@ -621,11 +709,18 @@ class Problem(Exception):
         self.status, self.code, self.title, self.detail = status, code, title, detail
         self.headers = headers or {}
 
-    def document(self):
+    def document(self, language="en"):
+        """The problem in `language` (SPEC.md § 2.2): English, or French when this server has it."""
+        title, detail = self.title, self.detail
+        if language == "fr" and self.code in FRENCH:
+            title, generic = FRENCH[self.code]
+            detail = generic if detail else None
+        else:
+            language = "en"
         doc = {"schema": 1, "type": f"https://lantern.boreale.dev/errors/{self.code.replace('_', '-')}",
-               "title": self.title, "status": self.status, "code": self.code}
-        if self.detail:
-            doc["detail"] = clip(self.detail, 4096)
+               "title": title, "status": self.status, "code": self.code, "language": language}
+        if detail:
+            doc["detail"] = clip(detail, 4096)
         return doc
 
 
@@ -675,6 +770,55 @@ def sha256_file(path):
     return h.hexdigest()
 
 
+def ratings_of(items):
+    """Age ratings from a file, checked (SPEC.md § 7.1): [{"system", "rating"}]."""
+    return [{"system": r["system"], "rating": plain(r["rating"], 16)} for r in items
+            if isinstance(r, dict) and isinstance(r.get("system"), str)
+            and RATING_SYSTEM.match(r["system"]) and plain(r.get("rating"), 16)]
+
+
+def rating_cap_problem(cap):
+    """Why a rating cap breaks SPEC.md § 5.6, or None."""
+    if not isinstance(cap, dict) or set(cap) - {"age", "system", "rating", "unrated"}:
+        return "rating_cap is {age} or {system, rating}, and unrated"
+    if cap.get("unrated", "show") not in ("show", "hide"):
+        return "rating_cap.unrated is show or hide"
+    if "age" in cap:
+        if "system" in cap or "rating" in cap or not (is_int(cap["age"]) and cap["age"] <= 99):
+            return "rating_cap.age is an age, 0 to 99, alone"
+        return None
+    if not (isinstance(cap.get("system"), str) and RATING_SYSTEM.match(cap["system"])
+            and isinstance(cap.get("rating"), str) and 0 < len(cap["rating"]) <= 16):
+        return "rating_cap is {age} or {system, rating}"
+    if RATING_AGES.get(cap["system"], {}).get(cap["rating"]) is None:
+        return f"{cap['system']} {cap['rating']}: a rating SPEC.md § 5.6's table does not read"
+    return None
+
+
+def rating_age(ratings, cap):
+    """The age SPEC.md § 5.6 reads in `ratings` for `cap`; None when unrated."""
+    def age(r):
+        system, rating = r.get("system"), r.get("rating")
+        return RATING_AGES.get(system, {}).get(rating) if isinstance(system, str) and isinstance(rating, str) else None
+    if "system" in cap:
+        own = [a for a in (age(r) for r in ratings if r.get("system") == cap["system"]) if a is not None]
+        if own:
+            return max(own)
+    ages = [a for a in map(age, ratings) if a is not None]
+    return max(ages) if ages else None
+
+
+def above_cap(ratings, cap):
+    """Whether a token of `cap` must not see what has these `ratings` (SPEC.md § 5.6)."""
+    if not cap:
+        return False
+    limit = cap["age"] if "age" in cap else RATING_AGES.get(cap.get("system"), {}).get(cap.get("rating"))
+    age = rating_age(ratings or [], cap)
+    if age is None:
+        return cap.get("unrated") == "hide"
+    return limit is None or age > limit
+
+
 def title_metadata(entry):
     """The title's sheet (SPEC.md § 7.1) from a library.json entry's fields, checked."""
     meta = {}
@@ -693,9 +837,9 @@ def title_metadata(entry):
             p["online"] = players["online"]
         meta["players"] = p
     if isinstance(entry.get("ratings"), list):
-        meta["ratings"] = [{"system": r["system"], "rating": plain(r["rating"], 16)} for r in entry["ratings"]
-                           if isinstance(r, dict) and isinstance(r.get("system"), str)
-                           and RATING_SYSTEM.match(r["system"]) and plain(r.get("rating"), 16)]
+        meta["ratings"] = ratings_of(entry["ratings"])
+    if isinstance(entry.get("atlas"), str) and ATLAS.match(entry["atlas"]):
+        meta["atlas"] = entry["atlas"]
     if isinstance(entry.get("languages"), list):
         meta["languages"] = [x for x in entry["languages"] if isinstance(x, str) and 0 < len(x) <= 35]
     for key in ("summary", "description"):
@@ -839,6 +983,10 @@ class Library:
         version_name = plain(entry.get("version_name", entry.get("display_version")))
         if version_name:
             app["version_name"] = version_name
+        if is_int(entry.get("installed_size")):
+            app["installed_size"] = entry["installed_size"]
+        if isinstance(entry.get("atlas"), str) and ATLAS.match(entry["atlas"]):
+            app["atlas"] = entry["atlas"]
         try:
             release = date.fromisoformat(entry["release"]) if isinstance(entry.get("release"), str) else None
         except ValueError:
@@ -875,7 +1023,8 @@ class Library:
                     "release": (release is None, -(release.toordinal() if release else 0), aid)},
                     "release": release}
                 entries[aid] = meta.get(rel) or {}
-                files[fid] = {"path": path, "size": st.st_size, "sha256": sha}
+                files[fid] = {"path": path, "size": st.st_size, "sha256": sha,
+                              "owner": ("app", app["platform"], app["title_id"])}
             titles = self.scan_titles(apps, entries, initial)
             homebrew = self.scan_homebrew(seen, files)
             cheats = self.scan_cheats(seen)
@@ -1021,6 +1170,8 @@ class Library:
             self.skip(rel, f"writes outside {platform}'s roots ({outside[0]})")
             return None
         package["manifest_sha256"] = manifest_digest(manifest)
+        if place != "system":
+            package["installed_size"] = sum(m["size"] for m in manifest)
         arch = item.get("arch")
         if arch is not None:
             if platform in ONE_ARCH:
@@ -1122,6 +1273,10 @@ class Library:
             doc["genres"] = list(dict.fromkeys(genres))
         if isinstance(meta.get("tags"), list):
             doc["tags"] = [t for t in (plain(x, 64) for x in meta["tags"][:TAGS_LIMIT]) if t]
+        if isinstance(meta.get("ratings"), list):
+            doc["ratings"] = ratings_of(meta["ratings"])
+        if isinstance(meta.get("atlas"), str) and ATLAS.match(meta["atlas"]):
+            doc["atlas"] = meta["atlas"]
         requires = self.homebrew_requires(meta.get("requires"), rel)
         if requires is False:
             return None
@@ -1189,7 +1344,8 @@ class Library:
             doc["signature"] = signatures[0]
         texts = {k: localizable(meta.get(k)) for k in ("summary", "description") if localizable(meta.get(k))}
         for _, _, f in built:
-            files[f["fid"]] = {"path": f["path"], "size": f["size"], "sha256": f["sha256"]}
+            files[f["fid"]] = {"path": f["path"], "size": f["size"], "sha256": f["sha256"],
+                               "owner": ("homebrew", platform, hid)}
         return {"doc": doc, "texts": texts, "keys": {"name": (name.casefold(), platform, hid)}}
 
     def verified(self, message, signature):
@@ -1232,7 +1388,7 @@ class Library:
                                 size += len(chunk)
                         manifest.append({"path": "/" + i.filename, "size": size, "sha256": h.hexdigest()})
                     manifest.sort(key=lambda e: e["path"].encode())
-        except (zipfile.BadZipFile, OSError, ValueError, NotImplementedError, RuntimeError, EOFError) as e:
+        except (zipfile.BadZipFile, OSError, ValueError, NotImplementedError, RuntimeError, EOFError, zlib.error) as e:
             self.skip(rel, f"not a zip this server can read ({e})")
         self.manifests = {k: v for k, v in self.manifests.items() if k[0] != rel}
         self.manifests[memo] = manifest
@@ -1365,6 +1521,17 @@ class Library:
             self.save_state()
             return 201, entry
 
+    def withdraw(self, user, rid):
+        """Removes the account's own request `rid` (SPEC.md § 11); False when it has none of that id."""
+        with self.lock:
+            kept = [r for r in self.requests() if not (isinstance(r, dict) and r.get("user") == user
+                                                       and r.get("id") == rid)]
+            if len(kept) == len(self.requests()):
+                return False
+            self.state["requests"] = kept
+            self.save_state()
+            return True
+
     def platforms(self):
         with self.lock:
             return sorted({e["doc"]["platform"] for e in self.apps.values()} | {p for p, _ in self.homebrew}
@@ -1483,8 +1650,8 @@ class Library:
         if t["release"]:
             doc["release"] = t["release"].isoformat()
         meta = t["meta"]
-        for k in ("publisher", "developer", "genres", "tags", "players", "ratings", "languages", "icon", "banner",
-                  "screenshots", "video"):
+        for k in ("atlas", "publisher", "developer", "genres", "tags", "players", "ratings", "languages", "icon",
+                  "banner", "screenshots", "video"):
             if k in meta:
                 doc[k] = meta[k]
         for k in ("summary", "description"):
@@ -1707,10 +1874,14 @@ CHALLENGE = 'Bearer realm="lantern"'
 
 
 class Accounts:
-    """users.json (SPEC.md § 5): who may sign in on /pair, and with which scopes."""
+    """users.json (SPEC.md § 5): who may sign in on /pair, and with which scopes;
+    and what the administration API changed or made (SPEC.md § 5.7), kept in
+    the state file under "accounts": {name: {"scopes"?, "state"?, "created"?}},
+    which overrides users.json's scopes and state, and holds the accounts made
+    without a password."""
 
     def __init__(self, path):
-        self.public, self.users = True, {}
+        self.public, self.users, self.store = True, {}, None
         self.pairing = path is not None     # a server with accounts pairs (a private one MUST)
         if path is None:
             return
@@ -1719,6 +1890,33 @@ class Accounts:
         for u in (doc or {}).get("users", []):
             if isinstance(u, dict) and isinstance(u.get("name"), str) and isinstance(u.get("password"), str):
                 self.users[u["name"]] = u
+
+    def attach(self, store):
+        """The Library whose state keeps the administration's changes."""
+        self.store = store
+
+    def changes(self):
+        if self.store is None:
+            return {}
+        table = self.store.state.get("accounts")
+        if not isinstance(table, dict):
+            table = self.store.state["accounts"] = {}
+        return table
+
+    def get(self, name):
+        """The account `name`, users.json's with the administration's changes; None when there is none."""
+        if not isinstance(name, str):
+            return None
+        base, extra = self.users.get(name), self.changes().get(name)
+        if base is None and not isinstance(extra, dict):
+            return None
+        user = dict(base or {"name": name, "scopes": [], "state": "active"})
+        if isinstance(extra, dict):
+            user.update({k: extra[k] for k in ("scopes", "state", "created") if k in extra})
+        return user
+
+    def names(self):
+        return sorted(set(self.users) | {n for n, v in self.changes().items() if isinstance(v, dict)})
 
     def anonymous(self):
         return {"state": "anonymous", "scopes": ["library"] if self.public else []}
@@ -1730,7 +1928,28 @@ class Accounts:
         """The user, when the password is theirs; None otherwise."""
         user = self.users.get(name)
         ok = check_password(password, user["password"] if user else NO_USER)
-        return user if ok and user else None
+        return self.get(name) if ok and user else None
+
+    def create(self, name, scopes, state="active"):
+        """A new account, without a password (SPEC.md § 5.7); 409 when the name is taken."""
+        with self.store.lock:
+            if self.get(name) is not None:
+                raise Problem(409, "conflict", "Conflict", f"An account named {name} exists already.")
+            self.changes()[name] = {"scopes": list(scopes), "state": state, "created": now_utc()}
+            self.store.save_state()
+        return self.get(name)
+
+    def update(self, name, state=None, scopes=None):
+        with self.store.lock:
+            if self.get(name) is None:
+                raise not_found("No such account.")
+            entry = self.changes().setdefault(name, {})
+            if state is not None:
+                entry["state"] = state
+            if scopes is not None:
+                entry["scopes"] = list(scopes)
+            self.store.save_state()
+        return self.get(name)
 
     def resolve(self, header, tokens):
         """(the caller's account, its token's record) from its bearer token, or a 401 Problem (SPEC.md § 5.1)."""
@@ -1740,22 +1959,32 @@ class Accounts:
         if scheme.lower() != "bearer" or not value.strip():
             raise unauthorized(CHALLENGE, "Send a token from pairing: Authorization: Bearer <token>.")
         record = tokens.find(value.strip())
-        user = self.users.get(record["user"]) if record else None
+        user = self.get(record["user"]) if record else None
         if user is None:
             raise unauthorized(CHALLENGE + ', error="invalid_token"', "Unknown, revoked or expired token.")
         mine = self.scopes(user)
         scopes = [s for s in record.get("scopes", []) if s in mine]
         state = "frozen" if user.get("state") == "frozen" else "active"
-        return {"name": clip(user["name"]), "state": state, "scopes": scopes}, record
+        account = {"name": clip(user["name"]), "state": state, "scopes": scopes, "bound": bool(record.get("key"))}
+        if isinstance(record.get("rating_cap"), dict):
+            account["rating_cap"] = record["rating_cap"]
+        return account, record
 
 
 def token_hash(token):
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def device_id(key):
+    """A device's id for the administration API (SPEC.md § 5.7): from its token's hash, never the token."""
+    return "d_" + key[:16]
+
+
 class Tokens:
     """Device tokens (SPEC.md § 5.1), hashed, in the state file under "tokens":
-    {sha256 of the token: {"user", "device", "scopes", "created", "expires"?}}."""
+    {sha256 of the token: {"user", "device", "scopes", "created", "expires"?,
+    "key"? (the device's public key, base64: SPEC.md § 5.4), "rating_cap"?,
+    "invitation"?}}."""
 
     def __init__(self, store):
         self.store = store      # the Library: its state, lock and state file
@@ -1766,36 +1995,134 @@ class Tokens:
             tokens = self.store.state["tokens"] = {}
         return tokens
 
-    def issue(self, user, device, scopes, lifetime=None):
+    def issue(self, user, device, scopes, lifetime=None, key=None, rating_cap=None, invitation=None):
         token = "et_" + secrets.token_urlsafe(32)   # 256 bits
         record = {"user": user, "device": device, "scopes": list(scopes), "created": now_utc()}
         if lifetime:
             record["expires"] = now_utc(lifetime)
+        if key:
+            record["key"] = base64.b64encode(key).decode()
+        if rating_cap:
+            record["rating_cap"] = dict(rating_cap)
+        if invitation:
+            record["invitation"] = invitation
         with self.store.lock:
             self.store.reload_tokens()
             self.table()[token_hash(token)] = record
             self.store.save_state()
         return token
 
-    def find(self, token):
-        self.store.reload_tokens()
-        with self.store.lock:
-            record = self.table().get(token_hash(token))
+    @staticmethod
+    def live(record):
         if not isinstance(record, dict) or not isinstance(record.get("user"), str):
-            return None
+            return False
         expires = record.get("expires")
         if expires is not None:
             try:
                 if datetime.fromisoformat(str(expires).replace("Z", "+00:00")) <= datetime.now(timezone.utc):
-                    return None
+                    return False
             except ValueError:
-                return None     # an expiry it cannot read: not trusted
-        return record
+                return False     # an expiry it cannot read: not trusted
+        return True
+
+    def find(self, token):
+        self.store.reload_tokens()
+        with self.store.lock:
+            record = self.table().get(token_hash(token))
+        return record if self.live(record) else None
+
+    def devices(self):
+        """(device id, record) of every live token."""
+        self.store.reload_tokens()
+        with self.store.lock:
+            return [(device_id(k), r) for k, r in self.table().items() if self.live(r)]
+
+    def revoke(self, did):
+        """Revokes the token of device `did` (SPEC.md § 5.7); False when there is none."""
+        with self.store.lock:
+            self.store.reload_tokens()
+            found = [k for k in self.table() if device_id(k) == did]
+            for k in found:
+                del self.table()[k]
+            if found:
+                self.store.save_state()
+        return bool(found)
+
+
+class Invitations:
+    """Invitations (SPEC.md § 5.5), in the state file under "invitations":
+    {id: {"code", "user", "scopes", "expires", "devices", "used", "created",
+    "rating_cap"?, "note"?}}. A revoked one is removed."""
+
+    def __init__(self, store):
+        self.store = store
+
+    def table(self):
+        table = self.store.state.get("invitations")
+        if not isinstance(table, dict):
+            table = self.store.state["invitations"] = {}
+        return table
+
+    @staticmethod
+    def redeemable(inv):
+        try:
+            alive = datetime.fromisoformat(str(inv.get("expires")).replace("Z", "+00:00")) > datetime.now(timezone.utc)
+        except ValueError:
+            alive = False
+        return alive and is_int(inv.get("used")) and is_int(inv.get("devices")) and inv["used"] < inv["devices"]
+
+    def create(self, user, scopes, expires, devices, rating_cap=None, note=None):
+        with self.store.lock:
+            table = self.table()
+            for iid in [i for i, v in table.items() if not (isinstance(v, dict) and self.redeemable(v))]:
+                del table[iid]
+            if len(table) >= INVITATIONS_LIMIT:
+                raise slow_down(3600, f"At most {INVITATIONS_LIMIT} invitations at once.")
+            codes = {v.get("code") for v in table.values()}
+            while (code := "".join(secrets.choice(CODE_ALPHABET) for _ in range(INVITATION_SYMBOLS))) in codes:
+                pass
+            iid = "i_" + secrets.token_urlsafe(9)
+            inv = {"code": code, "user": user, "scopes": list(scopes), "expires": expires, "devices": devices,
+                   "used": 0, "created": now_utc()}
+            if rating_cap:
+                inv["rating_cap"] = dict(rating_cap)
+            if note:
+                inv["note"] = note
+            table[iid] = inv
+            self.store.save_state()
+            return iid, dict(inv)
+
+    def listed(self):
+        with self.store.lock:
+            return [(i, dict(v)) for i, v in self.table().items() if isinstance(v, dict) and self.redeemable(v)]
+
+    def revoke(self, iid):
+        with self.store.lock:
+            if iid not in self.table():
+                return False
+            del self.table()[iid]
+            self.store.save_state()
+            return True
+
+    def redeem(self, typed):
+        """(id, invitation) whose code is `typed`, its use counted (SPEC.md § 5.5); None when it is unknown,
+        expired, revoked or used up. Counted under the lock: two devices at once never go past `devices`."""
+        code = re.sub(r"[\s-]", "", typed or "").upper()
+        with self.store.lock:
+            for iid, inv in self.table().items():
+                if isinstance(inv, dict) and isinstance(inv.get("code"), str) and hmac.compare_digest(inv["code"], code):
+                    if not self.redeemable(inv):
+                        return None
+                    inv["used"] += 1
+                    self.store.save_state()
+                    return iid, dict(inv)
+        return None
 
 
 class Pairing:
     """Pairings waiting for the user (SPEC.md § 5.2), in memory: a code lives
-    PAIR_EXPIRES seconds, a token is collected once."""
+    PAIR_EXPIRES seconds, a token is collected once. Each has a poll address
+    (the secret), and an id for the administration API, which is not."""
 
     def __init__(self, tokens, accounts, interval=PAIR_INTERVAL, expires=PAIR_EXPIRES, lifetime=None):
         self.tokens, self.accounts = tokens, accounts
@@ -1807,7 +2134,7 @@ class Pairing:
         for pid in [p for p, e in self.pending.items() if e["until"] <= now]:
             del self.pending[pid]
 
-    def start(self, device, scopes):
+    def start(self, device, scopes, key=None):
         with self.lock:
             self.purge()
             if len(self.pending) >= PENDING_LIMIT:
@@ -1816,8 +2143,10 @@ class Pairing:
             while (code := "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_SYMBOLS))) in codes:
                 pass
             pid = "p_" + secrets.token_urlsafe(24)  # 192 bits: whoever has it collects the token
-            entry = {"pid": pid, "code": code, "device": device, "scopes": scopes, "state": "pending",
-                     "until": time.monotonic() + self.expires, "polled": None, "interval": self.interval}
+            entry = {"pid": pid, "id": "pr_" + secrets.token_urlsafe(9), "code": code, "device": device,
+                     "scopes": scopes, "key": key, "state": "pending", "until": time.monotonic() + self.expires,
+                     "created": now_utc(), "expires": now_utc(self.expires), "polled": None,
+                     "interval": self.interval}
             self.pending[pid] = entry
             return entry
 
@@ -1838,10 +2167,27 @@ class Pairing:
             return next((e for e in self.pending.values() if e["state"] == "pending" and e.get("nonce")
                          and hmac.compare_digest(e["nonce"], nonce or "")), None)
 
-    def grant(self, entry, user):
-        """The scopes the user may approve: those asked for that the account has."""
+    def by_id(self, rid):
+        with self.lock:
+            self.purge()
+            return next((e for e in self.pending.values() if e["state"] == "pending" and e["id"] == rid), None)
+
+    def waiting(self):
+        with self.lock:
+            self.purge()
+            return [e for e in self.pending.values() if e["state"] == "pending"]
+
+    def peek(self, pid):
+        with self.lock:
+            self.purge()
+            return self.pending.get(pid)
+
+    def grant(self, entry, user, scopes=None):
+        """The scopes an approval gives: those asked for (or `scopes`, among them) that the account has
+        (SPEC.md § 5.2, § 5.7)."""
         mine = self.accounts.scopes(user)
-        return [s for s in entry["scopes"] if s in mine]
+        wanted = entry["scopes"] if scopes is None else [s for s in entry["scopes"] if s in scopes]
+        return [s for s in wanted if s in mine]
 
     def prepare(self, entry, user):
         """Ties the code to the signed-in user until they approve or refuse it on /pair."""
@@ -1849,12 +2195,13 @@ class Pairing:
             entry["user"], entry["nonce"] = user["name"], secrets.token_urlsafe(24)
             return entry["nonce"]
 
-    def approve(self, entry, user_name):
-        user = self.accounts.users[user_name]
-        scopes = self.grant(entry, user)
-        token = self.tokens.issue(user_name, entry["device"], scopes, self.lifetime)
+    def approve(self, entry, user_name, scopes=None, rating_cap=None, invitation=None):
+        user = self.accounts.get(user_name)
+        granted = self.grant(entry, user, scopes)
+        token = self.tokens.issue(user_name, entry["device"], granted, self.lifetime, key=entry.get("key"),
+                                  rating_cap=rating_cap, invitation=invitation)
         with self.lock:
-            entry.update(state="approved", token=token, granted=scopes, nonce=None)
+            entry.update(state="approved", token=token, granted=granted, nonce=None, rating_cap=rating_cap)
 
     def refuse(self, entry):
         with self.lock:
@@ -1878,9 +2225,11 @@ class Pairing:
             if entry["state"] != "approved":
                 return None
             del self.pending[pid]
-        doc = {"schema": 1, "token": entry["token"], "scopes": entry["granted"]}
+        doc = {"schema": 1, "token": entry["token"], "scopes": entry["granted"], "bound": bool(entry.get("key"))}
         if self.lifetime:
             doc["expires"] = int(self.lifetime)
+        if entry.get("rating_cap"):
+            doc["rating_cap"] = entry["rating_cap"]
         return doc
 
 
@@ -1917,16 +2266,19 @@ class Handler(BaseHTTPRequestHandler):
         self.method, self.head, self.began = method, method == "HEAD", False
         self.authenticated = bool(self.headers.get("Authorization"))
         self.length, self.body_read, self.body_data = 0, False, b""
-        self.account, self.record = None, None
+        self.account, self.record, self.signed_digest = None, None, None
         try:
             self.length = self.content_length()
-            url = urlsplit(self.path)
+            try:
+                url = urlsplit(self.path)
+            except ValueError:
+                raise bad_request("Not a request target this server can read.") from None
             path = unquote(url.path)
             query = {k: v[-1] for k, v in parse_qs(url.query, keep_blank_values=True).items()}
             self.server.library.refresh(self.server.rescan)
             self.route(method, path, query)
         except Problem as p:
-            self.send_doc(p.status, p.document(), p.headers, problem=True)
+            self.send_doc(p.status, p.document(self.language()), p.headers, problem=True)
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
         except Exception:  # noqa: BLE001 - any bug of this server answers 500
@@ -1936,7 +2288,7 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             if not self.began:
                 problem = Problem(500, "internal", "Internal error", "The server failed; try again later.")
-                self.send_doc(500, problem.document(), problem=True)
+                self.send_doc(500, problem.document(self.language()), problem=True)
         if self.length and not self.body_read and not self.close_connection:
             # A body nobody read: dropped, so the connection can serve the next request.
             if self.length <= DRAIN_LIMIT:
@@ -1990,6 +2342,8 @@ class Handler(BaseHTTPRequestHandler):
         if len(data) < self.length:     # the connection was cut: nothing of it is kept
             self.close_connection = True
             raise ConnectionResetError("the body was cut")
+        if self.signed_digest is not None and not hmac.compare_digest(hashlib.sha256(data).digest(), self.signed_digest):
+            raise digest_mismatch("The body's SHA-256 is not the one its signed Content-Digest gives (SPEC.md § 5.4).")
         return data
 
     # Routes: the path below <base>/v1/, "{}" one segment; the first match wins.
@@ -2016,7 +2370,16 @@ class Handler(BaseHTTPRequestHandler):
         ("cheats/{}", ("PUT", "DELETE"), "cheats.write", "cheat_write"),
         ("requests", ("GET", "HEAD"), "requests", "requests_list"),
         ("requests", ("POST",), "requests", "request_post"),
+        ("requests/{}", ("DELETE",), "requests", "request_delete"),
         ("files/{}", ("GET", "HEAD"), "library", "file"),
+        ("admin/users", ("GET", "HEAD", "POST"), "admin", "admin_users"),
+        ("admin/users/{}", ("PATCH",), "admin", "admin_user"),
+        ("admin/devices", ("GET", "HEAD"), "admin", "admin_devices"),
+        ("admin/devices/{}", ("DELETE",), "admin", "admin_device"),
+        ("admin/pairings", ("GET", "HEAD"), "admin", "admin_pairings"),
+        ("admin/pairings/{}", ("POST",), "admin", "admin_pairing"),
+        ("admin/invitations", ("GET", "HEAD", "POST"), "admin", "admin_invitations"),
+        ("admin/invitations/{}", ("DELETE",), "admin", "admin_invitation"),
     )
 
     def route(self, method, path, query):
@@ -2024,7 +2387,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/.well-known/lantern", v1, v1 + "/"):
             return self.call(method, ("GET", "HEAD"), None, self.handshake, (), query)
         if path == "/pair":
-            return self.pair_page(method)
+            return self.pair_page(method, query)
         if path.startswith(v1 + "/"):
             segments = path[len(v1) + 1:].split("/")
             found = []      # a path may have a route per method (GET for the cheats, POST to write one)
@@ -2044,11 +2407,72 @@ class Handler(BaseHTTPRequestHandler):
     def call(self, method, methods, family, fn, args, query):
         self.account, self.record = self.server.accounts.resolve(self.headers.get("Authorization"),
                                                                  self.server.tokens)
+        self.check_signature()
         if method not in methods:
             raise Problem(405, "bad_request", "Method not allowed", None, {"Allow": ", ".join(methods)})
         if family:
             self.allow(self.account, family)
         fn(query, *args)
+
+    # Signed requests (SPEC.md § 5.4).
+
+    def target_uri(self):
+        """@target-uri: as the client sent it, the host as in Host, in lower case, without the scheme's
+        default port."""
+        scheme = "https" if self.server.tls else "http"
+        host = (self.headers.get("Host") or "").strip().lower()
+        host = host.removesuffix(":443" if scheme == "https" else ":80")
+        return f"{scheme}://{host}{self.path}"
+
+    def signature_problem(self, code, detail, with_token, keyid=None):
+        titles = {"signature_required": "Signature required", "signature_invalid": "Signature invalid",
+                  "signature_expired": "Signature expired", "signature_replayed": "Signature replayed"}
+        wanted = " ".join(f'"{c}"' for c in signatures.components(with_token, self.length > 0))
+        accept = f"lantern=({wanted})" + (f';keyid="{keyid}"' if keyid else "") + ';alg="ed25519"'
+        headers = {"Accept-Signature": accept}
+        if with_token:
+            headers["WWW-Authenticate"] = CHALLENGE + ', error="invalid_token"'
+        else:
+            headers["WWW-Authenticate"] = CHALLENGE
+        return Problem(401, code, titles[code], detail, headers)
+
+    def verify(self, public, with_token):
+        """Checks the request's signature by the key `public` (SPEC.md § 5.4), or raises its 401."""
+        try:
+            signatures.check(self.method, self.target_uri(), self.headers, public, with_token, self.length,
+                             self.server.nonces, self.server.skew)
+        except signatures.Refused as e:
+            raise self.signature_problem(e.code, e.detail, with_token, signatures.thumbprint(public)) from None
+        if self.length:
+            self.signed_digest = content_digest(self.headers.get("Content-Digest"))
+
+    def check_signature(self):
+        if self.record is None:
+            return
+        key = self.record.get("key")
+        if key:
+            self.verify(base64.b64decode(key), True)
+        elif self.server.bound_only:
+            raise self.signature_problem("signature_required", "This server takes only tokens bound to a device "
+                                                               "key: pair this device again, with a key.", True)
+
+    # Rating caps (SPEC.md § 5.6).
+
+    def cap(self):
+        return (self.record or {}).get("rating_cap") or None
+
+    def title_hidden(self, platform, title_id):
+        cap = self.cap()
+        if not cap:
+            return False
+        title = self.server.library.titles.get(f"{platform}/{title_id}")
+        return above_cap((title or {}).get("meta", {}).get("ratings", []), cap)
+
+    def app_hidden(self, doc):
+        return self.title_hidden(doc["platform"], doc["title_id"])
+
+    def homebrew_hidden(self, doc):
+        return bool(self.cap()) and above_cap(doc.get("ratings", []), self.cap())
 
     def allow(self, account, family):
         if family == "pairing":     # anyone may ask to pair (SPEC.md § 4.2, § 5.2)
@@ -2057,7 +2481,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if family == "saves" and not self.server.saves.available:
             raise not_found("Save backups are unavailable on this server for now.")
-        if account["state"] == "anonymous" and not self.server.accounts.public:
+        if account["state"] == "anonymous" and (not self.server.accounts.public or family == "admin"):
             raise unauthorized(CHALLENGE, "This server asks for a token: pair this device first.")
         if account["state"] == "frozen":
             raise Problem(403, "account_frozen", "Account frozen", "This account may do nothing for now.")
@@ -2072,7 +2496,8 @@ class Handler(BaseHTTPRequestHandler):
             except Problem:
                 return 0
         features = {f: offered(f) if f in OFFERED else 0 for f in FAMILIES}
-        features["pairing"] = 1 if self.server.accounts.pairing else 0
+        # The same for every caller (SPEC.md § 4.2): whoever reaches the server may pair, with a key.
+        features["pairing"] = features["signatures"] = 1 if self.server.accounts.pairing else 0
         return features
 
     def platform(self, query, required=False):
@@ -2089,16 +2514,27 @@ class Handler(BaseHTTPRequestHandler):
     def prefs(self):
         return languages(self.headers.get("Accept-Language"))
 
+    def language(self):
+        """The language of this server's own texts for this client (SPEC.md § 2.2)."""
+        try:
+            return best_language(self.prefs())
+        except AttributeError:      # a request that failed before its headers were read
+            return "en"
+
     # Routes.
 
     def handshake(self, query):
         lib, saves = self.server.library, self.server.saves
         doc = {"schema": 1, "uid": lib.uid, "name": self.server.name,
                "software": {"name": "Lantern reference server", "version": VERSION},
-               "base": BASE, "versions": [1], "platforms": lib.platforms(), "account": self.account,
-               "features": self.features(self.account),
-               "limits": {"page_size": PAGE_LIMIT, "save_body": saves.body, "save_size": saves.size,
-                          "saves_kept_per_title": saves.kept}}
+               "base": BASE, "versions": [1], "platforms": lib.platforms()}
+        if self.server.motd:
+            doc["motd"], doc["language"] = localized(self.server.motd, self.prefs())
+            doc["language"] = doc["language"] or "en"
+        doc.update({"account": self.account, "features": self.features(self.account),
+                    "auth": {"bearer_only": not self.server.bound_only, "skew": self.server.skew},
+                    "limits": {"page_size": PAGE_LIMIT, "save_body": saves.body, "save_size": saves.size,
+                               "saves_kept_per_title": saves.kept}})
         self.send_doc(200, doc)
 
     def listing_args(self, query, sorts=("name", "added", "release")):
@@ -2124,8 +2560,10 @@ class Handler(BaseHTTPRequestHandler):
                        if (platform is None or e["doc"]["platform"] == platform)
                        and (kind is None or e["doc"]["type"] == kind)
                        and (title_id is None or e["doc"]["title_id"] == title_id)
-                       and (not q or q.casefold() in e["doc"]["name"].casefold())]
-            self.send_doc(200, lib.page(entries, sort, size, cursor, ("apps", platform, kind, title_id, q)))
+                       and (not q or q.casefold() in e["doc"]["name"].casefold())
+                       and not self.app_hidden(e["doc"])]
+            self.send_doc(200, lib.page(entries, sort, size, cursor, ("apps", platform, kind, title_id, q,
+                                                                      json.dumps(self.cap()))))
 
     def missing(self, query):
         doc = self.request_document(self.body())
@@ -2139,29 +2577,20 @@ class Handler(BaseHTTPRequestHandler):
             raise bad_request("want lists base, update or dlc.")
         sort, size, cursor = self.listing_args(query)
         lib = self.server.library
-        scope = ("missing", platform, hashlib.sha256(json.dumps([installed, sorted(set(want))], sort_keys=True)
-                                                     .encode()).hexdigest())
+        scope = ("missing", platform, hashlib.sha256(json.dumps([installed, sorted(set(want)), self.cap()],
+                                                                sort_keys=True).encode()).hexdigest())
         with lib.lock:
-            self.send_doc(200, lib.page(lib.missing(platform, installed, set(want)), sort, size, cursor, scope))
+            found = [e for e in lib.missing(platform, installed, set(want)) if not self.app_hidden(e["doc"])]
+            self.send_doc(200, lib.page(found, sort, size, cursor, scope))
 
     def request_document(self, body):
         """A client's JSON document: 400 when malformed, 422 for a schema this server cannot read."""
-        if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
-            raise bad_request("The body is application/json.")
-        try:
-            doc = json.loads(body.decode("utf-8"))
-        except (UnicodeDecodeError, ValueError):
-            raise bad_request("The body is not JSON.") from None
-        if not isinstance(doc, dict) or not isinstance(doc.get("schema"), int) or isinstance(doc["schema"], bool) \
-                or doc["schema"] < 1:
-            raise bad_request("The body is an object with an integer schema.")
-        if doc["schema"] > 1:
-            raise Problem(422, "unsupported_schema", "Unsupported schema",
-                          f"This server reads schema 1 here, not {doc['schema']}.")
-        return doc
+        return read_document(body, self.headers.get("Content-Type"))
 
     def changes(self, query):
-        self.send_doc(200, self.server.library.changes(query.get("since"), self.platform(query)))
+        doc = self.server.library.changes(query.get("since"), self.platform(query))
+        doc["added"] = [a for a in doc["added"] if not self.app_hidden(a)]
+        self.send_doc(200, doc)
 
     # Titles (SPEC.md § 7).
 
@@ -2176,7 +2605,8 @@ class Handler(BaseHTTPRequestHandler):
             raise bad_request("A title id is 1 to 128 letters, digits, '.', '_' and '-'.")
         lib, prefs = self.server.library, self.prefs()
         with lib.lock:
-            keys = [k for k, t in lib.titles.items() if t["title_id"] in ids and (platform is None or t["platform"] == platform)]
+            keys = [k for k, t in lib.titles.items() if t["title_id"] in ids and (platform is None or t["platform"] == platform)
+                    and not self.title_hidden(t["platform"], t["title_id"])]
             known = {lib.titles[k]["title_id"] for k in keys}
             doc = {"schema": 1, "titles": [lib.title_doc(k, prefs) for k in sorted(keys)],
                    "unknown": [i for i in dict.fromkeys(ids) if i not in known]}
@@ -2184,12 +2614,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def title_changes(self, query):
         lib = self.server.library
-        self.send_doc(200, lib.title_changes(query.get("since"), self.platform(query), self.prefs()))
+        doc = lib.title_changes(query.get("since"), self.platform(query), self.prefs())
+        doc["titles"] = [t for t in doc["titles"] if not self.title_hidden(t["platform"], t["title_id"])]
+        doc["removed"] = [t for t in doc["removed"] if not self.title_hidden(t["platform"], t["title_id"])]
+        self.send_doc(200, doc)
 
     def title(self, query, title_id):
         lib = self.server.library
         table = {(t["platform"], t["title_id"]): k for k, t in lib.titles.items()}
-        key = lib.find(table, title_id, self.platform(query))
+        key = lib.find({k: v for k, v in table.items() if not self.title_hidden(*k)}, title_id, self.platform(query))
         self.send_doc(200, {"schema": 1, **lib.title_doc(key, self.prefs())})
 
     # Homebrew (SPEC.md § 8).
@@ -2226,12 +2659,16 @@ class Handler(BaseHTTPRequestHandler):
             entries = [e for (p, _), e in lib.homebrew.items()
                        if (platform is None or p == platform) and (kind is None or e["doc"]["kind"] == kind)
                        and (genre is None or genre in e["doc"].get("genres", ()))
-                       and (not q or q.casefold() in e["doc"]["name"].casefold())]
-            self.send_doc(200, lib.page(entries, "name", size, cursor, ("homebrew", platform, q, kind, genre),
+                       and (not q or q.casefold() in e["doc"]["name"].casefold())
+                       and not self.homebrew_hidden(e["doc"])]
+            self.send_doc(200, lib.page(entries, "name", size, cursor, ("homebrew", platform, q, kind, genre,
+                                                                        json.dumps(self.cap())),
                                         lambda e: self.homebrew_view(e, False)))
 
     def homebrew_entry(self, query, hid):
-        entry = self.server.library.find(self.server.library.homebrew, hid, self.platform(query))
+        lib = self.server.library
+        visible = {k: e for k, e in lib.homebrew.items() if not self.homebrew_hidden(e["doc"])}
+        entry = lib.find(visible, hid, self.platform(query))
         self.send_doc(200, {"schema": 1, **self.homebrew_view(entry, True)})
 
     def homebrew_updates(self, query):
@@ -2247,10 +2684,12 @@ class Handler(BaseHTTPRequestHandler):
         for i in installed:
             builds[i["id"]] = max(builds.get(i["id"], -1), i["build"])
         lib = self.server.library
-        scope = ("updates", platform, hashlib.sha256(json.dumps(sorted(builds.items())).encode()).hexdigest())
+        scope = ("updates", platform, hashlib.sha256(json.dumps([sorted(builds.items()), self.cap()]).encode())
+                 .hexdigest())
         with lib.lock:
             newer = [e for (p, hid), e in lib.homebrew.items()
-                     if p == platform and hid in builds and e["doc"]["build"] > builds[hid]]
+                     if p == platform and hid in builds and e["doc"]["build"] > builds[hid]
+                     and not self.homebrew_hidden(e["doc"])]
             self.send_doc(200, lib.page(newer, "name", size, cursor, scope, lambda e: self.homebrew_view(e, False)))
 
     # Save backups (SPEC.md § 9).
@@ -2390,7 +2829,8 @@ class Handler(BaseHTTPRequestHandler):
             sets = [e["doc"] for e in lib.cheats.values()
                     if (platform is None or e["doc"]["platform"] == platform)
                     and (title_id is None or e["doc"]["title_id"] == title_id)
-                    and (build_id is None or e["doc"]["build_id"] == build_id)]
+                    and (build_id is None or e["doc"]["build_id"] == build_id)
+                    and not self.app_hidden(e["doc"])]
         sets.sort(key=lambda d: (d["platform"], d["title_id"], d["build_id"], d["source"].casefold(), d["id"]))
         self.send_doc(200, {"schema": 1, "cheats": sets})
 
@@ -2399,7 +2839,8 @@ class Handler(BaseHTTPRequestHandler):
         lib = self.server.library
         with lib.lock:
             entry = lib.cheats.get(cid)
-        if entry is None or (platform is not None and entry["doc"]["platform"] != platform):
+        if entry is None or (platform is not None and entry["doc"]["platform"] != platform) \
+                or self.app_hidden(entry["doc"]):
             raise not_found("No such cheat set.")
         self.send_file(entry["path"], entry["doc"]["size"], entry["doc"]["sha256"], "text/plain; charset=utf-8")
 
@@ -2476,6 +2917,165 @@ class Handler(BaseHTTPRequestHandler):
         status, entry = self.server.library.request(self.account["name"], platform, doc["title_id"])
         self.send_doc(status, {"schema": 1, **{k: entry[k] for k in self.PUBLIC_REQUEST if k in entry}})
 
+    def request_delete(self, query, rid):
+        if not self.server.library.withdraw(self.account["name"], rid):
+            raise not_found("No such request of this account.")
+        self.send_head(204, None, {})
+
+    # Administration (SPEC.md § 5.7), scope admin. Never a token, a hash or a password in its documents.
+
+    def admin_page(self, docs, query, scope, key):
+        _, size, cursor = self.listing_args(query, ("name",))
+        entries = [{"doc": d, "keys": {"name": key(d)}} for d in docs]
+        self.send_doc(200, self.server.library.page(entries, "name", size, cursor, scope))
+
+    def scopes_field(self, value, what="scopes"):
+        if not (isinstance(value, list) and all(isinstance(x, str) and x in SCOPES for x in value)
+                and len(set(value)) == len(value)):
+            raise bad_request(f"{what} is a list of scopes: " + ", ".join(SCOPES) + ".")
+        return [x for x in SCOPES if x in value]
+
+    def user_doc(self, user):
+        accounts = self.server.accounts
+        devices = sum(1 for _, r in self.server.tokens.devices() if r.get("user") == user["name"])
+        doc = {"name": user["name"], "state": "frozen" if user.get("state") == "frozen" else "active",
+               "scopes": accounts.scopes(user), "devices": devices}
+        if isinstance(user.get("created"), str):
+            doc["created"] = user["created"]
+        return doc
+
+    def admin_users(self, query):
+        accounts = self.server.accounts
+        if self.method != "POST":
+            docs = [self.user_doc(accounts.get(n)) for n in accounts.names()]
+            return self.admin_page(docs, query, ("admin-users",), lambda d: (d["name"],))
+        doc = self.request_document(self.body())
+        name, state = doc.get("name"), doc.get("state", "active")
+        if not (isinstance(name, str) and ACCOUNT_NAME.match(name)):
+            raise bad_request("name is 1 to 64 letters, digits, '.', '_' and '-'.")
+        if "password" in doc:
+            raise bad_request("An account made here has no password (SPEC.md § 5.7).")
+        if state not in ("active", "frozen"):
+            raise bad_request("state is active or frozen.")
+        user = accounts.create(name, self.scopes_field(doc.get("scopes")), state)
+        self.send_doc(201, {"schema": 1, **self.user_doc(user)})
+
+    def admin_user(self, query, name):
+        doc = self.request_document(self.body())
+        state, scopes = doc.get("state"), doc.get("scopes")
+        if state is None and scopes is None:
+            raise bad_request("Give state (active or frozen), scopes, or both.")
+        if state is not None and state not in ("active", "frozen"):
+            raise bad_request("state is active or frozen.")
+        user = self.server.accounts.update(name, state, None if scopes is None else self.scopes_field(scopes))
+        self.send_doc(200, {"schema": 1, **self.user_doc(user)})
+
+    @staticmethod
+    def device_doc(did, record):
+        doc = {"id": did, "user": record["user"], "device": record.get("device") or "?",
+               "scopes": [x for x in record.get("scopes", []) if x in SCOPES],
+               "created": record.get("created") or now_utc(), "bound": bool(record.get("key"))}
+        if record.get("key"):
+            doc["key"] = signatures.short_fingerprint(base64.b64decode(record["key"]))
+        for k in ("expires", "invitation", "rating_cap"):
+            if record.get(k):
+                doc[k] = record[k]
+        return doc
+
+    def admin_devices(self, query):
+        user = query.get("user")
+        docs = [self.device_doc(did, r) for did, r in self.server.tokens.devices()
+                if user is None or r.get("user") == user]
+        self.admin_page(docs, query, ("admin-devices", user), lambda d: (d["user"], d["created"], d["id"]))
+
+    def admin_device(self, query, did):
+        if not self.server.tokens.revoke(did):
+            raise not_found("No such device.")
+        self.send_head(204, None, {})
+
+    def admin_pairings(self, query):
+        docs = []
+        for e in self.server.pairing.waiting():
+            doc = {"id": e["id"], "code": Pairing.shown(e["code"]), "device": e["device"], "scopes": e["scopes"],
+                   "created": e["created"], "expires": e["expires"]}
+            if e.get("key"):
+                doc["key"] = signatures.short_fingerprint(e["key"])
+            docs.append(doc)
+        self.admin_page(docs, query, ("admin-pairings",), lambda d: (d["created"], d["id"]))
+
+    def cap_field(self, value):
+        if value is None:
+            return None
+        problem = rating_cap_problem(value)
+        if problem:
+            raise bad_request(problem + " (SPEC.md § 5.6).")
+        return dict(value)
+
+    def admin_pairing(self, query, rid):
+        doc = self.request_document(self.body())
+        pairing = self.server.pairing
+        entry = pairing.by_id(rid)
+        if entry is None:
+            raise not_found("No such pairing waiting: approved, refused or expired.")
+        decision = doc.get("decision")
+        if decision == "refuse":
+            pairing.refuse(entry)
+            return self.send_head(204, None, {})
+        if decision != "approve":
+            raise bad_request("decision is approve or refuse.")
+        name = doc.get("user", self.account["name"])
+        user = self.server.accounts.get(name)
+        if user is None:
+            raise bad_request(f"No account named {str(name)[:64]}.")
+        scopes = None if doc.get("scopes") is None else self.scopes_field(doc["scopes"])
+        pairing.approve(entry, name, scopes, self.cap_field(doc.get("rating_cap")))
+        self.send_head(204, None, {})
+
+    def invitation_doc(self, iid, inv):
+        query = f"invitation={Pairing.shown(inv['code'])}"
+        if self.server.spki:
+            query += f"&spki={self.server.spki}"
+        doc = {"id": iid, "code": Pairing.shown(inv["code"]), "link": f"{self.origin()}/pair?{query}"}
+        doc.update({k: inv[k] for k in ("user", "scopes", "expires", "devices", "used", "rating_cap", "note", "created")
+                    if k in inv})
+        return doc
+
+    def admin_invitations(self, query):
+        invitations = self.server.invitations
+        if self.method != "POST":
+            docs = [self.invitation_doc(i, v) for i, v in invitations.listed()]
+            return self.admin_page(docs, query, ("admin-invitations",), lambda d: (d["created"], d["id"]))
+        doc = self.request_document(self.body())
+        user = self.server.accounts.get(doc.get("user"))
+        if user is None:
+            raise bad_request("user is the account the devices join, which exists.")
+        scopes = self.scopes_field(doc.get("scopes"))
+        if not scopes or any(x not in self.server.accounts.scopes(user) for x in scopes):
+            raise bad_request("scopes are some of the account's own (SPEC.md § 5.5).")
+        try:
+            expires = datetime.fromisoformat(str(doc.get("expires")).replace("Z", "+00:00"))
+            if expires.tzinfo is None:
+                raise ValueError
+        except ValueError:
+            raise bad_request("expires is an RFC 3339 time.") from None
+        now = datetime.now(timezone.utc)
+        if not now < expires <= now + timedelta(days=INVITATION_DAYS):
+            raise bad_request(f"expires is in the next {INVITATION_DAYS} days (SPEC.md § 5.5).")
+        devices = doc.get("devices")
+        if not (is_int(devices) and 1 <= devices <= 100):
+            raise bad_request("devices is how many devices may redeem it, 1 to 100.")
+        note = doc.get("note")
+        if note is not None and not (isinstance(note, str) and plain(note, 120) == note and len(note.encode()) <= 120):
+            raise bad_request("note: 120 bytes at most, without control characters.")
+        iid, inv = invitations.create(user["name"], scopes, expires.astimezone(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"), devices, self.cap_field(doc.get("rating_cap")), note)
+        self.send_doc(201, {"schema": 1, **self.invitation_doc(iid, inv)})
+
+    def admin_invitation(self, query, iid):
+        if not self.server.invitations.revoke(iid):
+            raise not_found("No such invitation.")
+        self.send_head(204, None, {})
+
     # Pairing (SPEC.md § 5.2).
 
     def origin(self):
@@ -2495,30 +3095,77 @@ class Handler(BaseHTTPRequestHandler):
         known = [x for x in SCOPES if x in scopes]     # the ones this server knows, without repeats
         if not known:
             raise bad_request("scopes names none of " + ", ".join(SCOPES) + ".")
-        wait = self.server.pair_limiter.hit(self.client_address[0])
+        key = self.device_key(doc.get("key"))
+        if key is None and self.server.bound_only:
+            raise Problem(400, "key_required", "Device key required", "This server binds every token to a device "
+                          "key: send one (key: {alg: ed25519, public_key}, SPEC.md § 5.4).")
+        ip = self.client_address[0]
+        wait = self.server.pair_limiter.hit(ip)
         if wait:
             raise slow_down(wait, "Too many pairing requests from this address.")
-        entry = self.server.pairing.start(device.strip(), known)
-        self.send_doc(200, {"schema": 1, "code": Pairing.shown(entry["code"]), "verify": self.origin() + "/pair",
+        invitation = None
+        if doc.get("invitation") is not None:
+            wait = self.server.attempts.wait(ip)
+            if wait:
+                raise slow_down(wait, "Too many attempts at invitations from this address.")
+            invitation = self.server.invitations.redeem(doc["invitation"] if isinstance(doc["invitation"], str) else "")
+            if invitation is None:
+                self.server.attempts.record(ip)
+                raise Problem(410, "gone", "Invitation gone", "This invitation is unknown, expired, revoked or used "
+                              "up (SPEC.md § 5.5).")
+        pairing = self.server.pairing
+        entry = pairing.start(device.strip(), known, key)
+        if invitation is not None:      # approved at once, as the invitation says (SPEC.md § 5.5)
+            iid, inv = invitation
+            pairing.approve(entry, inv["user"], inv["scopes"], inv.get("rating_cap"), iid)
+        code = Pairing.shown(entry["code"])
+        verify = self.origin() + "/pair"
+        self.send_doc(200, {"schema": 1, "code": code, "verify": verify, "verify_complete": f"{verify}?code={code}",
                             "poll": f"{BASE}/v1/pairing/{entry['pid']}", "interval": entry["interval"],
-                            "expires": int(self.server.pairing.expires)}, {"Cache-Control": "no-store"})
+                            "expires": int(pairing.expires)}, {"Cache-Control": "no-store"})
+
+    @staticmethod
+    def device_key(value):
+        """A device's public key from a pairing request (SPEC.md § 5.4): its 32 bytes, None without one; 400
+        when it is not an Ed25519 key."""
+        if value is None:
+            return None
+        ok = isinstance(value, dict) and value.get("alg") == "ed25519" \
+            and re.fullmatch(r"[A-Za-z0-9+/]{43}=", str(value.get("public_key", "")))
+        public = base64.b64decode(value["public_key"]) if ok else b""
+        point = ed25519.decode(public) if ok else None
+        # A point of small order ([8]P is the identity) is no key: forgeries would verify for it (SPEC.md § 5.4).
+        if point is None or ed25519.small_order(point):
+            raise bad_request("key is {alg: ed25519, public_key: the 32 bytes of an Ed25519 key, base64}.")
+        return public
 
     def pair_poll(self, query, pid):
+        entry = self.server.pairing.peek(pid)
+        if entry is not None and entry.get("key"):     # a pairing with a key polls signed by it (SPEC.md § 5.4)
+            self.verify(entry["key"], False)
         doc = self.server.pairing.poll(pid)
         if doc is None:
             self.send_head(202, 0, {"Cache-Control": "no-store"})
         else:
             self.send_doc(200, doc, {"Cache-Control": "no-store"})
 
-    def pair_page(self, method):
+    def pair_page(self, method, query=None):
         """/pair: where a user signs in, enters the console's code and approves it.
-        A password is typed here only, never on the console (SPEC.md § 5.2)."""
+        A password is typed here only, never on the console (SPEC.md § 5.2).
+        ?code= fills the code in (verify_complete, a QR code: § 5.2): it approves nothing by itself.
+        ?invitation= is an invitation's link (§ 5.5), for an app to open, not a browser."""
         if not self.server.accounts.pairing:
             raise not_found("This server does not pair.")
         if method not in ("GET", "HEAD", "POST"):
             raise Problem(405, "bad_request", "Method not allowed", None, {"Allow": "GET, HEAD, POST"})
+        query = query or {}
         if method != "POST":
-            return self.send_page(200, self.pair_form())
+            if query.get("invitation"):
+                return self.send_page(200, "<p>This is an invitation to pair a device with this server. Open this "
+                                           "link in your Lantern app, on the device to pair, or type its code "
+                                           "there.</p>")
+            code = re.sub(r"[^2-9A-HJ-NP-Za-hj-np-z-]", "", query.get("code") or "")[:40].upper()
+            return self.send_page(200, self.pair_form(code=code))
         if not self.server.tls and not is_loopback(self.client_address[0]):
             return self.send_page(403, "<p>Sign in only over HTTPS.</p>")
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
@@ -2532,7 +3179,14 @@ class Handler(BaseHTTPRequestHandler):
             if entry is None:
                 return self.send_page(410, self.pair_form("This pairing expired; ask the console for a new code."))
             if form.get("decision") == "approve":
-                pairing.approve(entry, entry["user"])
+                cap = None
+                if (form.get("cap") or "").isdigit():
+                    cap = {"age": int(form["cap"])}
+                    if form.get("unrated") == "hide":
+                        cap["unrated"] = "hide"
+                    if rating_cap_problem(cap):
+                        return self.send_page(400, self.pair_form("That is not a rating cap."))
+                pairing.approve(entry, entry["user"], rating_cap=cap)
                 return self.send_page(200, f"<p>{html.escape(entry['device'])} is paired. "
                                            "The console finishes on its own.</p>")
             pairing.refuse(entry)
@@ -2554,11 +3208,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_page(400, self.pair_form("No such code, or it expired."))
         nonce = pairing.prepare(entry, user)
         scopes = ", ".join(pairing.grant(entry, user)) or "none"
+        key = (f"<p>The device's own key: <code>{signatures.short_fingerprint(entry['key'])}</code> "
+               "(its token will be bound to it).</p>") if entry.get("key") else \
+            "<p>The device sent no key: its token works for whoever holds it.</p>"
+        ages = "".join(f'<option value="{a}">{a}</option>' for a in (3, 7, 12, 16, 18))
         return self.send_page(200, f"""<p>Pair <strong>{html.escape(entry['device'])}</strong> with
 <strong>{html.escape(user['name'])}</strong>'s account, for: {html.escape(scopes)}?</p>
 {self.fingerprint()}
+{key}
 <form method="post" action="/pair">
 <input type="hidden" name="nonce" value="{html.escape(nonce)}">
+<p><label>Rating cap <select name="cap"><option value="">None</option>{ages}</select></label>
+<label><input type="checkbox" name="unrated" value="hide"> and hide what has no rating</label></p>
 <button name="decision" value="approve">Approve</button> <button name="decision" value="refuse">Refuse</button>
 </form>""")
 
@@ -2568,14 +3229,15 @@ class Handler(BaseHTTPRequestHandler):
         return (f"<p>This server's key: <code>{short_fingerprint(self.server.spki)}</code>. "
                 "The console shows the same next to its code: approve only if they match.</p>")
 
-    def pair_form(self, error=None):
+    def pair_form(self, error=None, code=""):
         note = f'<p class="error">{html.escape(error)}</p>' if error else ""
+        value = f' value="{html.escape(code)}"' if code else ""
         return f"""{note}<p>Sign in, then enter the code your console shows.</p>
 {self.fingerprint()}
 <form method="post" action="/pair">
 <p><label>Name <input name="name" autocomplete="username" required></label></p>
 <p><label>Password <input name="password" type="password" autocomplete="current-password" required></label></p>
-<p><label>Code <input name="code" autocomplete="off" autocapitalize="characters" required></label></p>
+<p><label>Code <input name="code" autocomplete="off" autocapitalize="characters" required{value}></label></p>
 <p><button>Continue</button></p>
 </form>"""
 
@@ -2604,7 +3266,10 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
         lib = self.server.library
         with lib.lock:
             entry = lib.files.get(fid)
-        if entry is None:
+        owner = (entry or {}).get("owner", ())
+        if entry is None or (owner[:1] == ("app",) and self.title_hidden(*owner[1:])) \
+                or (owner[:1] == ("homebrew",) and self.homebrew_hidden(
+                    (lib.homebrew.get(owner[1:]) or {}).get("doc", {}))):
             raise not_found("No such file; read the app again.")
         self.send_file(entry["path"], entry["size"], entry["sha256"], "application/octet-stream")
 
@@ -2627,7 +3292,7 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
         if status == 206:
             headers["Content-Range"] = f"bytes {start}-{end}/{size}"
         length = end - start + 1 if size else 0
-        self.send_head(status, length, headers)
+        self.send_head(status, length, headers, encodings=False)
         if self.head or not length:
             return
         with Path(path).open("rb") as f:
@@ -2642,24 +3307,40 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
 
     # Responses.
 
-    def send_head(self, status, length, headers):
+    def send_head(self, status, length, headers, encodings=True):
+        """`encodings`: whether the response may vary on Accept-Encoding (JSON); a file never does."""
         self.began = True
         self.send_response(status)
         for k, v in headers.items():
             self.send_header(k, v)
         if length is not None:
             self.send_header("Content-Length", str(length))
-        self.send_header("Vary", "Authorization, Lantern-Platform, Accept-Language")
+        self.send_header("Vary", "Authorization, Lantern-Platform, Accept-Language"
+                         + (", Accept-Encoding" if encodings else ""))
         if "Cache-Control" not in headers:
             self.send_header("Cache-Control", "private" if self.authenticated else "no-cache")
         self.end_headers()
+
+    def coding(self):
+        return accepted_coding(self.headers.get("Accept-Encoding"))
 
     def send_doc(self, status, doc, headers=None, problem=False):
         body = json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode()
         headers = dict(headers or {})
         headers["Content-Type"] = "application/problem+json" if problem else "application/json"
+        spoken = {doc.get("language")} | {i.get("language") for k in ("items", "titles") for i in doc.get(k, ())
+                                          if isinstance(i, dict)}
+        spoken = sorted(x for x in spoken if isinstance(x, str))
+        if spoken:
+            headers["Content-Language"] = ", ".join(spoken)
+        coding = self.coding() if len(body) > 64 else None
+        tag = hashlib.sha256(body).hexdigest()[:32]
+        if coding:
+            body = zstd.compress(body) if coding == "zstd" else gzip.compress(body, mtime=0)
+            headers["Content-Encoding"] = coding
+            tag += "-" + coding         # each representation its own ETag (SPEC.md § 2.1)
         if status == 200 and self.method in ("GET", "HEAD"):
-            etag = '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
+            etag = f'"{tag}"'
             headers["ETag"] = etag
             if etag in [t.strip() for t in (self.headers.get("If-None-Match") or "").split(",")]:
                 self.send_head(304, 0, {"ETag": etag})
@@ -2667,6 +3348,82 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
         self.send_head(status, len(body), headers)
         if not self.head:
             self.wfile.write(body)
+
+
+def read_document(body, content_type):
+    """A client's JSON document (SPEC.md § 3.2, § 13): 400 when it is not an object of JSON with an integer
+    schema, or nests too deep; 422 for a schema this server cannot read. It never fails otherwise, whatever
+    the bytes."""
+    if (content_type or "").split(";")[0].strip().lower() != "application/json":
+        raise bad_request("The body is application/json.")
+    if nesting(body) > DEPTH_LIMIT:
+        raise bad_request(f"The body nests deeper than {DEPTH_LIMIT} (SPEC.md § 13).")
+    try:
+        doc = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        raise bad_request("The body is not JSON.") from None
+    if too_deep(doc):
+        raise bad_request(f"The body nests deeper than {DEPTH_LIMIT} (SPEC.md § 13).")
+    if not isinstance(doc, dict) or not isinstance(doc.get("schema"), int) or isinstance(doc["schema"], bool) \
+            or doc["schema"] < 1:
+        raise bad_request("The body is an object with an integer schema.")
+    if doc["schema"] > 1:
+        raise Problem(422, "unsupported_schema", "Unsupported schema",
+                      f"This server reads schema 1 here, not {doc['schema']}.")
+    return doc
+
+
+def accepted_coding(header):
+    """The Content-Encoding to send JSON with (SPEC.md § 2.1): zstd where Python has it, else gzip, as an
+    Accept-Encoding allows; None for none."""
+    accepted = {}
+    for part in (header or "").split(","):
+        name, _, params = part.strip().lower().partition(";")
+        m = re.search(r"q\s*=\s*([0-9.]+)", params)
+        try:
+            accepted[name.strip()] = float(m.group(1)) if m else 1.0
+        except ValueError:
+            accepted[name.strip()] = 0.0
+    for coding in ("zstd", "gzip"):
+        if coding == "zstd" and zstd is None:
+            continue
+        q = accepted[coding] if coding in accepted else accepted.get("*", 0.0)
+        if q > 0:
+            return coding
+    return None
+
+
+def nesting(body):
+    """The deepest nesting of brackets in a JSON body, outside its strings: read before parsing it, so that a
+    document nested too deep is refused rather than parsed (SPEC.md § 13)."""
+    depth = deepest = 0
+    in_string = escaped = False
+    for byte in body:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif byte == 0x5C:
+                escaped = True
+            elif byte == 0x22:
+                in_string = False
+        elif byte == 0x22:
+            in_string = True
+        elif byte in (0x5B, 0x7B):
+            depth += 1
+            deepest = max(deepest, depth)
+        elif byte in (0x5D, 0x7D):
+            depth -= 1
+    return deepest
+
+
+def too_deep(doc, depth=1):
+    if depth > DEPTH_LIMIT:
+        return True
+    if isinstance(doc, dict):
+        return any(too_deep(v, depth + 1) for v in doc.values())
+    if isinstance(doc, list):
+        return any(too_deep(v, depth + 1) for v in doc)
+    return False
 
 
 def parse_range(header, size):
@@ -2690,10 +3447,13 @@ class LanternServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, address, library, accounts, name="Lantern reference server", rescan=30.0,
-                 quiet=False, handler=Handler, tls=None, spki=None, token_lifetime=None, saves=None):
+                 quiet=False, handler=Handler, tls=None, spki=None, token_lifetime=None, saves=None,
+                 bound_only=False, motd=None, skew=signatures.SKEW):
         """`tls`: an ssl.SSLContext; without it, only a loopback address (SPEC.md § 2).
         `spki`: the SHA-256 of the certificate's key, for /pair (SPEC.md § 5.3).
-        `saves`: a Saves, by default in the library's .lantern-saves/."""
+        `saves`: a Saves, by default in the library's .lantern-saves/.
+        `bound_only`: issue and take only tokens bound to a device key (SPEC.md § 5.4).
+        `motd`: the handshake's message, a text or one per language (SPEC.md § 4.2, § 2.2)."""
         if tls is None and not is_loopback(address[0]):
             raise ValueError(f"plain HTTP only on a loopback address, not {address[0] or 'every address'}: "
                              "give --tls-cert and --tls-key (SPEC.md § 2)")
@@ -2708,7 +3468,11 @@ class LanternServer(ThreadingHTTPServer):
         self.saves = saves if saves is not None else Saves(library.root / ".lantern-saves")
         self.rescan, self.quiet = rescan, quiet
         self.tokens = Tokens(library)
+        accounts.attach(library)
+        self.invitations = Invitations(library)
         self.pairing = Pairing(self.tokens, accounts, lifetime=token_lifetime)
+        self.bound_only, self.motd, self.skew = bound_only, motd, skew
+        self.nonces = signatures.Nonces(2 * skew)
         self.pair_limiter = Limiter(*PAIR_RATE)
         self.attempts = Limiter(*PAIR_ATTEMPTS)
 
@@ -2769,10 +3533,12 @@ def tokens_command(state_path, revoke):
     tokens = doc.get("tokens") if isinstance(doc.get("tokens"), dict) else {}
     if revoke is None:
         for key, t in sorted(tokens.items(), key=lambda kv: str(kv[1].get("created", ""))):
-            print(f"{key[:12]}  {t.get('user')}  {t.get('device')!r}  {', '.join(t.get('scopes', []))}  "
+            print(f"{device_id(key)}  {t.get('user')}  {t.get('device')!r}  {', '.join(t.get('scopes', []))}  "
+                  + ("bound  " if t.get("key") else "bearer-only  ") +
                   f"created {t.get('created')}" + (f", expires {t['expires']}" if t.get("expires") else ""))
         return 0
-    found = [k for k in tokens if len(revoke) >= 8 and k.startswith(revoke.lower())]
+    wanted = revoke.removeprefix("d_")     # a device id (SPEC.md § 5.7) or a hash's start
+    found = [k for k in tokens if len(wanted) >= 8 and k.startswith(wanted.lower())]
     if len(found) != 1:
         sys.exit(f"--revoke {revoke}: {'no' if not found else 'more than one'} token with this id")
     del tokens[found[0]]
@@ -2796,6 +3562,9 @@ def main(argv=None):
     p.add_argument("--tls-cert", help="certificate chain (PEM); with --tls-key, HTTPS")
     p.add_argument("--tls-key", help="private key (PEM)")
     p.add_argument("--token-days", type=float, help="new tokens expire after this many days (default: never)")
+    p.add_argument("--bound-only", action="store_true",
+                   help="issue and take only tokens bound to a device key (SPEC.md § 5.4)")
+    p.add_argument("--motd", metavar="FILE", help='the handshake\'s message: {"schema": 1, "motd": {"en": "…"}}')
     p.add_argument("--tokens", action="store_true", help="list the paired devices' tokens, then exit")
     p.add_argument("--revoke", metavar="ID", help="revoke a token (its id from --tokens), then exit")
     p.add_argument("--discovery", action="store_true", help="answer LAN discovery on UDP")
@@ -2826,9 +3595,16 @@ def main(argv=None):
     if not saves.available:
         log(f"{saves.path}: save backups unavailable (an index this server cannot read or write)")
     lifetime = args.token_days * 86400 if args.token_days else None
+    motd = None
+    if args.motd:
+        doc = read_versioned(Path(args.motd), "motd file")
+        motd = localizable((doc or {}).get("motd"), 4096)
+        if motd is None:
+            log(f"{args.motd}: no motd this server can read, none shown")
     try:
         server = LanternServer((args.host, args.port), library, Accounts(args.users), args.name, args.rescan,
-                               args.quiet, tls=tls, spki=spki, token_lifetime=lifetime, saves=saves)
+                               args.quiet, tls=tls, spki=spki, token_lifetime=lifetime, saves=saves,
+                               bound_only=args.bound_only, motd=motd)
     except ValueError as e:
         p.error(str(e))
     port = server.server_address[1]

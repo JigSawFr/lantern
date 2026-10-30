@@ -11,32 +11,48 @@ sent), pairing's shapes, cursor pages, what a console is missing, every
 app's sha256, ranges and Repr-Digest on every file response, titles one by
 one and in bulk, homebrew (manifests, kinds, genres and tags, arches and
 packages, requirements, the kind and genre filters, ports and their data,
-signatures, updates), cheat sets, requests, save backups, errors, limits, and LAN
-discovery when asked for (--discover). Each check prints PASS, FAIL, WARN (a
-SHOULD not met) or SKIP, with the SPEC.md section it comes from; the exit
-code is 1 when one fails.
+signatures, updates), cheat sets, requests, save backups, errors, limits,
+signed requests (SPEC.md § 5.4: an unsigned, forged, stale or replayed one
+refused), keyed pairing and its QR address, languages, compression,
+`Deprecation` and `Sunset`, the cold start's budget (Annex B.8), and LAN
+discovery when asked for (--discover); with the scope `admin`, the
+administration API, invitations and their limits, and rating caps hiding
+titles everywhere. Each check prints PASS, FAIL, WARN (a SHOULD not met) or
+SKIP, with the SPEC.md section it comes from and the requirement ids it
+covers (SPEC.md § 3.5); the exit code is 1 when one fails. At the end it
+prints the conformance levels the server reaches (SPEC.md § 17): `Lantern
+Core`, then `+titles`, `+homebrew`, `+saves`, `+cheats`, `+requests` and
+`+admin`.
 
-The token is one a device got by pairing (SPEC.md § 5.2); without it, the
-suite calls as an anonymous client. It approves nothing, but it asks for a
-few pairing codes (feature `pairing`), which the server may show to its
-users until they expire on their own. With a token that holds `saves`, it
-sends save backups for a title id of its own (none of the library's, so
-that no backup of the user's is dropped for them), in one request and by
-resumable upload, and deletes them before it ends. With `cheats.write`, it
-writes a cheat set for such a title, replaces it and deletes it. With
-`requests`, it asks for such a title twice (the second answer is the same
-request): SPEC.md has no route to delete a request, so that one request
-stays on the server, open, for a title id of no game. It changes nothing
-else.
-Rules that only a client can keep (ignoring unknown fields, pinning, asking
-before a path that needs consent, checking a port's data before launch…)
-are listed as skipped.
+The token is one a device got by pairing (SPEC.md § 5.2), and --key the file
+of the device's key (its 32-byte Ed25519 seed, base64) when the token is
+bound to it (§ 5.4); without them, the suite calls as an anonymous client.
+It asks for a few pairing codes (feature `pairing`), which the server may
+show to its users until they expire on their own. With a token that holds
+`saves`, it sends save backups for a title id of its own (none of the
+library's, so that no backup of the user's is dropped for them), in one
+request and by resumable upload, and deletes them before it ends. With
+`cheats.write`, it writes a cheat set for such a title, replaces it and
+deletes it. With `requests`, it asks for such a title twice (the second
+answer is the same request), then withdraws it. With `admin`, it pairs two
+devices of its own through the administration API (one approved with a
+rating cap, one refused), makes an invitation and redeems it, and revokes
+what it paired and made; with --admin-writes, it also makes an account of
+its own, `lantern-conformance-…`, and freezes it: SPEC.md has no route to
+delete an account, so that one stays, frozen, without a device. It changes
+nothing else.
+Rules that the suite cannot see (a client's, such as ignoring unknown
+fields, pinning, asking before a path that needs consent, checking a port's
+data before launch; or a server's inside, such as keeping only tokens'
+hashes) are listed, by requirement id, in CLIENT_RULES and UNSEEN, and on
+the site's traceability page.
 
 Standard library only, but for the schema checks: those need jsonschema and
 referencing (tools/requirements.txt); --no-schemas runs without them.
 """
 import argparse
 import base64
+import gzip
 import hashlib
 import http.client
 import io
@@ -49,16 +65,28 @@ import secrets
 import socket
 import ssl
 import sys
+import time
 import zipfile
-from datetime import datetime
+import zlib
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lantern_client as client
 
-VERSION = "0.3.0"
-FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing")
+try:                    # Python 3.14 and later: zstd, to read what a server compresses with it
+    from compression import zstd
+except ImportError:
+    zstd = None
+
+VERSION = "0.4.0"
+FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
+            "signatures", "admin")
+LEVELS = ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin")    # SPEC.md § 17
+LEVEL_NAMES = {"core": "Lantern Core", **{x: "+" + x for x in LEVELS[1:]}}
+BUDGET = 256 << 10      # a cold start's JSON, as it travels (SPEC.md Annex B.8)
 JSON_LIMIT = 32 << 20
 CHEAT_LIMIT = 1 << 20
 TITLES_AT_ONCE = 100
@@ -71,7 +99,8 @@ CODE = re.compile(r"[2-9A-HJ-NP-Z]{4}(-[2-9A-HJ-NP-Z]{4}){1,7}")  # SPEC.md § 5
 PAIRING = {"schema": 1, "device": "Lantern conformance", "scopes": ["library"]}
 SAVE_KINDS = ("account", "device", "bcat", "cache", "other")
 # SPEC.md § 12: the codes each status may carry.
-CODES = {400: {"bad_request"}, 401: {"unauthorized"}, 403: {"forbidden", "account_frozen"},
+CODES = {400: {"bad_request", "key_required"},
+         401: {"unauthorized", "signature_required", "signature_invalid", "signature_expired", "signature_replayed"}, 403: {"forbidden", "account_frozen"},
          404: {"not_found"}, 405: {"bad_request"}, 409: {"conflict"}, 410: {"gone"},
          413: {"too_large"}, 416: {"bad_request"}, 422: {"unsupported_schema", "digest_mismatch"},
          429: {"slow_down"}, 500: {"internal"}, 503: {"unavailable"}}
@@ -86,6 +115,7 @@ PROBES = {
     "cheats": ("GET", "/v1/cheats", None, "cheats"),
     "requests": ("GET", "/v1/requests", None, "requests"),
     "pairing": ("POST", "/v1/pairing", PAIRING, "pairing-code"),
+    "admin": ("GET", "/v1/admin/users?page_size=1", None, "admin-users"),
 }
 # Routes that take a JSON document, by family, with a document of schema 2
 # (SPEC.md § 3.2, § 12), sent with a platform where the route needs one.
@@ -96,26 +126,107 @@ BODIES = {
     "pairing": ("/v1/pairing", {"schema": 2, "device": "Lantern conformance", "scopes": ["library"]}),
     "requests": ("/v1/requests", {"schema": 2, "title_id": "{title_id}"}),
 }
+# The requirements each check covers (SPEC.md § 3.5); the site's traceability page reads them.
+REQS = {
+    "transport.https": ["L-2-3"],
+    "handshake.well-known": ["L-4.2-1", "L-3.2-5"], "handshake.v1": ["L-4.2-1"], "handshake.versions": ["L-4.2-1"],
+    "handshake.anonymous": ["L-4.2-3"], "handshake.account": ["L-4.2-8"], "handshake.platforms": ["L-4.2-2"],
+    "handshake.auth": ["L-4.2-5", "L-5.4-1"],
+    "auth.unknown-token": ["L-5.1-5"], "auth.unknown-handshake": ["L-4.2-6"], "auth.basic-refused": ["L-5.1-1", "L-5.1-5"],
+    "auth.missing": ["L-5.1-5"], "auth.frozen": ["L-5.1-6", "L-4.2-4"],
+    "pairing.offered": ["L-5.2-1", "L-4.2-5"], "pairing.code": ["L-5.2-5", "L-5.2-6", "L-5.2-7"],
+    "pairing.verify-complete": ["L-5.2-10", "L-5.2-11"], "pairing.verify-page": ["L-5.3-2"],
+    "pairing.waiting": ["L-5.2-3"], "pairing.slow-down": ["L-5.2-9"], "pairing.unknown": ["L-5.2-3"],
+    "pairing.key": ["L-5.4-1", "L-5.4-11", "L-5.4-12"], "pairing.bearer-only": ["L-5.4-1"],
+    "apps.first-page": ["L-3.2-5"], "features": ["L-4.2-4", "L-4.2-7", "L-4.2-8"],
+    "features.anonymous": ["L-4.2-4", "L-4.2-7"],
+    "apps.pages": ["L-6.2-2", "L-6.2-3"], "apps.sha256": ["L-6.1-1"], "apps.platforms": ["L-4.2-2"],
+    "apps.page-size": ["L-6.2-5"], "apps.bad-cursor": ["L-6.2-4"], "apps.filters": ["L-6.2-1"], "apps.etag": ["L-14-1"],
+    "platforms.filter": ["L-4.3-1"], "platforms.query": ["L-4.3-5"], "platforms.unknown": ["L-4.3-2"],
+    "platforms.bad-name": ["L-4.3-3"], "platforms.vary": ["L-4.3-6"],
+    "missing.no-platform": ["L-4.3-4"], "missing.installed": ["L-6.3-1"], "missing.up-to-date": ["L-6.3-1"],
+    "missing.base": ["L-6.3-1"], "missing.malformed": ["L-12-1", "L-12-2"],
+    "files.whole": ["L-6.6-1", "L-6.6-2", "L-6.6-3"], "files.ranges": ["L-6.6-1", "L-6.6-2"],
+    "files.unsatisfiable": ["L-6.6-1"], "files.unknown": ["L-6.6-4"],
+    "changes.token": ["L-6.4-1"], "changes.bad-token": ["L-6.4-2"],
+    "titles.known": ["L-7.1-1", "L-7.1-3"], "titles.unknown": ["L-7.1-1"], "titles.bulk": ["L-7.2-1", "L-7.1-3"],
+    "titles.bulk-limit": ["L-7.2-1"], "titles.changes": ["L-7.3-1"], "titles.bad-token": ["L-7.3-1"],
+    "homebrew.pages": ["L-8.1-3"], "homebrew.entries": ["L-8.1-3", "L-8.2-1"],
+    "homebrew.manifests": ["L-8.2-2", "L-8.2-4", "L-8.2-5"],
+    "homebrew.kinds": ["L-8.1-2", "L-8.2-7", "L-8.2-9", "L-8.3-7"], "homebrew.filters": ["L-8.5-1", "L-8.5-2"],
+    "homebrew.requires": ["L-8.7-1", "L-8.7-3"], "homebrew.ports": ["L-8.6-1", "L-8.6-2"],
+    "homebrew.packages": ["L-8.2-3", "L-6.6-2"], "homebrew.signatures": ["L-8.4-1", "L-8.4-5"], "homebrew.updates": ["L-8.5-3"],
+    "homebrew.updates-platform": ["L-4.3-4"], "homebrew.unknown": ["L-8.1-4"],
+    "cheats.sets": ["L-10-1"], "cheats.text": ["L-6.6-2"], "cheats.unknown": ["L-10-2"], "cheats.write": ["L-10-4"],
+    "cheats.write-cycle": ["L-10-3"],
+    "requests.list": ["L-11-1"], "requests.create": ["L-11-1"], "requests.delete": ["L-11-2"],
+    "saves.limits": ["L-4.2-8"], "saves.list": ["L-9.1-1"], "saves.no-platform": ["L-4.3-4"],
+    "saves.upload": ["L-9.3-2", "L-9.3-3"], "saves.read": ["L-9.1-1", "L-6.6-2"], "saves.upload-digest": ["L-9.3-4"],
+    "saves.upload-too-large": ["L-9.3-1"], "saves.single": ["L-9.2-1"], "saves.cleanup": ["L-9.1-3"],
+    "schema.refused": ["L-3.2-6"], "versions.accept-schema": ["L-3.2-7"],
+    "errors.unknown-route": ["L-12-3"], "discovery.reply": ["L-4.1-1"],
+    "signatures.unsigned": ["L-5.4-6"], "signatures.invalid": ["L-5.4-6"], "signatures.stale": ["L-5.4-6"],
+    "signatures.replayed": ["L-5.4-6", "L-5.4-9"], "signatures.digest": ["L-5.4-6"],
+    "signatures.accept-signature": ["L-5.4-10"],
+    "language.problem": ["L-2.2-1", "L-2.2-2", "L-2.2-3"], "language.handshake": ["L-2.2-2"],
+    "compression.json": ["L-2.1-1"], "compression.etag": ["L-2.1-3"], "compression.files": ["L-2.1-2", "L-6.6-3"],
+    "limits.depth": ["L-13-3"], "budget.cold-start": [],
+    "admin.refused": ["L-5.7-1"], "admin.users": ["L-5.7-2"], "admin.users-write": ["L-5.7-3"],
+    "admin.pairings": ["L-5.7-2", "L-5.7-4", "L-5.2-4", "L-5.2-3"], "admin.refuse": ["L-5.2-3"],
+    "admin.rating-cap": ["L-5.6-1", "L-5.6-2"], "admin.devices": ["L-5.1-4", "L-5.7-2", "L-5.7-3"],
+    "admin.invitations": ["L-5.5-1", "L-5.5-2"],
+    "errors.problem": ["L-12-1", "L-12-2"], "errors.never-200": ["L-12-1"], "errors.www-authenticate": ["L-5.1-5"],
+    "auth.no-basic": ["L-5.1-1"], "documents.schema": ["L-3.2-1"], "documents.type": ["L-2-4"],
+    "documents.limits": ["L-13-2"], "documents.date": ["L-5.4-7"], "caching.private": ["L-14-2"],
+    "deprecation.headers": ["L-3.4-1", "L-3.4-2"],
+}
+# Rules only a client keeps: the suite cannot see them (SPEC.md § 17).
 CLIENT_RULES = [
-    ("3.2", "A reader ignores the fields it does not know"),
-    ("3.2", "A reader treats a newer schema as absent and never writes it back"),
-    ("2", "Certificates are verified; plain HTTP only to a loopback address"),
-    ("4.1", "Discovery is a hint: nothing is trusted because of a reply"),
-    ("5.2", "No password is ever asked for on the console"),
-    ("5.3", "The key compared at pairing is pinned; a changed key fails"),
-    ("6.1", "Nothing is installed of a platform without a profile"),
-    ("6.6", "A download's SHA-256 is checked before installing"),
-    ("7.1", "No token or credential is sent to an external address"),
-    ("8.1", "A kind the client does not know is read as app"),
-    ("8.1", "A port's data_root is approved by the user once"),
-    ("8.1", "A port's data is checked (presence, accepted hashes, one alternative) before launch, the user guided"),
-    ("8.1", "Nothing is installed over another entry's system id"),
-    ("8.2", "A package of another arch is skipped"),
-    ("8.3", "Only the manifest's paths are written; a path outside the free roots is shown and agreed to"),
-    ("8.3", "Uninstalling removes the manifest's files only"),
-    ("8.4", "A signature is checked; the key is pinned per id, a changed key refused unless accepted"),
-    ("9.1", "A save is not restored on an older game without a warning"),
+    ("2", ["L-2-1", "L-2-2"], "Certificates are verified; plain HTTP only to a loopback address"),
+    ("2", ["L-2-5", "L-2-6", "L-2-7"], "User-Agent, Accept-Language and Lantern-Platform on every call"),
+    ("2", ["L-2-8"], "Tokens and signatures go to the server's origin alone"),
+    ("3.2", ["L-3.2-2"], "A reader ignores the fields it does not know"),
+    ("3.2", ["L-3.2-3", "L-3.2-4"], "A reader treats a newer schema as absent and never writes it back"),
+    ("3.4", ["L-3.4-5"], "A client records a Deprecation for its developers"),
+    ("4.1", ["L-4.1-5"], "Discovery is a hint: nothing is trusted because of a reply"),
+    ("4.3", ["L-4.3-7"], "Nothing is installed of a platform without a profile"),
+    ("5.2", ["L-5.2-12", "L-5.2-13"], "verify_complete drawn as a QR code, the code and fingerprint beside it"),
+    ("5.3", ["L-5.3-1"], "The device shows the short fingerprint of the key it sees, next to the code"),
+    ("5.3", ["L-5.3-3", "L-5.3-4"], "The key compared at pairing is pinned; a changed key fails"),
+    ("5.4", ["L-5.4-2", "L-5.4-3"], "A key sent at pairing, and every request of its token signed"),
+    ("5.4", ["L-5.4-4", "L-5.4-5"], "The private key stays on the device, where the system protects keys"),
+    ("5.4", ["L-5.4-8"], "A stale signature is signed again once, at the server's Date"),
+    ("5.7", ["L-5.7-5"], "An admin app shows each waiting pairing's code and the server's fingerprint"),
+    ("6.1", ["L-6.1-2"], "Nothing is installed or matched by an Atlas id alone"),
+    ("6.6", ["L-6.6-5"], "A download's SHA-256 is checked before installing"),
+    ("7.1", ["L-7.1-4", "L-7.1-5"], "No token or credential is sent to an external address; a video opens on request"),
+    ("8.1", ["L-8.1-1"], "A kind the client does not know is read as app"),
+    ("8.2", ["L-8.2-6", "L-8.2-8"], "A package of another or an unknown arch is skipped"),
+    ("8.3", ["L-8.3-1", "L-8.3-2", "L-8.3-3", "L-8.3-4"],
+     "Only the manifest's paths are written, checked; a path outside the free roots is shown and agreed to"),
+    ("8.3", ["L-8.3-5"], "Nothing is installed over another entry's system id"),
+    ("8.3", ["L-8.3-6"], "Uninstalling removes the manifest's files only"),
+    ("8.4", ["L-8.4-2", "L-8.4-3"], "A signature is checked; the key is pinned per id, a changed key refused unless accepted"),
+    ("8.4", ["L-8.4-4"], "An Ed25519 key or R of small order, not canonical, or S >= L never verifies"),
+    ("8.6", ["L-8.6-3", "L-8.6-4", "L-8.6-5"],
+     "A port's data is checked (presence, accepted hashes, one alternative) before launch, never fetched"),
+    ("8.7", ["L-8.7-2"], "Requirements are checked before a package is offered"),
+    ("9.1", ["L-9.1-2"], "A save is not restored on an older game without a warning"),
+    ("12", ["L-12-4"], "A code the client does not know is read by its status"),
+    ("13", ["L-13-1"], "What a client reads is bounded"),
 ]
+# A server's rules the suite cannot see from outside, and why.
+UNSEEN = {
+    "L-3.1-1": "keeping an old major version needs one",
+    "L-3.4-3": "a Sunset is in the future of a run", "L-3.4-4": "as is an older schema's last day",
+    "L-4.1-2": "the suite asks from one network", "L-4.1-3": "it would take many datagrams",
+    "L-4.1-4": "DNS-SD is not read by the suite",
+    "L-5.1-2": "a token's entropy cannot be measured from one", "L-5.1-3": "what a server keeps is inside it",
+    "L-5.2-2": "the protocol has no route for it, which is what the rule says",
+    "L-5.2-8": "it would take many requests; the reference server's tests check it",
+    "L-5.5-3": "it would take many requests; the reference server's tests check it",
+    "L-7.1-2": "the suite does not fetch images",
+}
 
 
 class Fail(Exception):
@@ -124,6 +235,10 @@ class Fail(Exception):
 
 class Skip(Exception):
     pass
+
+
+class Blind(Skip):
+    """A check the suite could not run for want of a token, a key or a scope: its level is not shown reached."""
 
 
 class Warn(Exception):
@@ -141,6 +256,19 @@ class Response:
         self.status, self.headers, self.body, self.truncated = status, headers, body, truncated
         self.raw, self.platform = raw, platform
         self._doc = None
+        self.wire = len(body)       # the bytes as they travelled, before any Content-Encoding is undone
+        self.encoding = (headers.get("Content-Encoding") or "").strip().lower()
+        self.unreadable = False
+        if self.encoding and body:
+            try:
+                if self.encoding == "gzip":
+                    self.body = gzip.decompress(body)
+                elif self.encoding == "zstd" and zstd is not None:
+                    self.body = zstd.decompress(body)
+                else:
+                    self.unreadable = True      # br, or zstd without the module: its headers are checked alone
+            except (OSError, EOFError, ValueError) as e:
+                raise Fail(f"{method} {path}: its {self.encoding} body does not decompress ({e})") from None
 
     def header(self, name):
         return self.headers.get(name)
@@ -156,6 +284,8 @@ class Response:
     def json(self):
         if self._doc is None:
             expect(not self.truncated, f"{self}: document above {JSON_LIMIT} bytes")
+            if self.unreadable:
+                raise Skip(f"{self}: {self.encoding}, which this Python cannot read")
             try:
                 self._doc = json.loads(self.body.decode("utf-8"))
             except (UnicodeDecodeError, ValueError) as e:
@@ -168,11 +298,22 @@ class Response:
 
 
 class Client:
-    """One HTTP request per connection, with the caller chosen per request."""
+    """One HTTP request per connection, with the caller chosen per request; signed (SPEC.md § 5.4) when the
+    token is bound to the key given."""
 
-    def __init__(self, origin, token, context, timeout):
-        self.origin, self.token = origin, token
+    def __init__(self, origin, token, context, timeout, seed=None):
+        self.origin, self.token, self.seed = origin, token, seed
         self.context, self.timeout, self.log = context, timeout, []
+        self.offset = 0         # the server's clock minus this one's, from its Date (SPEC.md Annex B.9)
+        self.peer_spki = None   # the SHA-256 of the key the server's certificate carries, over TLS
+
+    def uri(self, path):
+        u = self.origin
+        return client.target_uri(u.scheme, u.hostname, u.port, path)
+
+    def signed(self, seed, method, path, authorization, body, created=None, nonce=None):
+        created = int(time.time() + self.offset) if created is None else created
+        return client.sign(seed, method, self.uri(path), authorization, body or b"", created, nonce)
 
     def authorization(self, auth):
         if auth == "token" and self.token is not None:
@@ -184,8 +325,10 @@ class Client:
         return None
 
     def request(self, method, path, auth="token", headers=None, body=None, limit=JSON_LIMIT, platform=None,
-                raw=False):
-        """`platform`: sent as Lantern-Platform; `raw`: a file, not a JSON document."""
+                raw=False, token=None, seed=None, sign=True, created=None, nonce=None):
+        """`platform`: sent as Lantern-Platform; `raw`: a file, not a JSON document. `token` and `seed`: another
+        device's token and key (else the suite's own, for auth "token"); a request with a key and no token is a
+        pairing's poll. `sign` False sends it unsigned; `created` and `nonce` choose the signature's."""
         u = self.origin
         cls = http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection
         kw = {"context": self.context} if u.scheme == "https" else {}
@@ -193,19 +336,34 @@ class Client:
         hdrs = {"User-Agent": f"LanternConformance/{VERSION}", "Accept-Language": "en", **(headers or {})}
         if platform:
             hdrs["Lantern-Platform"] = platform
-        if self.authorization(auth):
-            hdrs["Authorization"] = self.authorization(auth)
+        authorization = "Bearer " + token if token else self.authorization(auth)
+        if authorization:
+            hdrs["Authorization"] = authorization
         if isinstance(body, (dict, list)):
             body = json.dumps(body).encode()
             hdrs.setdefault("Content-Type", "application/json")
+        key = seed if seed is not None else (self.seed if auth == "token" and token is None and self.token else None)
+        if key is not None and sign:
+            hdrs.update(self.signed(key, method, path, authorization, body, created, nonce))
+        label = "device" if token else "anonymous" if auth == "none" or (auth == "token" and self.token is None) else auth
         try:
             conn.request(method, path, body=body, headers=hdrs)
+            if u.scheme == "https" and self.peer_spki is None and conn.sock is not None:
+                der = conn.sock.getpeercert(binary_form=True)
+                if der:
+                    self.peer_spki = spki_of(der)
             r = conn.getresponse()
             data = b"" if method == "HEAD" else r.read(limit + 1)
-            res = Response(method, path, "anonymous" if auth == "none" or (auth == "token" and self.token is None)
-                           else auth, r.status, r.headers, data[:limit], len(data) > limit, raw, platform)
+            res = Response(method, path, label, r.status, r.headers, data[:limit], len(data) > limit, raw, platform)
         finally:
             conn.close()
+        date = res.header("Date")
+        if date:
+            try:
+                skew = parsedate_to_datetime(date).timestamp() - time.time()
+                self.offset = skew if abs(skew) > 30 else 0
+            except (TypeError, ValueError):
+                pass
         self.log.append(res)
         return res
 
@@ -221,8 +379,18 @@ class Suite:
                 ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
         else:
             ctx = None
-        self.http = Client(u, args.token, ctx, args.timeout)
+        seed = None
+        if args.key:
+            try:
+                seed = base64.b64decode(Path(args.key).read_text(encoding="ascii").strip(), validate=True)
+            except (OSError, ValueError):
+                sys.exit(f"conformance: {args.key} is not a device key (its 32-byte seed, base64)")
+            if len(seed) != 32:
+                sys.exit(f"conformance: {args.key} is not a device key (its 32-byte seed, base64)")
+        self.http = Client(u, args.token, ctx, args.timeout, seed)
+        self.seed = seed
         self.results = []
+        self.level = "core"     # the level the checks being run count for (SPEC.md § 17)
         self.validators = None if args.no_schemas else load_validators(Path(args.schemas))
         self.base = args.base
         self.hello = self.hello_anon = None
@@ -241,18 +409,21 @@ class Suite:
     # Reporting.
 
     def check(self, cid, section, title, fn, level="must"):
+        blind = False
         try:
             detail, status = fn(), "PASS"
         except Skip as e:
-            detail, status = str(e), "SKIP"
+            detail, status, blind = str(e), "SKIP", isinstance(e, Blind)
         except Warn as e:
             detail, status = str(e), "WARN"
         except Fail as e:
             detail, status = str(e), "FAIL" if level == "must" else "WARN"
         except (OSError, http.client.HTTPException) as e:
             detail, status = f"connection: {e}", "FAIL"
-        self.results.append((status, section, cid, title, detail))
-        print(f"{status:<4}  § {section:<5} {cid:<30} {title}", file=self.out)
+        reqs = reqs_of(cid)
+        self.results.append((status, section, cid, title, detail, self.level, blind, reqs))
+        ids = f"  [{' '.join(reqs)}]" if reqs else ""
+        print(f"{status:<4}  § {section:<5} {cid:<30} {title}{ids}", file=self.out)
         if detail:
             for line in str(detail).splitlines():
                 print(f"{'':<14}{line}", file=self.out)
@@ -292,17 +463,23 @@ class Suite:
 
     def run(self):
         print(f"Lantern conformance {VERSION}: {self.origin.scheme}://{self.origin.netloc}/"
-              + (" with a token" if self.args.token else " anonymously"), file=self.out)
+              + (" with a token" if self.args.token else " anonymously")
+              + (" and its device key" if self.seed else ""), file=self.out)
+        self.level = "core"
         self.check("transport.https", "2", "HTTPS, or plain HTTP on loopback only", self.c_https)
         if not self.check("handshake.well-known", "4.2", "GET /.well-known/lantern is a valid handshake",
                           self.c_well_known):
             print("No handshake: nothing else can be checked.", file=self.out)
+            if self.args.token and not self.seed:
+                print("A token bound to a device key needs its key: --key FILE.", file=self.out)
             return self.summary()
         self.check("handshake.v1", "4.2", "GET <base>/v1/ is the same handshake", self.c_v1)
         self.check("handshake.versions", "3.1", "The server serves version 1", self.c_versions)
         self.check("handshake.anonymous", "4.2", "Without credentials: account anonymous", self.c_anonymous)
         self.check("handshake.account", "4.2", "With a token: the account and its state", self.c_account)
         self.check("handshake.platforms", "4.3", "platforms: names, the same for every caller", self.c_platforms)
+        self.check("handshake.auth", "5.4", "signatures and auth: the same for every caller, offered with pairing",
+                   self.c_auth)
         self.check("auth.unknown-token", "5.1", "An unknown token gives 401 with WWW-Authenticate: Bearer",
                    self.c_unknown_token)
         self.check("auth.unknown-handshake", "4.2", "An unknown token gives 401 on the handshake too",
@@ -318,20 +495,47 @@ class Suite:
         if self.features(self.hello_anon)["pairing"]:
             self.check("pairing.code", "5.2", "A pairing code: its alphabet, length, interval and expiry",
                        self.c_pairing_code)
+            self.check("pairing.verify-complete", "5.2", "verify_complete: on the origin, the code in it; opening "
+                       "it approves nothing", self.c_verify_complete)
+            self.check("pairing.verify-page", "5.3", "The approval page shows the short fingerprint of the server's "
+                       "key", self.c_verify_page)
             self.check("pairing.waiting", "5.2", "Polling an unapproved pairing gives 202", self.c_pairing_waiting)
             self.check("pairing.slow-down", "5.2", "Polling faster than interval gives 429 slow_down",
                        self.c_pairing_slow, level="should")
             self.check("pairing.unknown", "5.2", "An unknown poll address gives 410", self.c_pairing_unknown)
-            self.check("pairing.rate-limit", "5.2", "Pairing requests are rate-limited", lambda: _skip(
-                "not checked: it would take many requests; the reference server's tests check it"))
+            self.check("pairing.key", "5.4", "A pairing with a device key: a bad key gives 400, an unsigned poll 401, "
+                       "a signed one 202", self.c_pairing_key)
+            self.check("pairing.bearer-only", "5.4", "A server that takes only bound tokens refuses a pairing without "
+                       "a key: 400 key_required", self.c_bearer_only)
         if mine["library"]:
             self.check("apps.first-page", "6.2", "GET <base>/v1/apps is a valid page", self.c_first_page)
         for family in FAMILIES:
-            self.check(f"features.{family}", "4.2", f"Feature {family} ({mine[family]}) is honoured",
-                       lambda f=family: self.c_feature(f, "token", mine[f]))
+            if family != "signatures":
+                self.level = family if family in LEVELS else "core"
+                self.check(f"features.{family}", "4.2", f"Feature {family} ({mine[family]}) is honoured",
+                           lambda f=family: self.c_feature(f, "token", mine[f]))
+        self.level = "core"
         if self.args.token is not None:
             self.check("features.anonymous", "4.2", "Without credentials, features are honoured too",
                        self.c_features_anonymous)
+        if self.features(self.hello_anon)["pairing"] or mine["library"]:
+            self.check("signatures.unsigned", "5.4", "A bound token without a signature gives 401 signature_required",
+                       self.c_sig_unsigned)
+            self.check("signatures.invalid", "5.4", "A signature that does not verify, or of another form, gives 401 "
+                       "signature_invalid", self.c_sig_invalid)
+            self.check("signatures.stale", "5.4", "A created outside the window gives 401 signature_expired",
+                       self.c_sig_stale)
+            self.check("signatures.replayed", "5.4", "A nonce taken twice gives 401 signature_replayed",
+                       self.c_sig_replayed)
+            self.check("signatures.digest", "5.4", "A signed body that does not match its Content-Digest gives 422",
+                       self.c_sig_digest)
+            self.check("signatures.accept-signature", "5.4", "A 401 for a signature carries Accept-Signature",
+                       self.c_sig_accept, level="should")
+        self.check("language.handshake", "2.2", "The motd says its language", self.c_language_handshake)
+        self.check("language.problem", "2.2", "An error says its language, and follows Accept-Language",
+                   self.c_language_problem)
+        self.check("versions.accept-schema", "3.2", "Accept-Schema of the schemas written is honoured",
+                   self.c_accept_schema, level="should")
         if mine["library"]:
             for sort in ("name", "added", "release"):
                 self.check(f"apps.pages.{sort}", "6.2", f"Pages by {sort}: stable, no repeat, no skip",
@@ -360,15 +564,26 @@ class Suite:
             self.check("missing.up-to-date", "6.3", "Missing: nothing for an up-to-date game", self.c_missing_current)
             self.check("missing.base", "6.3", "Missing: with base, the games not installed", self.c_missing_base)
             self.check("missing.malformed", "12", "A malformed body gives 400 bad_request", self.c_malformed)
+            self.check("limits.depth", "13", "A body nested deeper than 16 gives 400 or 413, not a failure",
+                       self.c_depth)
             self.check("files.whole", "6.6", "Whole files and HEAD: length, ETag, sha256 and Repr-Digest",
                        self.c_files)
             self.check("files.ranges", "6.6", "Ranges: 206 with the right slice and the whole file's Repr-Digest",
                        self.c_ranges)
             self.check("files.unsatisfiable", "6.6", "A range outside the file gives 416 with Content-Range", self.c_416)
             self.check("files.unknown", "6.6", "An unknown file id gives 404 or 410", self.c_unknown_file)
+            self.check("compression.json", "2.1", "JSON compressed as Accept-Encoding asks: zstd or br, and gzip",
+                       self.c_compression_json, level="should")
+            self.check("compression.etag", "2.1", "Compressed JSON: Vary Accept-Encoding, an ETag of its own",
+                       self.c_compression_etag)
+            self.check("compression.files", "2.1", "A file is never sent with a Content-Encoding",
+                       self.c_compression_files)
+            self.check("budget.cold-start", "B.8", f"A cold start: 3 requests, {BUDGET >> 10} KiB of JSON at most",
+                       self.c_budget, level="should")
         if mine["changes"]:
             self.check("changes.token", "6.4", "Changes: no apps and a token, then from it", self.c_changes)
             self.check("changes.bad-token", "6.4", "An unknown since token gives 400 or 410", self.c_bad_since)
+        self.level = "titles"
         if mine["titles"]:
             self.check("titles.known", "7.1", "A title of the library is a valid sheet, of its platform",
                        self.c_title)
@@ -377,6 +592,7 @@ class Suite:
             self.check("titles.bulk-limit", "7.2", f"More than {TITLES_AT_ONCE} ids give 400", self.c_titles_limit)
             self.check("titles.changes", "7.3", "Title changes: a token, then from it", self.c_title_changes)
             self.check("titles.bad-token", "7.3", "An unknown since token gives 400 or 410", self.c_title_bad_since)
+        self.level = "homebrew"
         if mine["homebrew"]:
             self.check("homebrew.pages", "8.5", "The homebrew listing: pages, no manifest, each platform alone",
                        self.c_homebrew_pages)
@@ -400,6 +616,7 @@ class Suite:
             self.check("homebrew.updates-platform", "8.5", "Updates without a platform give 400",
                        self.c_homebrew_updates_unnamed)
             self.check("homebrew.unknown", "8.1", "An unknown id gives 404", self.c_homebrew_unknown)
+        self.level = "cheats"
         if mine["cheats"]:
             self.check("cheats.sets", "10", "Cheat sets: valid, ids unique, filtered as asked", self.c_cheats)
             self.check("cheats.text", "10", "A set's text: a file of its size and sha256, 1 MiB at most",
@@ -408,11 +625,15 @@ class Suite:
             self.check("cheats.write", "10", "Without cheats.write, writing is refused", self.c_cheat_write)
             self.check("cheats.write-cycle", "10", "With cheats.write: a set posted (201), listed, read, replaced "
                        "(204), deleted (204), then gone", self.c_cheat_write_cycle)
+        self.level = "requests"
         if mine["requests"]:
             self.check("requests.list", "11", "The account's requests: valid, of the platform asked",
                        self.c_requests)
             self.check("requests.create", "11", "A request: 201, then 200 with the same open request, listed",
                        self.c_request_create)
+            self.check("requests.delete", "11", "Withdrawing it: 204, then 404; an unknown one 404",
+                       self.c_request_delete)
+        self.level = "saves"
         if mine["saves"]:
             self.check("saves.limits", "4.2", "limits: save_body, save_size and saves_kept_per_title",
                        self.c_save_limits)
@@ -432,15 +653,34 @@ class Suite:
                 self.check("saves.cleanup", "9.1", "What the suite made is deleted (204), then gone (404)",
                            self.c_save_cleanup)
             else:
-                self.check("saves.upload", "9.3", "Resumable upload", lambda: _skip("the token lacks the scope saves"))
+                self.check("saves.upload", "9.3", "Resumable upload", lambda: _blind("the token lacks the scope saves"))
+        self.level = "admin"
+        self.check("admin.refused", "5.7", "Without the scope admin, the administration API is refused",
+                   self.c_admin_refused)
+        if mine["admin"]:
+            self.check("admin.users", "5.7", "Accounts: a valid page, no password", self.c_admin_users)
+            self.check("admin.users-write", "5.7", "An account made (201), made again (409), frozen (200)",
+                       self.c_admin_users_write)
+            self.check("admin.pairings", "5.7", "A keyed pairing listed with its code and key, approved for the scopes "
+                       "asked and the account's", self.c_admin_pairings)
+            self.check("admin.rating-cap", "5.6", "A rating cap hides what is above it, everywhere",
+                       self.c_admin_rating_cap)
+            self.check("admin.refuse", "5.7", "A pairing refused: its poll gives 410", self.c_admin_refuse)
+            self.check("admin.devices", "5.7", "Devices listed without their token; one revoked loses its access at "
+                       "once", self.c_admin_devices)
+            self.check("admin.invitations", "5.5", "An invitation: made, listed, redeemed once, then 410; revoked",
+                       self.c_admin_invitations)
+        self.level = "core"
         for family, (path, _) in BODIES.items():
             if mine[family] and (family != "saves" or "saves" in self.scopes()):
+                self.level = family if family in LEVELS else "core"
                 self.check(f"schema.refused.{family}", "3.2", f"POST {path} of schema 2 gives 422 unsupported_schema",
                            lambda f=family: self.c_schema_2(f))
+        self.level = "core"
         self.check("errors.unknown-route", "12", "An unknown route gives 404 not_found", self.c_unknown_route)
         self.check("discovery.reply", "4.1", "LAN discovery reply", self.c_discovery)
-        for section, rule in CLIENT_RULES:
-            self.check("client-rule", section, rule, client_rule)
+        for section, reqs, rule in CLIENT_RULES:
+            self.check("client-rule", section, f"{rule} [{' '.join(reqs)}]", client_rule)
         # Over every response the run saw.
         self.check("errors.problem", "12", "Every error is a valid application/problem+json", self.g_problems)
         self.check("errors.never-200", "12", "No error is sent with a 2xx status", self.g_never_200)
@@ -449,14 +689,44 @@ class Suite:
         self.check("documents.schema", "3.2", "Every document has an integer schema", self.g_schema)
         self.check("documents.type", "2", "Every document is application/json", self.g_ctype)
         self.check("documents.limits", "13", "Documents stay within the limits", self.g_limits)
+        self.check("documents.date", "5.4", "Every response carries Date", self.g_date)
+        self.check("deprecation.headers", "3.4", "Deprecation and Sunset, where sent, are of their forms",
+                   self.g_deprecation)
         self.check("caching.private", "14", "Authenticated answers: Cache-Control private, Vary Authorization",
                    self.g_private, level="should")
         return self.summary()
+
+    def levels(self):
+        """{level: None when reached, else why not} (SPEC.md § 17)."""
+        mine = self.features(self.hello)
+        out = {}
+        for level in LEVELS:
+            mine_results = [r for r in self.results if r[5] == level]
+            offered = mine["library"] if level == "core" else mine[level]
+            if not offered:
+                why = "not offered to this caller" + (" (run it with a token)" if self.args.token is None else "")
+            elif any(r[0] == "FAIL" for r in mine_results):
+                why = "a check failed"
+            elif any(r[6] for r in mine_results):
+                why = "checks left out for want of a token, a key or a scope"
+            elif level != "core" and out.get("core") is not None:
+                why = "Lantern Core is not reached"
+            else:
+                why = None
+            out[level] = why
+        return out
 
     def summary(self):
         counts = {s: sum(1 for r in self.results if r[0] == s) for s in ("PASS", "FAIL", "WARN", "SKIP")}
         print(f"\n{counts['PASS']} passed, {counts['FAIL']} failed, {counts['WARN']} warning(s), "
               f"{counts['SKIP']} skipped; {len(self.http.log)} requests.", file=self.out)
+        if self.hello is not None:
+            levels = self.levels()
+            reached = [LEVEL_NAMES[x] for x in LEVELS if levels[x] is None]
+            print(f"Levels reached (SPEC.md § 17, draft {VERSION[:3]}): " + (" ".join(reached) or "none"), file=self.out)
+            for x in LEVELS:
+                if levels[x] is not None:
+                    print(f"  not {LEVEL_NAMES[x]}: {levels[x]}", file=self.out)
         return 1 if counts["FAIL"] or not self.results else 0
 
     # Transport and handshake (SPEC.md § 2, 4).
@@ -536,7 +806,7 @@ class Suite:
     def c_frozen(self):
         if self.hello["account"]["state"] != "frozen":
             raise Skip("the account is not frozen")
-        on = [f for f, v in self.features(self.hello).items() if v and f != "pairing"]
+        on = [f for f, v in self.features(self.hello).items() if v and f not in ("pairing", "signatures")]
         expect(not on, f"features still offered: {', '.join(on)}")
         r = self.http.request("GET", self.api("/v1/apps?page_size=1"))
         self.expect_problem(r, [403], {"account_frozen"})
@@ -615,6 +885,8 @@ class Suite:
         anon = self.features(self.hello_anon)
         problems = []
         for family in FAMILIES:
+            if family not in PROBES:
+                continue
             try:
                 self.c_feature(family, "none", anon[family])
             except Fail as e:
@@ -1373,7 +1645,7 @@ class Suite:
 
     def c_requests(self):
         if "requests" not in self.scopes():
-            raise Skip("the token lacks the scope requests")
+            raise Blind("the token lacks the scope requests")
         _, doc = self.get_json(self.api("/v1/requests"), "requests")
         platform = self.sample_platform()
         _, mine = self.get_json(self.api("/v1/requests"), "requests", platform=platform)
@@ -1383,7 +1655,7 @@ class Suite:
 
     def c_request_create(self):
         if "requests" not in self.scopes():
-            raise Skip("the token lacks the scope requests")
+            raise Blind("the token lacks the scope requests")
         platform, tid = self.save_title()
         body = {"schema": 1, "platform": platform, "title_id": tid}
         r = self.http.request("POST", self.api("/v1/requests"), body=body, platform=platform)
@@ -1392,6 +1664,7 @@ class Suite:
         self.validate(first, "request", str(r))
         expect((first["platform"], first["title_id"], first["status"]) == (platform, tid, "open"),
                f"{r}: not an open request for {platform}/{tid}")
+        self.request_made = (platform, first["id"])
         r = self.http.request("POST", self.api("/v1/requests"), body=body, platform=platform)
         expect(r.status == 200, f"{r}: the same title asked again, expected 200 with the open request"
                + problem_detail(r))
@@ -1399,8 +1672,7 @@ class Suite:
         expect(r.json()["id"] == first["id"], f"{r}: another request, {r.json()['id']}, not {first['id']}")
         _, listed = self.get_json(self.api("/v1/requests"), "requests", platform=platform)
         expect(first["id"] in {q["id"] for q in listed["requests"]}, "the request is not listed")
-        return (f"request {first['id']} for {platform}/{tid}, left on the server: SPEC.md has no route to "
-                "delete one")
+        return f"request {first['id']} for {platform}/{tid}"
 
     # Save backups (SPEC.md § 9), with a token that holds `saves`.
 
@@ -1570,14 +1842,25 @@ class Suite:
         path = self.api(f"/v1/saves/{quote(tid, safe='')}")
         headers = {"Content-Type": "application/zip", "Lantern-Save-Kind": "account", "Lantern-Game-Version": "0",
                    "Lantern-Profile": quote("Léa"), "Lantern-Note": quote("Lantern conformance")}
-        r = self.http.request("POST", path, body=data, headers=headers, platform=platform)
-        self.expect_problem(r, [400], {"bad_request"})
+        auth = "Bearer " + self.args.token if self.args.token else None
+        if self.seed is None:
+            r = self.http.request("POST", path, body=data, headers=headers, platform=platform)
+            self.expect_problem(r, [400], {"bad_request"})
+            wrong = base64.b64encode(hashlib.sha256(data + b"!").digest()).decode()
+            r2 = self.http.request("POST", path, body=data, headers={**headers, "Content-Digest": f"sha-256=:{wrong}:"},
+                                   platform=platform)
+        else:
+            # A signed request with a body carries its Content-Digest (SPEC.md § 5.4): without it, the signature
+            # is refused; with another body's, signed, the body is.
+            signed = self.http.signed(self.seed, "POST", path, auth, data)
+            r = self.http.request("POST", path, body=data, platform=platform, sign=False,
+                                  headers={**headers, **{k: v for k, v in signed.items() if k != "Content-Digest"}})
+            self.expect_problem(r, [400, 401], {"bad_request", "signature_invalid"})
+            r2 = self.http.request("POST", path, body=data, platform=platform, sign=False,
+                                   headers={**headers, **self.http.signed(self.seed, "POST", path, auth, data + b"!")})
         self.keep(r)
-        wrong = base64.b64encode(hashlib.sha256(data + b"!").digest()).decode()
-        r = self.http.request("POST", path, body=data, headers={**headers, "Content-Digest": f"sha-256=:{wrong}:"},
-                              platform=platform)
-        self.expect_problem(r, [422], {"digest_mismatch"})
-        self.keep(r)
+        self.expect_problem(r2, [422], {"digest_mismatch"})
+        self.keep(r2)
         right = base64.b64encode(hashlib.sha256(data).digest()).decode()
         r = self.http.request("POST", path, body=data, headers={**headers, "Content-Digest": f"sha-256=:{right}:"},
                               platform=platform)
@@ -1651,6 +1934,483 @@ class Suite:
         expect(doc["port"] == port, f"port {doc['port']}, the server answers on {port}")
         return f"{doc['name']} from {peer[0]}, port {doc['port']}"
 
+    # Signed requests and device keys (SPEC.md § 5.4).
+
+    def c_auth(self):
+        mine, anon = self.features(self.hello), self.features(self.hello_anon)
+        expect(mine["signatures"] == anon["signatures"],
+               f"signatures is {anon['signatures']} without a token, {mine['signatures']} with one")
+        if anon["pairing"]:
+            expect(anon["signatures"] >= 1, "a server that pairs, and so issues tokens, offers signatures (§ 5.4)")
+        auth = self.hello.get("auth")
+        if mine["signatures"]:
+            expect(isinstance(auth, dict) and isinstance(auth.get("bearer_only"), bool)
+                   and isinstance(auth.get("skew"), int) and 60 <= auth["skew"] <= 900,
+                   f"auth {auth!r}: bearer_only and a skew of 60 to 900 seconds")
+        if self.args.token is not None:
+            expect(self.hello["account"].get("bound") == (self.seed is not None) or self.seed is None,
+                   "the token was used with its key, but account.bound is not true")
+        return f"signatures {mine['signatures']}" + (f", auth {auth}" if auth else "")
+
+    def bound(self):
+        """The suite's own token, bound to the key given; Blind without them, Skip on a server of no tokens."""
+        if not self.features(self.hello_anon)["signatures"]:
+            raise Skip("the server issues no tokens (no pairing): nothing to sign")
+        if self.args.token is None or self.seed is None or not self.hello["account"].get("bound"):
+            raise Blind("needs a token bound to a device key, and the key (--token, --key)")
+        return self.api("/v1/apps?page_size=1") if self.features(self.hello)["library"] else self.api("/v1/")
+
+    def expect_signature_code(self, r, code):
+        self.expect_problem(r, [401], {code})
+        expect((r.header("WWW-Authenticate") or "").lower().startswith("bearer"), f"{r}: no Bearer challenge")
+
+    def c_sig_unsigned(self):
+        path = self.bound()
+        r = self.http.request("GET", path, sign=False)
+        self.expect_signature_code(r, "signature_required")
+        self.unsigned = r
+
+    def c_sig_invalid(self):
+        path = self.bound()
+        other = client.ed25519_keypair()[0]
+        self.expect_signature_code(self.http.request("GET", path, seed=other), "signature_invalid")
+        headers = self.http.signed(self.seed, "GET", path + "&lantern=conformance" if "?" in path else path + "?x=1",
+                                   "Bearer " + self.args.token, None)
+        self.expect_signature_code(self.http.request("GET", path, headers=headers, sign=False), "signature_invalid")
+        params = headers["Signature-Input"].split(";", 1)[1]
+        swapped = {**self.http.signed(self.seed, "GET", path, "Bearer " + self.args.token, None),
+                   "Signature-Input": 'lantern=("@target-uri" "@method" "authorization");' + params}
+        self.expect_signature_code(self.http.request("GET", path, headers=swapped, sign=False), "signature_invalid")
+        return "another key, another target, components in another order"
+
+    def c_sig_stale(self):
+        path = self.bound()
+        skew = (self.hello.get("auth") or {}).get("skew", 300)
+        r = self.http.request("GET", path, created=int(time.time() + self.http.offset) - skew - 120)
+        self.expect_signature_code(r, "signature_expired")
+        r = self.http.request("GET", path, created=int(time.time() + self.http.offset) + skew + 120)
+        self.expect_signature_code(r, "signature_expired")
+        return f"created {skew + 120} s before and after the server's clock"
+
+    def c_sig_replayed(self):
+        path = self.bound()
+        nonce = client.new_nonce()
+        first = self.http.request("GET", path, nonce=nonce)
+        expect(first.status == 200, f"{first}, expected 200" + problem_detail(first))
+        self.expect_signature_code(self.http.request("GET", path, nonce=nonce), "signature_replayed")
+
+    def c_sig_digest(self):
+        self.bound()
+        if not self.features(self.hello)["library"]:
+            raise Skip("no route with a body to send (library)")
+        path = self.api("/v1/apps/missing?page_size=1")
+        body = json.dumps({"schema": 1, "installed": [], "want": ["base"]}).encode()
+        headers = self.http.signed(self.seed, "POST", path, "Bearer " + self.args.token, body + b" ")
+        r = self.http.request("POST", path, body=body, headers={**headers, "Content-Type": "application/json"},
+                              platform=self.sample_platform(), sign=False)
+        self.expect_problem(r, [422], {"digest_mismatch"})
+
+    def c_sig_accept(self):
+        r = getattr(self, "unsigned", None)
+        if r is None:
+            raise Skip("no unsigned request was refused (signatures.unsigned)")
+        if not (r.header("Accept-Signature") or "").startswith("lantern="):
+            raise Warn(f"{r}: no Accept-Signature for the label lantern")
+        return r.header("Accept-Signature")
+
+    def c_pairing_key(self):
+        # Not a key; then the identity and a point of order 8, keys of small order (SPEC.md § 5.4).
+        for public in ("AAAA", base64.b64encode(bytes([1]) + bytes(31)).decode(),
+                       base64.b64encode(bytes.fromhex("26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05")).decode()):
+            bad = {**PAIRING, "key": {"alg": "ed25519", "public_key": public}}
+            self.expect_problem(self.http.request("POST", self.api("/v1/pairing"), auth="none", body=bad), [400],
+                                {"bad_request"})
+        seed, public = client.ed25519_keypair()
+        r = self.http.request("POST", self.api("/v1/pairing"), auth="none",
+                              body={**PAIRING, "key": {"alg": "ed25519", "public_key": base64.b64encode(public).decode()}})
+        expect(r.status == 200, f"{r}, expected 200" + problem_detail(r))
+        self.validate(r.json(), "pairing-code", str(r))
+        poll = self.file_path(r.json()["poll"])
+        unsigned = self.http.request("GET", poll, auth="none")
+        self.expect_problem(unsigned, [401], {"signature_required", "signature_invalid"})
+        other = self.http.request("GET", poll, auth="none", seed=client.ed25519_keypair()[0])
+        self.expect_problem(other, [401], {"signature_invalid"})
+        signed = self.http.request("GET", poll, auth="none", seed=seed)
+        expect(signed.status in (202, 429), f"{signed}, expected 202 (or 429 after the refused polls)"
+               + problem_detail(signed))
+        return f"unsigned poll {unsigned.status} {unsigned.json().get('code')}, signed {signed.status}"
+
+    def c_bearer_only(self):
+        auth = self.hello.get("auth") or {}
+        if auth.get("bearer_only", True):
+            raise Skip("auth.bearer_only: the server still issues tokens without a key, as SPEC.md § 5.4 allows")
+        r = self.http.request("POST", self.api("/v1/pairing"), auth="none", body=PAIRING)
+        self.expect_problem(r, [400], {"key_required"})
+
+    def c_verify_complete(self):
+        if not self.pair:
+            raise Skip("no pairing code (pairing.code)")
+        verify, complete = urlsplit(self.pair["verify"]), urlsplit(self.pair.get("verify_complete") or "")
+        expect(complete.netloc == verify.netloc and complete.scheme == verify.scheme,
+               f"verify_complete {self.pair.get('verify_complete')!r} is not on verify's origin")
+        typed = re.sub(r"[^0-9A-Z]", "", self.pair["code"].upper())
+        expect(typed in re.sub(r"[^0-9A-Z]", "", unquote(complete.query).upper()),
+               f"verify_complete {self.pair['verify_complete']}: the code is not in its query")
+        if complete.netloc == self.origin.netloc:
+            r = self.http.request("GET", complete.path + "?" + complete.query, auth="none", raw=True)
+            expect(r.status == 200, f"{r}: the page verify_complete opens, expected 200")
+        return "opened; pairing.waiting then checks that it approved nothing (202)"
+
+    def c_verify_page(self):
+        if self.origin.scheme != "https":
+            raise Skip("plain HTTP: no key to compare")
+        if not self.http.peer_spki:
+            raise Skip("the server's certificate could not be read")
+        verify = urlsplit(self.pair["verify"]) if self.pair else None
+        if not verify or verify.netloc != self.origin.netloc:
+            raise Skip("verify is not on the server's origin")
+        r = self.http.request("GET", verify.path or "/", auth="none", raw=True)
+        expect(r.status == 200, f"{r}, expected the approval page")
+        short = self.http.peer_spki[:16].upper()
+        page = re.sub(r"[^0-9A-F]", "", r.body.decode("utf-8", "replace").upper())
+        expect(short in page, f"{r}: the page does not show {' '.join(short[i:i + 4] for i in range(0, 16, 4))}, "
+                              "the short fingerprint of the key the suite sees")
+        return " ".join(short[i:i + 4] for i in range(0, 16, 4))
+
+    # Languages, versions, limits, compression and the cold start.
+
+    def c_language_handshake(self):
+        if "motd" not in self.hello:
+            raise Skip("no motd")
+        expect(isinstance(self.hello.get("language"), str), "a motd without its language (§ 2.2)")
+        return f"{self.hello['language']}"
+
+    def c_language_problem(self):
+        r = self.http.request("GET", self.api("/v1/lantern-conformance-no-such-route"),
+                              headers={"Accept-Language": "fr-CA, fr;q=0.9, en;q=0.5"})
+        expect(r.status == 404 and r.is_json, f"{r}, expected a 404 problem")
+        doc = r.json()
+        expect(isinstance(doc.get("language"), str), f"{r}: the problem says no language")
+        notes = []
+        if not r.header("Content-Language"):
+            notes.append("no Content-Language")
+        if doc["language"].split("-")[0] not in ("fr", "en"):
+            notes.append(f"language {doc['language']}, neither one asked for nor English")
+        if notes:
+            raise Warn(f"{r}: " + "; ".join(notes))
+        return f"asked fr-CA, fr, en: {doc['language']}"
+
+    def c_accept_schema(self):
+        written = self.features(self.hello)["library"]
+        if not written:
+            raise Skip("no library to ask for")
+        r = self.http.request("GET", self.api("/v1/apps?page_size=1"), headers={"Accept-Schema": f"library={written}"})
+        if r.status != 200 or r.json().get("schema") != written:
+            raise Warn(f"{r} with Accept-Schema library={written}, expected 200 and schema {written}")
+
+    def c_depth(self):
+        nested = "[" * 40 + "]" * 40
+        body = ('{"schema":1,"installed":[],"want":["base"],"x-lantern-conformance":' + nested + "}").encode()
+        r = self.http.request("POST", self.api("/v1/apps/missing"), body=body,
+                              headers={"Content-Type": "application/json"}, platform=self.sample_platform())
+        self.expect_problem(r, [400, 413], {"bad_request", "too_large"})
+
+    def c_compression_json(self):
+        r = self.http.request("GET", self.api("/v1/apps?page_size=50"), headers={"Accept-Encoding": "zstd, br, gzip"})
+        expect(r.status == 200, f"{r}, expected 200" + problem_detail(r))
+        self.compressed = r
+        if r.encoding not in ("zstd", "br", "gzip"):
+            raise Warn(f"{r}: sent as it is, without zstd, br or gzip")
+        if r.encoding == "gzip":
+            raise Warn(f"{r}: gzip, but neither zstd nor br (§ 2.1)")
+        return f"{r.encoding}: {r.wire} bytes for {len(r.body)}"
+
+    def c_compression_etag(self):
+        r = getattr(self, "compressed", None)
+        if r is None or r.encoding not in ("zstd", "br", "gzip"):
+            raise Skip("the server compressed nothing")
+        expect("accept-encoding" in (r.header("Vary") or "").lower() or "*" in (r.header("Vary") or ""),
+               f"{r}: compressed, without Vary: Accept-Encoding")
+        plain = self.http.request("GET", self.api("/v1/apps?page_size=50"))
+        if r.header("ETag") and plain.header("ETag"):
+            expect(r.header("ETag") != plain.header("ETag"), f"{r}: the same ETag compressed ({r.encoding}) and not")
+        return f"Vary {r.header('Vary')}"
+
+    def c_compression_files(self):
+        apps = sorted(self.apps or ([self.sample] if self.sample else []), key=lambda a: a["size"])
+        if not apps or apps[0]["size"] > self.args.max_download:
+            raise Skip("no file to read within --max-download")
+        app = apps[0]
+        r = self.http.request("GET", self.file_path(app["file"]), headers={"Accept-Encoding": "zstd, br, gzip"},
+                              limit=app["size"], raw=True)
+        expect(r.status == 200, f"{r}, expected 200")
+        expect(r.encoding in ("", "identity"), f"{r}: a file sent with Content-Encoding {r.encoding}")
+        expect(hashlib.sha256(r.body).hexdigest() == app["sha256"], f"{r}: not the bytes of its sha256")
+
+    def c_budget(self):
+        enc = {"Accept-Encoding": "gzip"}
+        platform = self.sample_platform()
+        hello = self.http.request("GET", self.api("/v1/"), headers=enc, platform=platform)
+        page = self.http.request("GET", self.api("/v1/apps?page_size=50"), headers=enc, platform=platform)
+        expect(hello.status == 200 and page.status == 200, f"{hello}, {page}")
+        used = [hello, page]
+        ids = list(dict.fromkeys(a["title_id"] for a in page.json()["items"]))[:TITLES_AT_ONCE]
+        if ids and self.features(self.hello)["titles"]:
+            used.append(self.http.request("GET", self.api("/v1/titles?ids=" + ",".join(quote(i, safe="") for i in ids)),
+                                          headers=enc, platform=platform))
+        total = sum(r.wire for r in used)
+        detail = f"{len(used)} requests, {total} bytes as they travelled ({', '.join(str(r.wire) for r in used)})"
+        if total > BUDGET:
+            raise Warn(detail + f": above {BUDGET} (SPEC.md Annex B.8)")
+        return detail
+
+    # Requests withdrawn (SPEC.md § 11).
+
+    def c_request_delete(self):
+        made = getattr(self, "request_made", None)
+        if made is None:
+            raise Skip("no request was made (requests.create)")
+        platform, rid = made
+        path = self.api(f"/v1/requests/{quote(rid, safe='')}")
+        r = self.http.request("DELETE", path, platform=platform)
+        expect(r.status == 204, f"{r}, expected 204" + problem_detail(r))
+        self.request_made = None
+        _, listed = self.get_json(self.api("/v1/requests"), "requests", platform=platform)
+        expect(rid not in {q["id"] for q in listed["requests"]}, "still listed after DELETE")
+        self.expect_problem(self.http.request("DELETE", path, platform=platform), [404], {"not_found"})
+        self.expect_problem(self.http.request("DELETE", self.api("/v1/requests/r_lantern-conformance-"
+                                                                 + secrets.token_hex(6))), [404], {"not_found"})
+        return f"{rid} withdrawn"
+
+    # Administration, invitations and rating caps (SPEC.md § 5.5–5.7).
+
+    def admin_walk(self, path, schema):
+        items, cursor = [], None
+        for _ in range(1000):
+            url = path + ("&" if "?" in path else "?") + "page_size=100" + (
+                f"&cursor={quote(cursor, safe='')}" if cursor else "")
+            _, doc = self.get_json(url, schema)
+            items += doc["items"]
+            cursor = doc["next"]
+            if cursor is None:
+                return items
+        raise Fail(f"{path}: still a next page after 1000")
+
+    def c_admin_refused(self):
+        anon = self.http.request("GET", self.api("/v1/admin/users"), auth="none")
+        self.expect_problem(anon, [401, 404], {"unauthorized", "not_found"})
+        if "admin" in self.scopes():
+            return f"anonymously {anon.status}"
+        if self.args.token is None:
+            return f"anonymously {anon.status}; no token to try"
+        r = self.http.request("GET", self.api("/v1/admin/users"))
+        self.expect_problem(r, [403, 404], {"forbidden", "account_frozen", "not_found"})
+        return f"anonymously {anon.status}, without the scope {r.status}"
+
+    def c_admin_users(self):
+        users = self.admin_walk(self.api("/v1/admin/users"), "admin-users")
+        me = self.hello["account"].get("name")
+        expect(any(u["name"] == me for u in users), f"the caller's own account, {me}, is not listed")
+        return f"{len(users)} account(s)"
+
+    def c_admin_users_write(self):
+        if not self.args.admin_writes:
+            raise Skip("it makes an account the protocol cannot delete: run with --admin-writes")
+        name = "lantern-conformance-" + secrets.token_hex(4)
+        r = self.http.request("POST", self.api("/v1/admin/users"), body={"schema": 1, "name": name, "scopes": ["library"]})
+        expect(r.status == 201, f"{r}, expected 201" + problem_detail(r))
+        self.validate(r.json(), "admin-user", str(r))
+        again = self.http.request("POST", self.api("/v1/admin/users"), body={"schema": 1, "name": name, "scopes": []})
+        self.expect_problem(again, [409], {"conflict"})
+        r = self.http.request("PATCH", self.api(f"/v1/admin/users/{name}"), body={"schema": 1, "state": "frozen"})
+        expect(r.status == 200, f"{r}, expected 200" + problem_detail(r))
+        self.validate(r.json(), "admin-user", str(r))
+        expect(r.json()["state"] == "frozen", f"{r}: state {r.json()['state']}, frozen asked for")
+        listed = {u["name"]: u for u in self.admin_walk(self.api("/v1/admin/users"), "admin-users")}
+        expect(listed.get(name, {}).get("state") == "frozen", f"{name} is not listed frozen")
+        return f"{name}, left frozen"
+
+    def sheets(self):
+        """{(platform, title_id): ratings} of every title of the library, read with the suite's token."""
+        if getattr(self, "_sheets", None) is None:
+            apps = self.library()
+            out = {}
+            if self.features(self.hello)["titles"]:
+                for platform in sorted({a["platform"] for a in apps}):
+                    ids = sorted({a["title_id"] for a in apps if a["platform"] == platform})
+                    for i in range(0, len(ids), TITLES_AT_ONCE):
+                        _, doc = self.get_json(self.api("/v1/titles?ids=" + ",".join(
+                            quote(x, safe="") for x in ids[i:i + TITLES_AT_ONCE])), "titles", platform=platform)
+                        out.update({(t["platform"], t["title_id"]): t.get("ratings", []) for t in doc["titles"]})
+            self._sheets = out
+        return self._sheets
+
+    def pick_cap(self):
+        """A cap that hides some of the library and shows the rest, when its ratings allow (SPEC.md § 5.6)."""
+        ages = sorted({a for r in self.sheets().values() for a in [client.rating_age(r, {"age": 0})] if a is not None})
+        if len(ages) >= 2:
+            return {"age": ages[0]}
+        if ages and ages[0] >= 1:
+            return {"age": ages[0] - 1}
+        return {"age": 18, "unrated": "hide"}
+
+    def keyed_pairing(self, scopes, invitation=None):
+        seed, public = client.ed25519_keypair()
+        body = {"schema": 1, "device": "Lantern conformance " + secrets.token_hex(3), "scopes": scopes,
+                "key": {"alg": "ed25519", "public_key": base64.b64encode(public).decode()}}
+        if invitation:
+            body["invitation"] = invitation
+        return seed, public, self.http.request("POST", self.api("/v1/pairing"), auth="none", body=body)
+
+    def waiting(self, code):
+        items = self.admin_walk(self.api("/v1/admin/pairings"), "admin-pairings")
+        found = next((p for p in items if re.sub(r"\W", "", p["code"]) == re.sub(r"\W", "", code)), None)
+        expect(found is not None, f"the pairing of code {code} is not among those waiting")
+        return found
+
+    def collect(self, poll, seed):
+        """The token document of an approved pairing, polled with its key."""
+        for _ in range(20):
+            r = self.http.request("GET", self.file_path(poll), auth="none", seed=seed)
+            if r.status == 200:
+                self.validate(r.json(), "pairing-token", str(r))
+                return r.json()
+            expect(r.status in (202, 429), f"{r}, expected the token" + problem_detail(r))
+            time.sleep(min(int(r.header("Retry-After") or 1), 5))
+        raise Fail("no token after 20 polls")
+
+    def c_admin_pairings(self):
+        seed, public, r = self.keyed_pairing(["library"])
+        expect(r.status == 200, f"{r}, expected 200" + problem_detail(r))
+        code = r.json()
+        found = self.waiting(code["code"])
+        expect(found.get("key") == client.key_fingerprint(base64.b64encode(public).decode()),
+               f"the waiting pairing's key {found.get('key')}, not the short fingerprint of the key sent")
+        cap = self.pick_cap()
+        decision = {"schema": 1, "decision": "approve", "scopes": ["library", "saves"], "rating_cap": cap}
+        r = self.http.request("POST", self.api(f"/v1/admin/pairings/{quote(found['id'], safe='')}"), body=decision)
+        expect(r.status == 204, f"{r}, expected 204" + problem_detail(r))
+        doc = self.collect(code["poll"], seed)
+        expect(doc["scopes"] == ["library"], f"scopes {doc['scopes']}: at most those asked for (library)")
+        expect(doc.get("bound") is True, "the token of a pairing with a key is not bound")
+        self.capped = {"token": doc["token"], "seed": seed, "public": public, "cap": cap,
+                       "device": found["device"], "rating_cap": doc.get("rating_cap")}
+        return f"{found['device']}, approved for library with the cap {cap}"
+
+    def as_capped(self, method, path, platform=None, raw=False, body=None):
+        c = self.capped
+        return self.http.request(method, path, token=c["token"], seed=c["seed"], platform=platform, raw=raw, body=body)
+
+    def c_admin_rating_cap(self):
+        c = getattr(self, "capped", None)
+        if c is None:
+            raise Skip("no capped device (admin.pairings)")
+        cap = c["cap"]
+        expect(c["rating_cap"] == cap, f"the token's document says rating_cap {c['rating_cap']}, approved {cap}")
+        r = self.as_capped("GET", self.api("/v1/"))
+        expect(r.status == 200 and r.json()["account"].get("rating_cap") == cap,
+               f"{r}: account.rating_cap {r.json().get('account', {}).get('rating_cap')}, expected {cap}")
+        sheets, apps = self.sheets(), self.library()
+        hidden = {a["id"] for a in apps if client.above_cap(sheets.get((a["platform"], a["title_id"]), []), cap)}
+        seen, cursor = [], None
+        while True:
+            r = self.as_capped("GET", self.api("/v1/apps?page_size=500" + (f"&cursor={quote(cursor, safe='')}"
+                                                                           if cursor else "")))
+            expect(r.status == 200, f"{r}" + problem_detail(r))
+            seen += [a["id"] for a in r.json()["items"]]
+            cursor = r.json()["next"]
+            if cursor is None:
+                break
+        expect(set(seen) == {a["id"] for a in apps} - hidden,
+               f"the capped listing has {len(seen)} apps, {len(apps) - len(hidden)} expected")
+        hidden_titles = {(a["platform"], a["title_id"]) for a in apps if a["id"] in hidden}
+        for platform, tid in sorted(hidden_titles)[:3]:
+            one = self.as_capped("GET", self.api(f"/v1/titles/{quote(tid, safe='')}"), platform=platform)
+            self.expect_problem(one, [404], {"not_found"})
+            bulk = self.as_capped("GET", self.api(f"/v1/titles?ids={quote(tid, safe='')}"), platform=platform)
+            expect(bulk.status == 200 and tid in bulk.json()["unknown"], f"{bulk}: {tid} is not unknown to the cap")
+        for a in [a for a in apps if a["id"] in hidden][:2]:
+            f = self.as_capped("HEAD", self.file_path(a["file"]), raw=True)
+            expect(f.status in (404, 410), f"{f}: the file of a hidden app, expected 404")
+        platform = self.sample_platform()
+        r = self.as_capped("POST", self.api("/v1/apps/missing?page_size=500"), platform=platform,
+                           body={"schema": 1, "installed": [], "want": ["base"]})
+        expect(r.status == 200, f"{r}" + problem_detail(r))
+        expect(not ({a["id"] for a in r.json()["items"]} & hidden), "what is missing holds hidden apps")
+        homebrew = [e for e in (self.homebrew or []) if client.above_cap(e.get("ratings", []), cap)]
+        if self.features(self.hello)["homebrew"]:
+            r = self.as_capped("GET", self.api("/v1/homebrew?page_size=500"))
+            expect(r.status == 200, f"{r}" + problem_detail(r))
+            shown = {(e["platform"], e["id"]) for e in r.json()["items"]}
+            expect(not (shown & {(e["platform"], e["id"]) for e in homebrew}), "the homebrew listing holds hidden ones")
+        return (f"cap {cap}: {len(hidden)} of {len(apps)} apps hidden, {len(homebrew)} homebrew; titles 404 and "
+                "unknown, files 404, missing without them")
+
+    def c_admin_refuse(self):
+        seed, _, r = self.keyed_pairing(["library"])
+        expect(r.status == 200, f"{r}, expected 200" + problem_detail(r))
+        found = self.waiting(r.json()["code"])
+        d = self.http.request("POST", self.api(f"/v1/admin/pairings/{quote(found['id'], safe='')}"),
+                              body={"schema": 1, "decision": "refuse"})
+        expect(d.status == 204, f"{d}, expected 204" + problem_detail(d))
+        poll = self.http.request("GET", self.file_path(r.json()["poll"]), auth="none", seed=seed)
+        self.expect_problem(poll, [410], {"gone"})
+
+    def c_admin_devices(self):
+        devices = self.admin_walk(self.api("/v1/admin/devices"), "admin-devices")
+        c = getattr(self, "capped", None)
+        if c is None:
+            raise Skip("no device of the suite's own to revoke (admin.pairings)")
+        mine = client.key_fingerprint(base64.b64encode(c["public"]).decode())
+        found = next((d for d in devices if d.get("key") == mine), None)
+        expect(found is not None and found["bound"] and found.get("rating_cap") == c["cap"],
+               "the device the suite paired is not listed, bound, with its cap")
+        path = self.api(f"/v1/admin/devices/{quote(found['id'], safe='')}")
+        r = self.http.request("DELETE", path)
+        expect(r.status == 204, f"{r}, expected 204" + problem_detail(r))
+        after = self.as_capped("GET", self.api("/v1/"))
+        self.expect_problem(after, [401], {"unauthorized"})
+        self.expect_problem(self.http.request("DELETE", path), [404], {"not_found"})
+        self.capped = None
+        return f"{len(devices)} device(s); {found['id']} revoked, its token then 401"
+
+    def c_admin_invitations(self):
+        me = self.hello["account"]["name"]
+        expires = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        body = {"schema": 1, "user": me, "scopes": ["library"], "expires": expires, "devices": 1,
+                "note": "Lantern conformance"}
+        too_many = self.http.request("POST", self.api("/v1/admin/invitations"), body={**body, "devices": 101})
+        self.expect_problem(too_many, [400], {"bad_request"})
+        r = self.http.request("POST", self.api("/v1/admin/invitations"), body=body)
+        expect(r.status == 201, f"{r}, expected 201" + problem_detail(r))
+        inv = r.json()
+        self.validate(inv, "invitation", str(r))
+        path = self.api(f"/v1/admin/invitations/{quote(inv['id'], safe='')}")
+        try:
+            link = urlsplit(inv["link"])
+            expect("invitation=" in link.query, f"link {inv['link']}: no invitation in its query")
+            listed = self.admin_walk(self.api("/v1/admin/invitations"), "invitations")
+            expect(inv["id"] in {i["id"] for i in listed}, "the invitation is not listed")
+            seed, _, p = self.keyed_pairing(["library", "saves"], inv["code"])
+            expect(p.status == 200, f"{p}: redeeming the invitation, expected 200" + problem_detail(p))
+            token = self.collect(p.json()["poll"], seed)
+            expect(set(token["scopes"]) <= {"library"}, f"scopes {token['scopes']}: beyond the invitation's")
+            _, _, again = self.keyed_pairing(["library"], inv["code"])
+            self.expect_problem(again, [410], {"gone"})
+            _, _, unknown = self.keyed_pairing(["library"], "ZZZZ-ZZZZ-ZZZZ-ZZZZ")
+            self.expect_problem(unknown, [410], {"gone"})
+        finally:
+            gone = self.http.request("DELETE", path)
+        expect(gone.status == 204, f"{gone}, expected 204" + problem_detail(gone))
+        listed = self.admin_walk(self.api("/v1/admin/invitations"), "invitations")
+        expect(inv["id"] not in {i["id"] for i in listed}, "the invitation is still listed after DELETE")
+        devices = self.admin_walk(self.api("/v1/admin/devices"), "admin-devices")
+        paired = [d for d in devices if d.get("invitation") == inv["id"]]
+        expect(len(paired) == 1, f"{len(paired)} device(s) paired by an invitation of 1 device")
+        for d in paired:
+            self.http.request("DELETE", self.api(f"/v1/admin/devices/{quote(d['id'], safe='')}"))
+        return f"{inv['id']}: redeemed once, then 410; revoked; its device revoked"
+
     # Over every response.
 
     def g_problems(self):
@@ -1712,6 +2472,34 @@ class Suite:
             bad += [f"{r}: {p}" for p in limit_problems(doc)]
         expect(not bad, "\n".join(bad[:8]))
 
+    def g_date(self):
+        bad = [str(r) for r in self.http.log if not r.header("Date")]
+        expect(not bad, "responses without Date:\n" + "\n".join(bad[:8]))
+        return f"{len(self.http.log)} response(s)"
+
+    def g_deprecation(self):
+        bad, seen = [], 0
+        for r in self.http.log:
+            dep, sunset = r.header("Deprecation"), r.header("Sunset")
+            if dep is None and sunset is None:
+                continue
+            seen += 1
+            when = None
+            if dep is not None:
+                if not re.fullmatch(r"@-?[0-9]{1,15}", dep.strip()):
+                    bad.append(f"{r}: Deprecation {dep!r} is not @<Unix seconds> (RFC 9745)")
+                else:
+                    when = int(dep.strip()[1:])
+            if sunset is not None:
+                try:
+                    end = parsedate_to_datetime(sunset).timestamp()
+                    if when is not None and end < when:
+                        bad.append(f"{r}: Sunset before Deprecation")
+                except (TypeError, ValueError):
+                    bad.append(f"{r}: Sunset {sunset!r} is not an HTTP date (RFC 8594)")
+        expect(not bad, "\n".join(bad[:8]))
+        return f"{seen} response(s) deprecated" if seen else "nothing deprecated"
+
     def g_private(self):
         bad = []
         for r in self.http.log:
@@ -1733,6 +2521,41 @@ def client_rule():
 
 def _skip(why):
     raise Skip(why)
+
+
+def _blind(why):
+    raise Blind(why)
+
+
+def reqs_of(cid):
+    """The requirement ids a check covers (REQS), by its id or the family of ids it belongs to."""
+    if cid in REQS:
+        return REQS[cid]
+    for prefix in ("features", "apps.pages", "schema.refused"):
+        if cid.startswith(prefix + "."):
+            return REQS[prefix]
+    return []
+
+
+def spki_of(der):
+    """The SHA-256 of a DER certificate's SubjectPublicKeyInfo (SPEC.md § 5.3), hex."""
+    def element(pos):
+        tag, length, pos = der[pos], der[pos + 1], pos + 2
+        if length & 0x80:
+            n = length & 0x7F
+            length, pos = int.from_bytes(der[pos:pos + n], "big"), pos + n
+        return pos, pos + length, tag
+    start, _, _ = element(0)
+    pos, end, _ = element(start)
+    fields = []
+    while pos < end:
+        _, after, tag = element(pos)
+        fields.append((pos, after, tag))
+        pos = after
+    if fields[0][2] == 0xA0:
+        fields = fields[1:]
+    begin, after, _ = fields[5]
+    return hashlib.sha256(der[begin:after]).hexdigest()
 
 
 def loopback(host):
@@ -1782,7 +2605,7 @@ def check_archive(where, data, manifest):
                 with z.open(info) as f:
                     got = hashlib.sha256(f.read(m["size"] + 1)).hexdigest()
                 expect(got == m["sha256"], f"{where}: {m['path']} does not match its manifest sha256")
-    except (zipfile.BadZipFile, NotImplementedError, RuntimeError, EOFError, ValueError) as e:
+    except (zipfile.BadZipFile, NotImplementedError, RuntimeError, EOFError, ValueError, zlib.error) as e:
         raise Fail(f"{where}: not an archive a client can read ({e})") from None
 
 
@@ -1833,6 +2656,9 @@ def main(argv=None, out=None):
     p = argparse.ArgumentParser(prog="conformance/run.py", description="Checks a Lantern server against SPEC.md.")
     p.add_argument("url", help="the server, e.g. https://shelf.example.org/")
     p.add_argument("--token", help="a device's token, from pairing (Authorization: Bearer)")
+    p.add_argument("--key", help="the file of the token's device key: its 32-byte Ed25519 seed, base64 (SPEC.md § 5.4)")
+    p.add_argument("--admin-writes", action="store_true",
+                   help="with the scope admin, also make an account (left frozen: the protocol deletes none)")
     p.add_argument("--base", help="the base path, when the handshake should not decide it")
     p.add_argument("--cafile", help="CA certificates to trust (PEM)")
     p.add_argument("--insecure", action="store_true", help="do not verify the certificate (a LAN server)")
