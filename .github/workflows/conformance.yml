@@ -1,0 +1,39 @@
+# The reference server (server/) against the conformance suite
+# (conformance/): the unit tests, then the suite run as a server author
+# would, against the server started on a tiny fictional library.
+name: conformance
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", ".github/workflows/conformance.yml" ]
+  pull_request:
+    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", ".github/workflows/conformance.yml" ]
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The schema checker
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet -r tools/requirements.txt
+      - name: Unit tests (server and suite)
+        run: '"$RUNNER_TEMP/venv/bin/python" -m unittest discover -s tests -v'
+      - name: The suite against the reference server
+        run: |
+          python3 tests/library.py "$RUNNER_TEMP/library"
+          # The server needs only the standard library: the system Python runs it.
+          python3 -m server --library "$RUNNER_TEMP/library" --port 8080 --quiet \
+            --discovery --discovery-port 18465 &
+          for _ in $(seq 50); do
+            curl -fsS http://127.0.0.1:8080/.well-known/lantern >/dev/null && break
+            sleep 0.2
+          done
+          "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8080/ \
+            --discover 127.0.0.1 --discover-port 18465

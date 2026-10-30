@@ -23,9 +23,35 @@ issues are welcome, from client and server authors especially.
   [examples](examples/v1/), and an **[OpenAPI description](openapi.yaml)**;
   `tools/check_schemas.py` checks them, in CI too.
 
-Coming here: a conformance suite to run against a server (`conformance/`)
-and a small reference server (`server/`). PlayShelf, a homebrew package
-manager for the Nintendo Switch, will be the first client.
+PlayShelf, a homebrew package manager for the Nintendo Switch, will be the
+first client.
+
+## Conformance suite and reference server
+
+The **[conformance suite](conformance/run.py)** checks a server from
+outside, against every MUST it can see: handshake and declared features,
+documents against the schemas, cursor pages, what a console is missing,
+ranges, digests, errors, limits. Each check says PASS, FAIL, WARN (a SHOULD)
+or SKIP, with its SPEC.md section; the exit code is 1 when one fails.
+
+```sh
+pip install -r tools/requirements.txt   # jsonschema, for the schema checks
+python3 conformance/run.py https://shelf.example.org/ --user lea --password …
+```
+
+The **[reference server](server/lantern_server.py)** serves a folder of
+packages (`.nsp`, `.nsz`, `.xci`, `.xcz`), identified by a `library.json` or
+by the `[title id][vN]` in their names, with the families `library`,
+`changes` and `media` (names only); the others stay at 0. Standard library
+only; a reference, not a product:
+
+```sh
+python3 -m server --library ~/games --port 8080 [--users users.json]
+```
+
+Without `--tls-cert` and `--tls-key` it speaks plain HTTP, for local
+testing only. `python3 -m unittest discover -s tests` runs the suite against
+it on a tiny fictional library, as the `conformance` workflow does.
 
 ## Licences
 
