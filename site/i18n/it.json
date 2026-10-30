@@ -59,7 +59,7 @@
   "client_text": "Trova i server sulla rete locale, leggi le loro funzioni, sfoglia la libreria pagina per pagina e verifica lo SHA-256 di ogni download. Un client sta in qualche centinaio di righe di C++.",
   "schemas_title": "Schemi ed esempi",
   "schemas_text": "Uno schema JSON per ogni documento, un esempio di ciascuno e una descrizione OpenAPI delle rotte, per verificarci i tuoi.",
-  "implement_soon": "In arrivo nel repository: una suite di conformità da eseguire contro un server e un piccolo server di riferimento. Solo un'implementazione che supera la suite dovrebbe dirsi compatibile con Lantern.",
+  "implement_soon": "Nel repository: una suite di conformità da eseguire contro un server (conformance/) e un piccolo server di riferimento che la supera (server/). Solo un'implementazione che supera la suite dovrebbe dirsi compatibile con Lantern.",
   "first_client": "Il primo client sarà PlayShelf, un gestore di pacchetti homebrew per Nintendo Switch.",
   "own_title": "Per i tuoi giochi",
   "own_text": "Lantern porta ciò che contiene il tuo server, tra lui e la tua console. Non trova nulla e non distribuisce nulla: non è un modo per procurarsi giochi, e i suoi server sono per i giochi che possiedi.",

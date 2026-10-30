@@ -59,7 +59,7 @@
   "client_text": "Find servers on the local network, read their features, page through the library and check each download's SHA-256. A client fits in a few hundred lines of C++.",
   "schemas_title": "Schemas and examples",
   "schemas_text": "A JSON Schema for every document, an example of each, and an OpenAPI description of the routes, to check your own against.",
-  "implement_soon": "Coming to the repository: a conformance suite to run against a server, and a small reference server. Only an implementation that passes the suite should call itself Lantern-compatible.",
+  "implement_soon": "In the repository: a conformance suite to run against a server (conformance/), and a small reference server that passes it (server/). Only an implementation that passes the suite should call itself Lantern-compatible.",
   "first_client": "The first client will be PlayShelf, a homebrew package manager for the Nintendo Switch.",
   "own_title": "For your own games",
   "own_text": "Lantern carries what your server holds, between it and your console. It finds nothing and distributes nothing: it is not a way to get games, and its servers are for the games you own.",

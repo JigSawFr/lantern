@@ -59,7 +59,7 @@
   "client_text": "Trouvez les serveurs du réseau local, lisez leurs fonctions, parcourez la ludothèque page à page et vérifiez le SHA-256 de chaque téléchargement. Un client tient en quelques centaines de lignes de C++.",
   "schemas_title": "Schémas et exemples",
   "schemas_text": "Un schéma JSON pour chaque document, un exemple de chacun et une description OpenAPI des routes, pour y confronter les vôtres.",
-  "implement_soon": "À venir dans le dépôt : une suite de conformité à lancer contre un serveur, et un petit serveur de référence. Seule une implémentation qui passe la suite devrait se dire compatible Lantern.",
+  "implement_soon": "Dans le dépôt : une suite de conformité à lancer contre un serveur (conformance/), et un petit serveur de référence qui la passe (server/). Seule une implémentation qui passe la suite devrait se dire compatible Lantern.",
   "first_client": "Le premier client sera PlayShelf, un gestionnaire de paquets homebrew pour la Nintendo Switch.",
   "own_title": "Pour vos propres jeux",
   "own_text": "Lantern transporte ce que contient votre serveur, entre lui et votre console. Il ne trouve rien et ne distribue rien : ce n'est pas un moyen d'obtenir des jeux, et ses serveurs sont faits pour les jeux que vous possédez.",

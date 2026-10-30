@@ -59,7 +59,7 @@
   "client_text": "在區域網路中找到伺服器，讀取它們的功能，逐頁瀏覽遊戲庫，並檢查每次下載的 SHA-256。幾百行 C++ 就能寫好一個用戶端。",
   "schemas_title": "Schema 與範例",
   "schemas_text": "每份文件都有 JSON Schema 和範例，還有路由的 OpenAPI 描述，可用來核對你的實作。",
-  "implement_soon": "即將加入儲存庫：可針對伺服器執行的一致性測試套件，以及一個小型參考伺服器。只有通過該套件的實作才應自稱相容 Lantern。",
+  "implement_soon": "儲存庫中已有：可針對伺服器執行的一致性測試套件（conformance/），以及一個通過該套件的小型參考伺服器（server/）。只有通過該套件的實作才應自稱相容 Lantern。",
   "first_client": "第一個用戶端將是 PlayShelf，一款 Nintendo Switch 的自製軟體套件管理器。",
   "own_title": "為了你自己的遊戲",
   "own_text": "Lantern 只在你的伺服器和你的主機之間傳遞伺服器上已有的內容。它不尋找任何東西，也不散布任何東西：它不是取得遊戲的途徑，伺服器是為你擁有的遊戲準備的。",

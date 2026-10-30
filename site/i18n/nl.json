@@ -59,7 +59,7 @@
   "client_text": "Vind servers op het lokale netwerk, lees hun functies, blader pagina voor pagina door de bibliotheek en controleer de SHA-256 van elke download. Een client past in een paar honderd regels C++.",
   "schemas_title": "Schema's en voorbeelden",
   "schemas_text": "Een JSON-schema voor elk document, van elk een voorbeeld en een OpenAPI-beschrijving van de routes, om je eigen werk aan te toetsen.",
-  "implement_soon": "Binnenkort in de repository: een conformiteitssuite om tegen een server te draaien en een kleine referentieserver. Alleen een implementatie die de suite doorstaat, mag zich Lantern-compatibel noemen.",
+  "implement_soon": "In de repository: een conformiteitssuite om tegen een server te draaien (conformance/) en een kleine referentieserver die haar doorstaat (server/). Alleen een implementatie die de suite doorstaat, mag zich Lantern-compatibel noemen.",
   "first_client": "De eerste client wordt PlayShelf, een homebrew-pakketbeheerder voor de Nintendo Switch.",
   "own_title": "Voor je eigen games",
   "own_text": "Lantern brengt wat je server heeft heen en weer tussen hem en je console. Het vindt niets en verspreidt niets: het is geen manier om aan games te komen, en de servers zijn voor de games die je bezit.",
