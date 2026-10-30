@@ -138,8 +138,9 @@ the same document, with or without credentials:
 ### 5.1 HTTP Basic
 
 Every server MUST accept HTTP Basic over TLS. A missing or wrong password,
-or an unknown token (§ 5.2), gives `401` with `WWW-Authenticate: Basic realm="…"`; a right password
-without the scope gives `403`.
+or an unknown token (§ 5.2), gives `401` with
+`WWW-Authenticate: Basic realm="…"`; a right password without the scope
+gives `403`.
 
 ### 5.2 Pairing (feature `pairing`)
 
