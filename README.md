@@ -92,4 +92,8 @@ Lantern-compatible.
 
 ## Contact
 
-Issues and pull requests on this repository.
+Issues and pull requests on this repository: see
+[CONTRIBUTING.md](CONTRIBUTING.md), which also says how to propose a
+change to the protocol. A security flaw is reported privately, as
+[SECURITY.md](SECURITY.md) says. Everyone follows the
+[code of conduct](CODE_OF_CONDUCT.md).

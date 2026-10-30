@@ -1,0 +1,43 @@
+name: Proposal
+description: A change to the protocol (routes, documents, codes, rules).
+title: "proposal: "
+labels: [proposal]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What a client or a server cannot do today, with a real case.
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: The change
+      description: Routes, fields, codes, and the sections of SPEC.md it touches.
+    validations:
+      required: true
+  - type: dropdown
+    id: schema
+    attributes:
+      label: Effect on schema (§ 3)
+      options:
+        - None (wording only)
+        - An addition (schema stays)
+        - A change of meaning (schema goes up)
+        - A new family or route
+    validations:
+      required: true
+  - type: textarea
+    id: compat
+    attributes:
+      label: Older clients and servers
+      description: What one that ignores the change does, and how long the older schema stays served.
+    validations:
+      required: true
+  - type: textarea
+    id: suite
+    attributes:
+      label: How the conformance suite checks it
+    validations:
+      required: true
