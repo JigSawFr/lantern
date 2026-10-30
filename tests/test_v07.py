@@ -231,6 +231,26 @@ class Browsers(unittest.TestCase):
         self.assertEqual(json.loads(self.srv.get("/api/lantern/v1/apps?platform=web")[2])["items"], [])
 
 
+class Images(unittest.TestCase):
+    """L-7.1-2: the suite finds the images of the server's origin whichever app the server lists first."""
+
+    def test_first_app_without_images(self):
+        """The android app, whose title has no image, listed first: the switch title's icon is still checked."""
+        srv = Running()
+        self.addCleanup(srv.close)
+        meta = json.loads((srv.root / "library.json").read_text())
+        for entry in meta["apps"]:
+            if entry.get("platform") == "android":
+                entry["name"] = "Aurora Tales"     # before "Frostline Tales" by name, whatever the ids
+        (srv.root / "library.json").write_text(json.dumps(meta))
+        srv.lib.scan()
+        first = json.loads(srv.get("/api/lantern/v1/apps")[2])["items"][0]
+        self.assertEqual(first["platform"], "android")
+        code, report = run_suite(srv.url)
+        self.assertEqual(code, 0, report)
+        self.assertRegex(report, r"PASS  § 7.1\s+titles[.]images ")
+
+
 class Pairing(unittest.TestCase):
     """L-5.2-15: a client polling faster than interval is not shut out."""
 

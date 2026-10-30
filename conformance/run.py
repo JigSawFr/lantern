@@ -2838,7 +2838,8 @@ def bind_checks():
                     check_repr_digest=lambda r, d: check_repr_digest(r, d), problem_detail=lambda r: problem_detail(r))
     static_check.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Client=Client, client=client,
                       limit_problems=lambda doc: limit_problems(doc))
-    checks_v06.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
+    checks_v06.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r),
+                    TITLES_AT_ONCE=TITLES_AT_ONCE)
     checks_v07.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
 
 
