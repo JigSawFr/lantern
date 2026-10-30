@@ -36,7 +36,7 @@ The key words MUST, SHOULD and MAY are used as in RFC 2119.
    download is checked against it. File names carry no meaning.
 6. **Secure by default.** HTTPS everywhere, a key pinned at pairing on the
    LAN, a revocable token per device. No password ever goes through the
-   console. A homebrew writes only where its manifest says and the user
+   device. A homebrew writes only where its manifest says and the user
    allows.
 7. **HTTP as it is.** Real status codes, `application/problem+json` errors,
    ranges, `ETag`, `Repr-Digest`, `Content-Digest`.
@@ -100,7 +100,7 @@ Lantern has its own discovery, on UDP port **47115**:
 
 - The client sends the datagram `{"schema":1,"lantern":"discover"}` to port
   47115 as a directed broadcast (the subnet's broadcast address, such as
-  `192.168.1.255`: the Switch drops `255.255.255.255`).
+  `192.168.1.255`: some consoles drop `255.255.255.255`).
 - A server answers unicast, to the datagram's source, with:
 
   ```json
@@ -200,6 +200,10 @@ vendor's own begins with `x-<vendor>-`.
   overrides the header.
 - Responses that depend on the platform carry `Vary: Lantern-Platform`
   (§ 14).
+- A platform's profile (Annex A) says what the core leaves open. On a
+  platform with no profile yet (Annex A.6), a server MAY serve apps and
+  homebrew under the core's rules alone; a client MUST NOT install
+  anything of a platform it has no profile for.
 
 ## 5. Authentication
 
@@ -221,7 +225,7 @@ vendor's own begins with `x-<vendor>-`.
 
 ### 5.2 Pairing (feature `pairing`)
 
-How a console gets its token, modelled on the OAuth device flow (RFC 8628)
+How a device gets its token, modelled on the OAuth device flow (RFC 8628)
 without OAuth's other parts. A private server MUST offer it; a public one
 MAY, for what it gives beyond anonymous calls.
 
@@ -229,14 +233,14 @@ MAY, for what it gives beyond anonymous calls.
    "scopes":["library","saves"]}`, without a token → `200` `{"schema":1,
    "code":"KQ4M-7TXD", "verify":"https://shelf.example.org/pair",
    "poll":"<base>/v1/pairing/p_…", "interval":5, "expires":600}`.
-2. The console shows the code, the address `verify`, and the short
+2. The device shows the code, the address `verify`, and the short
    fingerprint of the server's key (§ 5.3). The user opens `verify` on
    another device, signs in there by the server's own means, enters the
    code, compares the fingerprint, and approves the device and its scopes.
    Approval happens only on the server's side (its web page, or any admin
-   means it has), never on the console: no password goes through the
-   console, and the protocol has no route to approve.
-3. The console polls `GET poll` every `interval` seconds: `202` while
+   means it has), never on the device: no password goes through it, and
+   the protocol has no route to approve.
+3. The device polls `GET poll` every `interval` seconds: `202` while
    waiting, then `200` `{"schema":1, "token":"et_…", "scopes":[…]}`, or
    `410` when refused, expired, already collected or unknown. The scopes
    are those approved, at most those asked for and those of the account.
@@ -262,7 +266,7 @@ more. Otherwise (a LAN server with a self-signed certificate):
 - The fingerprint is the SHA-256 of the server's public key, its DER
   `SubjectPublicKeyInfo` (SPKI). Its short form, for people, is its first 16
   hex digits, upper-case, in groups of 4: `3F9A 1C07 B2E4 55D0`.
-- During pairing, the console shows the short form of the key it sees,
+- During pairing, the device shows the short form of the key it sees,
   next to the code; the server's approval page shows the short form of its
   own. The user approves only when they match.
 - Once paired, the client pins the whole SHA-256 for that server's `uid`. It
@@ -311,10 +315,6 @@ An app is one installable package: a base game, an update or an add-on.
 - `sha256`: of the file as served, lower-case hex. Required: a server hashes
   a file before it lists it.
 
-On a platform with no profile yet (Annex A.6), a server MAY serve apps under
-these rules alone; a client MUST NOT install an app, or a homebrew, of a
-platform it has no profile for.
-
 ### 6.2 Listing
 
 `GET <base>/v1/apps?platform=&type=&title_id=&q=&sort=&page_size=&cursor=` →
@@ -334,7 +334,7 @@ platform it has no profile for.
   `400`, or `410` when the server cannot tell it from an expired one.
 - `page_size` is at most `limits.page_size`; a larger one is lowered to it.
 
-### 6.3 What the console is missing
+### 6.3 What the device is missing
 
 `POST <base>/v1/apps/missing`, with `Lantern-Platform` (or `?platform=`):
 `400` without one.
@@ -351,8 +351,8 @@ platform it has no profile for.
 - with `update` in `want`: for each installed game, its newest update whose
   `version_code` is above the highest installed one of that game. An update
   is an app of type `update`, or, on a platform whose profile says that a
-  newer package replaces the base (Android), an app of type `base` of the
-  same `app_id`;
+  newer package replaces the base, an app of type `base` of the same
+  `app_id`;
 - with `dlc`: the add-ons of installed games not installed;
 - with `base`: the games not installed.
 
@@ -427,7 +427,7 @@ shows next to its apps. Read with the scope `library`.
   `shooter`, `fighting`, `music`, `party`, `education` and `other`. A later
   version may add genres: a client shows a genre it does not know as
   `other`. `tags` are free words (32 at most, 64 bytes each).
-- `players`: `min` and `max` on one console; `online` whether it plays
+- `players`: `min` and `max` on one device; `online` whether it plays
   online, and `online_max` how many at most.
 - `ratings`: the age ratings, each `system` an organisation's short name
   (`PEGI`, `ESRB`, `CERO`, `USK`, `ACB`, `CLASSIND`, `GRAC`…) and `rating`
@@ -459,9 +459,9 @@ again with the new `since`.
 
 ## 8. Homebrew (feature `homebrew`)
 
-The homebrew a server offers: apps and tools made by their authors, read
-with the scope `library`. Mods (LayeredFS and the like) are out of scope
-for this version; a later one may describe them on the same model.
+The homebrew a server offers: apps, games, ports and tools made by their
+authors, read with the scope `library`. Mods (files that change a game) are
+out of scope for this version.
 
 ### 8.1 An entry
 
@@ -470,7 +470,7 @@ for this version; a later one may describe them on the same model.
 ```json
 {"schema": 1,
  "id": "org.example.frostline", "platform": "switch",
- "name": "Frostline", "author": "Noor", "category": "tool",
+ "kind": "app", "name": "Frostline", "author": "Noor", "category": "tool",
  "version": "1.4.0", "build": 10400,
  "license": "MIT", "source": "https://code.example.org/noor/frostline",
  "language": "en", "summary": "A pocket journal for long nights.",
@@ -492,23 +492,30 @@ for this version; a later one may describe them on the same model.
   the author's, and the same for every version. Ids under `local.` are a
   server's own, for a homebrew whose author gave none; they are stable on
   that server only. An id is unique within its platform.
+- `kind`: what it is: `app`, `game` (a game of its own), `port` (a game
+  ported to the platform, § 8.6), `emulator`, `tool`, `overlay` (shown over
+  other software), `sysmodule` (runs in the background with the system) or
+  `theme`. A reader reads a kind it does not know, or none, as `app`.
+- `category`: the shelf it is shown on: `game`, `emulator`, `tool`,
+  `media`, `system` or `other`.
 - `name`, `author`, `summary` and `description` (localized, `language` as
   for a title, § 7.1), `icon` and `screenshots` (images, § 7.1).
-- `category`: `game`, `emulator`, `tool`, `media`, `system` or `other`.
 - `license`: an SPDX licence expression; `source`: where its code is.
 - `version` is for people; `build` is an integer that grows with every
   version, and the one a client compares.
-- `requires`, optional: what the console needs, `text` for people and
+- `requires`, optional: what the device needs, `text` for people and
   `min`, the lowest versions in the profile's terms (Annex A), as dotted
   numbers. A client that does not know a key of `min` relies on `text`.
 - `updated`: when this entry last changed.
+- `package`: the package (§ 8.2); `packages`, optional, more packages of
+  the same build for other architectures (§ 8.2).
 
 ### 8.2 Packages and manifests
 
-A package is one file, downloaded like an app's (§ 6.6): `file`, `size` and
-`sha256` are REQUIRED. It is either:
+A package is one file, downloaded like an app's (§ 6.6): `format`, `file`,
+`size`, `sha256` and `manifest_sha256` are REQUIRED. It is either:
 
-- **a single file** (`.nro`, `.3dsx`, `.vpk`, `.apk`…): `path` says where it
+- **a single file**, of one of the profile's formats: `path` says where it
   goes on the device; or
 - **an archive** (`zip`) with a **manifest**: every file it installs, its
   `path` on the device, `size` and `sha256`, all REQUIRED. The archive holds
@@ -516,14 +523,14 @@ A package is one file, downloaded like an app's (§ 6.6): `file`, `size` and
   is ignored.
 
 A single file is a manifest of one entry: its `path`, `size` and `sha256`.
-Where the profile says the platform's own installer installs a format
-(`.apk`, `.vpk`…), the package has no `path`.
+Where the profile says the platform's own installer installs a format, the
+package has no `path`, and its manifest is empty (`[]`).
 
 A `path` is absolute on the device's storage, as the profile maps it: it
 starts with `/`; its parts are separated by `/`, none empty, `.` or `..`;
 it has no `\`, `:`, `"`, control character or NUL; a part is 255 bytes at
 most, the path 1024. No two paths of a manifest are the same when case is
-ignored. A manifest has 4096 files at most.
+ignored.
 
 `manifest_sha256` is the SHA-256, lower-case hex, of the manifest's
 canonical form: the JSON array of its entries sorted by `path` (as UTF-8
@@ -531,6 +538,15 @@ bytes), each entry `{"path":…,"sha256":…,"size":…}` with its keys in that
 order, no space, and characters other than ASCII written as they are, in
 UTF-8. A listing (§ 8.5) leaves `manifest` out and keeps
 `manifest_sha256`; the entry's own route has both.
+
+On a platform with several architectures (Annex A), a package MAY carry
+`arch`: `aarch64`, `armhf` (32-bit ARM, hard float), `x86` or `x86_64`; a
+later version may add others, of 1 to 32 lower-case letters, digits and
+`_`. A package without `arch` runs on every architecture of its platform.
+Each package of `packages` has an `arch`, and a `signature` when the entry
+is signed (§ 8.4). A client takes the package whose `arch` is its own, or
+else one without `arch`; it skips the others, and installs nothing when
+none fits.
 
 ### 8.3 Installing
 
@@ -543,9 +559,8 @@ A client MUST:
 - write only the manifest's paths, and only files: never follow a link
   out of them;
 - write without asking only under the profile's roots that need no
-  consent (`/switch/<id>/` on a Switch, where `<id>` is the entry's `id`);
-  for any path elsewhere, show every such path to the user and install only
-  when they agree;
+  consent; for any path elsewhere, show every such path to the user and
+  install only when they agree;
 - keep each installed manifest, and uninstall by it alone: remove its
   files, then the folders it made that are left empty, nothing else. An
   update removes the files of the old manifest the new one no longer has.
@@ -563,13 +578,16 @@ The signed bytes are the UTF-8 bytes of the JSON object
 ```
 
 with these keys in this order, no space, `build` in decimal, and the
-entry's values. Each value's form (§ 8.1, § 8.2, § 4.3) leaves nothing to
-escape, so the bytes are the same for every writer.
+entry's values, `sha256` and `manifest_sha256` those of `package`. Each
+value's form (§ 8.1, § 8.2, § 4.3) leaves nothing to escape, so the bytes
+are the same for every writer. A package of `packages` carries its own
+`signature`, by the same key, over the same object with its own `sha256`
+and `manifest_sha256`.
 
 - A server MAY serve a signature it is given, as given; it does not sign
   for an author. It SHOULD check a signature before it serves it.
-- A client MUST check the signature when there is one, and refuse the
-  package when it does not verify.
+- A client MUST check the signature of the package it installs when there
+  is one, and refuse the package when it does not verify.
 - On the first install of an `id`, the client pins its `public_key` (or
   that it had none). A later version signed by another key, or unsigned
   after a signed one, MUST be refused unless the user explicitly accepts the
@@ -581,11 +599,62 @@ escape, so the bytes are the same for every writer.
 - `GET <base>/v1/homebrew?platform=&q=&category=&page_size=&cursor=` → a
   page (§ 6.2) of entries, sorted by name: `{"schema":1,
   "items":[Entry…], "total":12, "next":null}`.
-- `GET <base>/v1/homebrew/{id}` → the entry (§ 8.1), with its manifest.
+- `GET <base>/v1/homebrew/{id}` → the entry (§ 8.1), with its manifests.
 - `POST <base>/v1/homebrew/updates`, with a platform (§ 4.3):
   `{"schema":1, "installed":[{"id":"org.example.frostline", "build":10300}]}`
   → a page of the entries of those ids whose `build` is above the
   installed one, paginated with `cursor` in the query, like § 6.3.
+
+### 8.6 Game ports
+
+A port (`kind` `port`) is a game ported to the platform, such as a source
+port or a recreation of a game's engine, that runs on the data of the
+user's own copy of the original game. Lantern never serves that data: a
+port's package holds the port alone, and no route of this family serves a
+file of its `requires_data`.
+
+```json
+{"kind": "port",
+ "original": {"title": "Harbor Lights", "platform": "windows",
+              "atlas_id": "harbor-lights"},
+ "engine": "Lighthouse, a recreation of its engine",
+ "requires_data": [
+   {"name": "The game's data archive", "path": "data/harbor.pak",
+    "size": 214748364, "sha256": ["…", "…"],
+    "hint": "In the folder where the game is installed."},
+   {"name": "The music", "path": "data/music.pak", "optional": true,
+    "hint": "Next to harbor.pak, in editions that have it."}]}
+```
+
+- `original`: the game it ports: its `title`, the `platform` it came out
+  on (a name of the § 4.3 form, Atlas's where it has one), and, optional,
+  its Atlas id `atlas_id`.
+- `engine`: free text, for people.
+- `requires_data`: the files the user supplies, from their own copy:
+  - `name`, for people;
+  - `path`, where it goes, relative to the port's root (Annex A): parts
+    separated by `/`, as § 8.2 says, but without the leading `/`, and with
+    no drive letter;
+  - `sha256`, optional: the SHA-256 of each known version of that file the
+    port accepts;
+  - `size`, optional, in bytes;
+  - `optional`: `true` when the port runs without it (`false` when absent);
+  - `hint`: where the user finds it in their copy, localized like
+    `description`. It never points at a download of it.
+
+A client MUST:
+
+- refuse a port whose `requires_data` has a `path` that breaks this rule,
+  or that is also a path of its manifest, and install nothing of it;
+- before it launches the port, check that each file that is not optional
+  is present, and, when `sha256` is given, that the file's SHA-256 is one
+  of them; otherwise, launch nothing, and show the user each missing or
+  unknown file with its `name` and `hint`;
+- never fetch that data from the network: the user copies it from their
+  own copy, by the means the device has.
+
+A port's data is the user's: uninstalling the port, by its manifest
+(§ 8.3), leaves it in place.
 
 ## 9. Save backups (feature `saves`, scope `saves`)
 
@@ -601,13 +670,13 @@ newest first per title, where a save is:
  "note": "Chapter 4", "device": "Lea's Switch"}
 ```
 
-- `kind`: `account` (a user's save), `device` (the console's, shared by
-  its users), `bcat` (data the game downloaded), `cache`, or `other`, as
-  the profile maps the platform's own kinds.
+- `kind`: `account` (a user's save), `device` (the device's, shared by
+  its users), `bcat` (data the system downloaded for the game), `cache`, or
+  `other`, as the profile maps the platform's own kinds.
 - `game_version_code`: the game's `version_code` (§ 6.1) when it was
   saved, so that a client warns before restoring a save on an older game.
 - `profile`: the name the user gave the profile the save belongs to, as
-  the console shows it. Never a hardware or account identifier.
+  the device shows it. Never a hardware or account identifier.
 - `device`: the name of the paired device that sent it (§ 5.2).
 - The archive is a zip whose content the profile gives (Annex A).
 - The server keeps at most `limits.saves_kept_per_title` backups per title,
@@ -628,7 +697,7 @@ For a save of at most `limits.save_body` bytes:
   body does not match.
 - `Lantern-Save-Kind`, `Lantern-Game-Version` (the integer
   `game_version_code`), `Lantern-Profile` and `Lantern-Note` (UTF-8,
-  percent-encoded; 64 and 120 bytes at most).
+  percent-encoded, within § 13's limits).
 
 → `201` with the save entry. A larger body gives `413`.
 
@@ -674,12 +743,13 @@ sees it.
   (Annex A), on platforms whose cheats depend on it; absent elsewhere.
 - `GET <base>/v1/cheats/{id}` → the set's text, as a file (§ 6.6), in the
   platform's own format and at most 1 MiB, which the client writes where
-  the profile says (Atmosphère's text for a Switch).
+  the profile says (Annex A).
 - With scope `cheats.write`, a server MAY take
   `POST <base>/v1/cheats` and `PUT` and `DELETE <base>/v1/cheats/{id}`; the
   body of `POST` and `PUT` is `{"schema":1, "platform", "title_id",
-  "build_id", "source", "note", "text"}`. A server without them answers
-  `405`.
+  "build_id", "source", "note", "text"}`. `POST` answers `201` with the new
+  set (`{"schema":1, "id":…}`, as listed), `PUT` and `DELETE` `204`. A
+  server without them answers `405`.
 
 ## 11. Requests (feature `requests`)
 
@@ -687,8 +757,9 @@ sees it.
   "title_id", "name", "status", "created"}…]}`. `status`: `open`, `done` or
   `declined`.
 - `POST <base>/v1/requests` `{"schema":1, "platform":"switch",
-  "title_id":"…"}` → `201`, or `200` with the open request for the same
-  title. `platform` defaults to the client's (§ 4.3).
+  "title_id":"…"}` → `201` with the new request (`{"schema":1, "id":…}`,
+  as listed), or `200` with the open request for the same title.
+  `platform` defaults to the client's (§ 4.3).
 
 ## 12. Errors
 
@@ -734,6 +805,8 @@ A client MUST bound what it reads and a server MUST stay within:
 | A page | 1000 items |
 | Titles read at once | 100 |
 | A manifest | 4096 files, each path 1024 bytes |
+| A homebrew's `packages` | 16 |
+| A port's `requires_data` | 256 files, each `sha256` list 32 |
 | A cheat set | 1 MiB |
 | A discovery datagram | 1200 bytes |
 
@@ -750,7 +823,7 @@ on the platform or the language also vary on `Lantern-Platform` and
 - No hardware identifier, no tracking header. A server knows a device only
   by the name its user gave it during pairing, and a save's profile only by
   the name its user gave it.
-- No password goes through the console: it holds a token per server, which
+- No password goes through the device: it holds a token per server, which
   the user can revoke from the server (§ 5).
 - No proprietary encryption of documents: TLS protects them, with a key
   pinned at pairing when no CA vouches for it (§ 5.3).
@@ -762,6 +835,8 @@ on the platform or the language also vary on `Lantern-Platform` and
 - A homebrew writes only its manifest's files, under the profile's roots,
   and nothing outside the roots that need no consent without the user's
   agreement (§ 8.3).
+- A port's game data comes from the user's own copy, never from Lantern
+  (§ 8.6).
 - No credential goes to an external address (§ 7.1).
 - Servers are for the user's own games.
 
@@ -770,8 +845,8 @@ on the platform or the language also vary on `Lantern-Platform` and
 A conformance suite (`conformance/`) runs against a server's URL, with a
 token or without, and checks every MUST of this text it can see from
 outside: shapes and `schema`, platforms and their filter, the token
-challenge, pairing's shapes, ranges, digests, homebrew manifests and
-signatures, titles, cheats, error format, limits, the refusal of an unknown
+challenge, pairing's shapes, ranges, digests, homebrew manifests,
+signatures and ports' paths, titles, cheats, error format, limits, the refusal of an unknown
 request `schema`. With a token that holds `saves`, it also sends a save in
 chunks and deletes it. A reference server (`server/`) serves a folder of
 packages and homebrew and passes the suite.
@@ -786,15 +861,16 @@ A profile says, for one platform, what the core leaves open. It gives:
 - for cheats: the file format, the form of `build_id` and where the client
   puts a set;
 - for saves: the kinds, and what the archive holds, at which root;
-- for homebrew: the package formats, the roots a client may write to
-  without asking, those that need the user's consent, and the keys of
-  `requires.min`.
+- for homebrew: the package formats, the architectures (`arch`, § 8.2)
+  when there are several, the roots a client may write to without asking,
+  those that need the user's consent, a port's root (§ 8.6), and the keys
+  of `requires.min`.
 
 Paths are written as § 8.2 says; the profile says how they map to the
 device. The Switch's profile is complete. Those of the 3DS, the Vita, the
 PS4 and Android are drafts, **to be reviewed by someone who knows the
 platform**: what is marked "(to check)" is not settled. The other platforms
-are open.
+are open: no profile yet (Annex A.6).
 
 ### A.1 Nintendo Switch (`switch`)
 
@@ -820,7 +896,8 @@ are open.
   `/switch/<id>/<name>.nro`) and `zip`. Roots without consent:
   `/switch/<id>/` and `/config/<id>/`. Roots that need consent:
   `/atmosphere/` (sysmodules in `/atmosphere/contents/<program id>/`, among
-  others) and `/switch/.overlays/`. Nothing else. `requires.min` keys:
+  others) and `/switch/.overlays/` (overlays). Nothing else. A port's root:
+  `/switch/<id>/`. One architecture, so no `arch`. `requires.min` keys:
   `firmware` (the system version, `18.0.0`) and `atmosphere` (`1.7.0`).
   A server reads an `.nro`'s name, author and version from the control data
   (NACP) in its asset section.
@@ -848,7 +925,8 @@ To be reviewed by someone who knows the platform.
 - **Homebrew.** Formats `3dsx` (a single file, at `/3ds/<id>/<name>.3dsx`
   (to check)) and `zip`; a `cia` is installed by the system as a title,
   always after asking the user (to check). Roots without consent:
-  `/3ds/<id>/` (to check). Roots that need consent: `/luma/` (to check).
+  `/3ds/<id>/` (to check). Roots that need consent: `/luma/` (to check). A
+  port's root: `/3ds/<id>/` (to check). One architecture, so no `arch`.
   `requires.min` keys: `firmware` and `luma` (to check).
 
 ### A.3 PlayStation Vita (`vita`), draft
@@ -871,7 +949,8 @@ To be reviewed by someone who knows the platform.
 - **Homebrew.** Format `vpk`, installed by the system's installer after
   asking the user: no `path` (to check). Plugins and the files they need:
   no root is settled yet (to check), so a client installs no manifest
-  here until the profile names its roots.
+  here, nor a port's data, until the profile names its roots. One
+  architecture, so no `arch`.
 
 ### A.4 PlayStation 4 (`ps4`), draft
 
@@ -891,8 +970,9 @@ To be reviewed by someone who knows the platform.
 - **Saves.** What a save holds and at which root (to check).
 - **Homebrew.** Format `pkg`, installed by the system after asking the
   user: no `path`. Plugins: no root is settled yet (to check), so a client
-  installs no manifest here until the profile names its roots.
-  `requires.min` keys: `firmware` (to check).
+  installs no manifest here, nor a port's data, until the profile names its
+  roots. One architecture, so no `arch`. `requires.min` keys: `firmware`
+  (to check).
 
 ### A.5 Android (`android`), draft
 
@@ -909,15 +989,17 @@ To be reviewed by someone who knows the platform.
 - **Cheats**: none.
 - **Saves**: no profile yet (an app's data is its own) (to check).
 - **Homebrew.** Format `apk`, installed by the system's installer, which
-  always asks the user: no `path`. `requires.min` keys: `sdk` (the lowest
-  API level, `26`).
+  always asks the user: no `path`. `arch`: `aarch64` (the ABI
+  `arm64-v8a`), `armhf` (`armeabi-v7a`), `x86` and `x86_64`; a package
+  without `arch` holds every ABI it needs. A port's root: a folder the user
+  picks for it (to check). `requires.min` keys: `sdk` (the lowest API
+  level, `26`).
 
 ### A.6 Open platforms
 
-`ios`, `windows`, `macos`, `linux` and `web` have no profile yet, nor do
-Atlas's store names (`steam`, `gog`, `xbox`). A server MAY serve apps of
-these platforms under the core's rules (§ 6.1); a client MUST NOT install
-anything of a platform it has no profile for.
+Open: no profile yet. `ios`, `windows`, `macos`, `linux` and `web`, and
+Atlas's store names (`steam`, `gog`, `xbox`), have none; § 4.3 says what a
+server and a client do on them.
 
 ## Changes
 
@@ -946,35 +1028,39 @@ anything of a platform it has no profile for.
   - Integrity (§ 6.1, § 6.6): `sha256` is required on every app,
     `Repr-Digest` on every file response, and a client always checks a
     download before installing it.
-- 0.3 (2026-10-30): every platform, and four families; still `/v1/` and
-  `schema` 1, as a draft. Files become § 6.6, and the sections from 7 on
-  are renumbered.
-  - Platforms (§ 4.3, Annex A): a neutral core and a profile per platform.
-    Every app, title, homebrew, save and cheat set carries `platform`; the
-    handshake lists `platforms`; a client names its own with
-    `Lantern-Platform` (or `?platform=`), and the server answers for it
-    alone. Atlas's platform names, and `3ds`, `vita`, `ps4`, `android`,
-    `ios`, `windows`, `macos`, `linux` and `web`. Profiles: the Switch's
-    complete; the 3DS's, the Vita's, the PS4's and Android's as drafts; the
-    others open.
+- 0.3 (2026-10-30): every platform Aurore runs on, and four families;
+  still `/v1/` and `schema` 1, as a draft. Files become § 6.6, and the
+  sections from 7 on are renumbered: errors are § 12.
+  - Platforms (§ 4.3, Annex A): a core that knows no platform, and a
+    profile per platform. Every app, title, homebrew, save and cheat set
+    carries `platform`; the handshake lists `platforms`; a client names its
+    own with `Lantern-Platform` (or `?platform=`), and the server answers
+    for it alone. Atlas's platform names, and `3ds`, `vita`, `ps4`,
+    `android`, `ios`, `windows`, `macos`, `linux` and `web`. Profiles: the
+    Switch's complete; the 3DS's, the Vita's, the PS4's and Android's as
+    drafts; the others open, where a client installs nothing.
   - Apps (§ 6.1): `title_id` and `app_id` are opaque strings of the
     profile's form, `type` and `format` come from its lists, and `version`
     and `display_version` become `version_code` and `version_name`. What
     is missing (§ 6.3) needs a platform.
   - Titles (§ 7): `titles` replaces `media`, with developer, genres from a
-    fixed list and tags, players on one console and online, age ratings
+    fixed list and tags, players on one device and online, age ratings
     per organisation, a localized summary and description, images and an
     external video, and `updated`; many titles in one request, and their
     changes.
   - Homebrew (§ 8): a new family: entries with a stable reverse-DNS id, a
-    `build` to compare, packages of one file or a zip with a manifest, the
-    rules a client follows to install and uninstall them, an optional
-    ed25519 signature whose key is pinned per id, and the updates of what
-    is installed. Mods are out of scope.
+    `kind` and a `build` to compare, packages of one file or a zip with a
+    manifest, per architecture where a platform has several, the rules a
+    client follows to install and uninstall them, an optional ed25519
+    signature whose key is pinned per id, and the updates of what is
+    installed. Game ports name their original game and engine, and the
+    files the user supplies from their own copy, which Lantern never
+    serves. Mods are out of scope.
   - Saves (§ 9): resumable uploads in chunks; `Content-Digest` required on
     a save sent in one request, and checked (422 `digest_mismatch`); a
     save's `kind`, `game_version_code`, `profile` and `platform`; the
     handshake's `limits` say the sizes and how many backups are kept.
   - Cheats (§ 10): several sets per build, each with its id, source,
-    update time and SHA-256, read by id.
+    update time and SHA-256, read by id; writing them needs
+    `cheats.write`.
   - Requests (§ 11) carry `platform`.
