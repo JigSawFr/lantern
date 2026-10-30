@@ -4,6 +4,8 @@ An open, versioned protocol between console homebrews and the game library
 servers people run at home for their own games: browse the library, download
 with integrity checks, keep save backups and cheats.
 
+Website: <https://lantern.boreale.dev/?utm_source=github&utm_medium=readme>.
+
 **Status: draft 0.1.** The text may still change before 1.0; comments and
 issues are welcome, from client and server authors especially.
 

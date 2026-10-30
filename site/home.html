@@ -1,0 +1,103 @@
+  <section id="status" class="status-card">
+    <span class="state">{{status_badge}}</span>
+    <p>{{status_text}}</p>
+  </section>
+
+  <section id="keeps">
+    <div class="section-head">
+      <span class="eyebrow">{{keeps_eyebrow}}</span>
+      <h2>{{keeps_title}}</h2>
+      <p>{{keeps_lede}}</p>
+    </div>
+    <ul class="points">
+      <li>{{keep_discovery}}</li>
+      <li>{{keep_links}}</li>
+      <li>{{keep_ranges}}</li>
+      <li>{{keep_missing}}</li>
+    </ul>
+  </section>
+
+  <section id="adds">
+    <div class="section-head">
+      <span class="eyebrow">{{adds_eyebrow}}</span>
+      <h2>{{adds_title}}</h2>
+      <p>{{adds_lede}}</p>
+    </div>
+    <ul class="points new">
+      <li>{{add_sha}}</li>
+      <li>{{add_versions}}</li>
+      <li>{{add_features}}</li>
+      <li>{{add_pages}}</li>
+      <li>{{add_pairing}}</li>
+      <li>{{add_errors}}</li>
+      <li>{{add_nothing}}</li>
+    </ul>
+  </section>
+
+  <section id="implement">
+    <div class="section-head">
+      <span class="eyebrow">{{implement_eyebrow}}</span>
+      <h2>{{implement_title}}</h2>
+      <p>{{implement_lede}}</p>
+    </div>
+    <div class="ways">
+      <article class="way">
+        <h3>{{server_title}}</h3>
+        <p>{{server_text}}</p>
+        <pre tabindex="0"><code>GET /.well-known/lantern
+GET /api/lantern/v1/apps?sort=added</code></pre>
+      </article>
+      <article class="way">
+        <h3>{{client_title}}</h3>
+        <p>{{client_text}}</p>
+        <pre tabindex="0"><code>User-Agent: ExampleClient/0.1
+Range: bytes=0-1048575</code></pre>
+      </article>
+      <article class="way">
+        <h3>{{schemas_title}}</h3>
+        <p>{{schemas_text}}</p>
+        <p class="more"><a href="{{repo}}/tree/main/schemas/v1">schemas/v1</a> · <a href="{{repo}}/tree/main/examples/v1">examples/v1</a> · <a href="{{repo}}/blob/main/openapi.yaml">openapi.yaml</a></p>
+      </article>
+    </div>
+    <p class="note">{{implement_soon}}</p>
+    <p class="note">{{first_client}} <a href="https://shelf.boreale.dev/{{home}}">PlayShelf</a></p>
+  </section>
+
+  <section id="own">
+    <div class="cta">
+      <h2>{{own_title}}</h2>
+      <p>{{own_text}}</p>
+    </div>
+  </section>
+
+  <section id="licences">
+    <div class="section-head">
+      <span class="eyebrow">{{licences_eyebrow}}</span>
+      <h2>{{licences_title}}</h2>
+    </div>
+    <ul class="keys">
+      <li><span class="k"><a href="{{repo}}/blob/main/LICENSES/CC-BY-4.0.txt">CC BY 4.0</a></span><span>{{licence_text}}</span></li>
+      <li><span class="k"><a href="{{repo}}/blob/main/LICENSES/MIT.txt">MIT</a></span><span>{{licence_rest}}</span></li>
+    </ul>
+    <p class="note">{{licence_compatible}}</p>
+  </section>
+
+  <section id="privacy">
+    <div class="section-head">
+      <span class="eyebrow">{{privacy_eyebrow}}</span>
+      <h2>{{privacy_title}}</h2>
+    </div>
+    <div class="prose narrow">
+      <p>{{privacy_1}}</p>
+      <p>{{privacy_2}}</p>
+      <p>{{privacy_more}} <a href="https://boreale.dev/{{home}}legal/">{{footer_legal}}</a></p>
+    </div>
+  </section>
+
+  <section class="closing">
+    <div class="cta">
+      <h2>{{closing_title}}</h2>
+      <p>{{closing_text}}</p>
+      <div class="actions"><a class="button primary" href="{{root}}{{home}}spec/">{{cta_spec}}</a><a class="button ghost" href="{{repo}}/issues">{{cta_issues}}</a></div>
+    </div>
+  </section>
