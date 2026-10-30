@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "id": "i_3VxQ",
+  "code": "MZ7Q-4KHP",
+  "link": "https://shelf.example.org/pair?invitation=MZ7Q-4KHP-XW2N-8TRD&spki=3f9a1c07b2e455d0c1f8e2a7b3d4c5e6f708192a3b4c5d6e7f8091a2b3c4d5e6",
+  "user": "sam",
+  "scopes": [
+    "library"
+  ],
+  "expires": "2026-11-06T18:00:00Z",
+  "devices": 2,
+  "used": 0,
+  "rating_cap": {
+    "age": 12
+  },
+  "note": "Sam's consoles",
+  "created": "2026-10-30T18:00:00Z"
+}

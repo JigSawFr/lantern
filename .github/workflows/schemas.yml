@@ -1,14 +1,15 @@
 # The JSON Schemas against their examples and refused ones
-# (tools/check_schemas.py), and the OpenAPI description with the schemas it
-# refers to.
+# (tools/check_schemas.py), the OpenAPI description with the schemas it
+# refers to, and the test vectors against the reference that writes them
+# (tools/make_vectors.py).
 name: schemas
 
 on:
   push:
     branches: [ main ]
-    paths: [ "schemas/**", "examples/**", "openapi.yaml", "tools/check_schemas.py", "tools/requirements.txt", ".github/workflows/schemas.yml" ]
+    paths: [ "schemas/**", "examples/**", "openapi.yaml", "vectors/**", "tools/check_schemas.py", "tools/make_vectors.py", "conformance/lantern_client.py", "server/lantern_server.py", "tools/requirements.txt", ".github/workflows/schemas.yml" ]
   pull_request:
-    paths: [ "schemas/**", "examples/**", "openapi.yaml", "tools/check_schemas.py", "tools/requirements.txt", ".github/workflows/schemas.yml" ]
+    paths: [ "schemas/**", "examples/**", "openapi.yaml", "vectors/**", "tools/check_schemas.py", "tools/make_vectors.py", "conformance/lantern_client.py", "server/lantern_server.py", "tools/requirements.txt", ".github/workflows/schemas.yml" ]
 
 permissions:
   contents: read
@@ -34,3 +35,5 @@ jobs:
           validate(spec, base_uri=base)
           print("openapi.yaml: valid")
           PY
+      - name: The test vectors
+        run: python3 tools/make_vectors.py --check

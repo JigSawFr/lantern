@@ -1,0 +1,110 @@
+{
+ "schema": 1,
+ "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
+ "vectors": "homebrew-signatures",
+ "description": "Manifests' canonical bytes and their manifest_sha256 (SPEC.md § 8.2), then the bytes an author signs and the signature (§ 8.4), by a fictional author's key; the last entry's build was changed after signing, and does not verify.",
+ "author_seed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+ "manifests": [
+  {
+   "manifest": [
+    {
+     "path": "/switch/org.example.frostline/frostline.nro",
+     "size": 471040,
+     "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+     "path": "/config/org.example.frostline/settings.ini",
+     "size": 96,
+     "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+   ],
+   "canonical": "[{\"path\":\"/config/org.example.frostline/settings.ini\",\"sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"size\":96},{\"path\":\"/switch/org.example.frostline/frostline.nro\",\"sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"size\":471040}]",
+   "manifest_sha256": "0bcc1c2512a6bda56441df0f49f0bac4e52ee7ccdf3c830b6d7855b78085e93e"
+  },
+  {
+   "manifest": [
+    {
+     "path": "/switch/org.example.lanterne/données/carte.bin",
+     "size": 12,
+     "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+     "path": "/switch/org.example.lanterne/Zeta.txt",
+     "size": 1,
+     "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    {
+     "path": "/switch/org.example.lanterne/alpha.txt",
+     "size": 0,
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+   ],
+   "canonical": "[{\"path\":\"/switch/org.example.lanterne/Zeta.txt\",\"sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"size\":1},{\"path\":\"/switch/org.example.lanterne/alpha.txt\",\"sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"size\":0},{\"path\":\"/switch/org.example.lanterne/données/carte.bin\",\"sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"size\":12}]",
+   "manifest_sha256": "d2084ee4490f21e48f26bcc7d93057b2b32bacf15bacf6a8073fc1c5fa605743"
+  },
+  {
+   "manifest": [],
+   "canonical": "[]",
+   "manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  }
+ ],
+ "signed": [
+  {
+   "entry": {
+    "id": "org.example.frostline",
+    "platform": "switch",
+    "build": 10400,
+    "package": {
+     "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "manifest_sha256": "0bcc1c2512a6bda56441df0f49f0bac4e52ee7ccdf3c830b6d7855b78085e93e"
+    }
+   },
+   "signed_bytes": "{\"build\":10400,\"id\":\"org.example.frostline\",\"manifest_sha256\":\"0bcc1c2512a6bda56441df0f49f0bac4e52ee7ccdf3c830b6d7855b78085e93e\",\"platform\":\"switch\",\"purpose\":\"lantern-homebrew-1\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+   "signature": {
+    "alg": "ed25519",
+    "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+    "value": "y2IuZ7fOL0O5w/U8Pyb+V/0UBT1yqLZXusq52BVdoFL5hK5BgUSjYr0vn3jhR3bUOB0Kvxwjo28spge4HfpnCg=="
+   },
+   "key_short_fingerprint": "5647 5AA7 5463 474C",
+   "verifies": true
+  },
+  {
+   "entry": {
+    "id": "org.example.harborlights",
+    "platform": "linux",
+    "build": 20100,
+    "package": {
+     "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "manifest_sha256": "d2084ee4490f21e48f26bcc7d93057b2b32bacf15bacf6a8073fc1c5fa605743"
+    }
+   },
+   "signed_bytes": "{\"build\":20100,\"id\":\"org.example.harborlights\",\"manifest_sha256\":\"d2084ee4490f21e48f26bcc7d93057b2b32bacf15bacf6a8073fc1c5fa605743\",\"platform\":\"linux\",\"purpose\":\"lantern-homebrew-1\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}",
+   "signature": {
+    "alg": "ed25519",
+    "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+    "value": "MtLpspe8+1HkBdNFO7VzNoXUcxQllAbm7ywWCcaqndo/6VKP8AF5wLBEJxr9ZD0KXR2Z2fq8FlXh1kCcPrn4Bg=="
+   },
+   "key_short_fingerprint": "5647 5AA7 5463 474C",
+   "verifies": true
+  },
+  {
+   "entry": {
+    "id": "org.example.frostline",
+    "platform": "switch",
+    "build": 10401,
+    "package": {
+     "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "manifest_sha256": "0bcc1c2512a6bda56441df0f49f0bac4e52ee7ccdf3c830b6d7855b78085e93e"
+    }
+   },
+   "signed_bytes": "{\"build\":10401,\"id\":\"org.example.frostline\",\"manifest_sha256\":\"0bcc1c2512a6bda56441df0f49f0bac4e52ee7ccdf3c830b6d7855b78085e93e\",\"platform\":\"switch\",\"purpose\":\"lantern-homebrew-1\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+   "signature": {
+    "alg": "ed25519",
+    "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+    "value": "y2IuZ7fOL0O5w/U8Pyb+V/0UBT1yqLZXusq52BVdoFL5hK5BgUSjYr0vn3jhR3bUOB0Kvxwjo28spge4HfpnCg=="
+   },
+   "key_short_fingerprint": "5647 5AA7 5463 474C",
+   "verifies": false
+  }
+ ]
+}

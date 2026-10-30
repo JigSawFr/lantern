@@ -14,7 +14,9 @@
       "format": "xci",
       "sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
       "added": "2026-10-28T19:02:11Z",
-      "file": "/api/lantern/v1/files/f_Pq02Rt"
+      "file": "/api/lantern/v1/files/f_Pq02Rt",
+      "atlas": "Q900001",
+      "installed_size": 10737418240
     },
     {
       "id": "a_9Qx2Lm",

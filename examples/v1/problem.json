@@ -4,5 +4,6 @@
   "title": "Account frozen",
   "status": 403,
   "code": "account_frozen",
-  "detail": "Your access is paused until Sunday."
+  "detail": "Your access is paused until Sunday.",
+  "language": "en"
 }

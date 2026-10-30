@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "decision": "approve",
+  "user": "lea",
+  "scopes": [
+    "library"
+  ],
+  "rating_cap": {
+    "age": 12
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "decision": "approve",
+  "rating_cap": {
+    "age": 12,
+    "system": "PEGI",
+    "rating": "12"
+  }
+}

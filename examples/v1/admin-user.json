@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "name": "sam",
+  "state": "active",
+  "scopes": [
+    "library"
+  ],
+  "devices": 2,
+  "created": "2026-10-30T18:00:00Z"
+}

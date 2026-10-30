@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "device": "Lea's Switch",
+  "scopes": [
+    "library",
+    "saves"
+  ],
+  "key": {
+    "alg": "rsa",
+    "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+  }
+}

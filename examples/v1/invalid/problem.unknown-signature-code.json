@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "type": "https://lantern.boreale.dev/errors/account-frozen",
+  "title": "Account frozen",
+  "status": 401,
+  "code": "signature_wrong",
+  "detail": "Your access is paused until Sunday.",
+  "language": "en"
+}
