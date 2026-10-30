@@ -492,6 +492,9 @@ out of scope for this version.
   the author's, and the same for every version. Ids under `local.` are a
   server's own, for a homebrew whose author gave none; they are stable on
   that server only. An id is unique within its platform.
+- `system_id`: the id the platform itself gives the installed software,
+  where it has one (Annex A: a Vita or PS4 title id, a 3DS title id, an
+  Android package name).
 - `kind`: what it is: `app`, `game` (a game of its own), `port` (a game
   ported to the platform, § 8.6), `emulator`, `tool`, `overlay` (shown over
   other software), `sysmodule` (runs in the background with the system) or
@@ -501,14 +504,20 @@ out of scope for this version.
 - `name`, `author`, `summary` and `description` (localized, `language` as
   for a title, § 7.1), `icon` and `screenshots` (images, § 7.1).
 - `license`: an SPDX licence expression; `source`: where its code is.
+  `assets_license`, optional: the licence of the free or replacement
+  assets it bundles, when it differs (SPDX, `LicenseRef-` allowed).
 - `version` is for people; `build` is an integer that grows with every
   version, and the one a client compares.
-- `requires`, optional: what the device needs, `text` for people and
+- `requires`, optional: what the device needs, `text` for people;
   `min`, the lowest versions in the profile's terms (Annex A), as dotted
-  numbers. A client that does not know a key of `min` relies on `text`.
+  numbers; and `homebrew`, the homebrew it needs (a runtime, a loader, a
+  plugin), each `{"id":…, "min_build":…}` of the same platform. A client
+  that does not know a key of `min` relies on `text`; it installs a missing
+  `homebrew` first, or says which one is missing.
 - `updated`: when this entry last changed.
 - `package`: the package (§ 8.2); `packages`, optional, more packages of
   the same build for other architectures (§ 8.2).
+- `port`, for a `kind` `port` only: what § 8.6 says.
 
 ### 8.2 Packages and manifests
 
@@ -516,7 +525,7 @@ A package is one file, downloaded like an app's (§ 6.6): `format`, `file`,
 `size`, `sha256` and `manifest_sha256` are REQUIRED. It is either:
 
 - **a single file**, of one of the profile's formats: `path` says where it
-  goes on the device; or
+  goes on the device (the profile says where a format goes); or
 - **an archive** (`zip`) with a **manifest**: every file it installs, its
   `path` on the device, `size` and `sha256`, all REQUIRED. The archive holds
   each of them under its path without the leading `/`; anything else in it
@@ -540,13 +549,18 @@ UTF-8. A listing (§ 8.5) leaves `manifest` out and keeps
 `manifest_sha256`; the entry's own route has both.
 
 On a platform with several architectures (Annex A), a package MAY carry
-`arch`: `aarch64`, `armhf` (32-bit ARM, hard float), `x86` or `x86_64`; a
-later version may add others, of 1 to 32 lower-case letters, digits and
-`_`. A package without `arch` runs on every architecture of its platform.
-Each package of `packages` has an `arch`, and a `signature` when the entry
-is signed (§ 8.4). A client takes the package whose `arch` is its own, or
-else one without `arch`; it skips the others, and installs nothing when
-none fits.
+`arch`, the list of those it runs on: `aarch64`, `armhf` (32-bit ARM, hard
+float), `x86` or `x86_64`; a later version may add others, of 1 to 32
+lower-case letters, digits and `_`. A package without `arch` runs on every
+architecture of its platform (a package for a runtime, such as a script or
+bytecode, has none). Each package of `packages` has an `arch`, and a
+`signature` when the entry is signed (§ 8.4). A client takes a package
+whose `arch` lists its own, or else one without `arch`; it skips the others,
+and installs nothing when none fits.
+
+Where the profile says so (Android), a package also carries
+`signer_sha256`: the SHA-256, lower-case hex, of the certificate the
+platform's own signature of the package uses.
 
 ### 8.3 Installing
 
@@ -561,6 +575,8 @@ A client MUST:
 - write without asking only under the profile's roots that need no
   consent; for any path elsewhere, show every such path to the user and
   install only when they agree;
+- refuse an entry whose `system_id` is that of software another `id`
+  installed, and install nothing of it;
 - keep each installed manifest, and uninstall by it alone: remove its
   files, then the folders it made that are left empty, nothing else. An
   update removes the files of the old manifest the new one no longer has.
@@ -608,53 +624,72 @@ and `manifest_sha256`.
 ### 8.6 Game ports
 
 A port (`kind` `port`) is a game ported to the platform, such as a source
-port or a recreation of a game's engine, that runs on the data of the
-user's own copy of the original game. Lantern never serves that data: a
-port's package holds the port alone, and no route of this family serves a
-file of its `requires_data`.
+port or a recreation of a game's engine, that may run on the data of the
+user's own copy of the original game. A server never serves that data: a
+port's package holds the port and, at most, assets free to share, and no
+route of this family serves a file the port requires from the user.
+
+An entry of kind `port` has a `port` object:
 
 ```json
-{"kind": "port",
- "original": {"title": "Harbor Lights", "platform": "windows",
-              "atlas_id": "harbor-lights"},
- "engine": "Lighthouse, a recreation of its engine",
- "requires_data": [
-   {"name": "The game's data archive", "path": "data/harbor.pak",
-    "size": 214748364, "sha256": ["…", "…"],
-    "hint": "In the folder where the game is installed."},
-   {"name": "The music", "path": "data/music.pak", "optional": true,
-    "hint": "Next to harbor.pak, in editions that have it."}]}
+"port": {
+  "original": {"name": "Harbor Lights", "year": 1998, "developer": "Fjord Works",
+               "stores": [{"store": "gog", "id": "1207658000",
+                           "url": "https://store.example.org/harbor-lights"}]},
+  "engine": {"name": "Lighthouse", "version": "2.1.0",
+             "source": "https://code.example.org/lea/lighthouse"},
+  "data_root": "/switch/harborlights/",
+  "assets": "user_owned",
+  "requires_data": [
+    {"path": "data/HARBOR.PAK", "size": 214748364,
+     "accept": [{"sha256": "…", "label": "1.0"}, {"sha256": "…", "md5": "…", "label": "1.1"}],
+     "hint": "In the folder where the game is installed."},
+    {"one_of": [[{"path": "music/THEME.OGG", "hint": "From the soundtrack edition."}],
+                [{"path": "data/MUSIC.PAK", "hint": "Next to HARBOR.PAK."}]],
+     "optional": true}]}
 ```
 
-- `original`: the game it ports: its `title`, the `platform` it came out
-  on (a name of the § 4.3 form, Atlas's where it has one), and, optional,
-  its Atlas id `atlas_id`.
-- `engine`: free text, for people.
-- `requires_data`: the files the user supplies, from their own copy:
-  - `name`, for people;
-  - `path`, where it goes, relative to the port's root (Annex A): parts
+- `original`: the game it ports: its `name`, and, optional, its `year`, its
+  `developer`, the `stores` that sell it (each `store` an Atlas store name,
+  its `id` there, and its `url`, external: § 7.1) and its `title`
+  (`{"platform", "title_id"}`) when a server has it as an app.
+- `engine`: its `name`, and, optional, its `version`, its `source` and its
+  `license` when it differs from the entry's.
+- `assets`: where the game's assets come from: `included` (free assets in
+  the package, under `assets_license`), `demo_included` (a demo's data, free
+  to share, in the package), `free_external` (free data the user fetches
+  elsewhere) or `user_owned` (from the user's own copy). A reader reads a
+  value it does not know as `user_owned`.
+- `data_root`: the folder where the port expects its data, as an absolute
+  path (§ 8.2) that ends with `/`. It lies under the profile's areas for
+  ports' data (Annex A); the user approves it once, at the first install.
+- `requires_data`: the files the user supplies, each either a file or a
+  group:
+  - a file: `path`, relative to `data_root`, exact (case included): parts
     separated by `/`, as § 8.2 says, but without the leading `/`, and with
-    no drive letter;
-  - `sha256`, optional: the SHA-256 of each known version of that file the
-    port accepts;
-  - `size`, optional, in bytes;
-  - `optional`: `true` when the port runs without it (`false` when absent);
-  - `hint`: where the user finds it in their copy, localized like
-    `description`. It never points at a download of it.
+    no drive letter; `size`, optional, in bytes; `accept`, optional, the
+    known versions of the file the port takes, each with a `label` and one
+    or more of `sha256`, `sha1` and `md5` (lower-case hex); `hint`, where
+    the user finds it in their copy, localized like `description`, and
+    never pointing at a download of it; and `optional`, `true` when the
+    port runs without it (`false` when absent);
+  - a group: `one_of`, two or more lists of files, of which one is enough,
+    and `optional` as for a file.
 
 A client MUST:
 
-- refuse a port whose `requires_data` has a `path` that breaks this rule,
-  or that is also a path of its manifest, and install nothing of it;
+- refuse a port whose `data_root` or one of whose data paths breaks these
+  rules, and install nothing of it;
 - before it launches the port, check that each file that is not optional
-  is present, and, when `sha256` is given, that the file's SHA-256 is one
-  of them; otherwise, launch nothing, and show the user each missing or
-  unknown file with its `name` and `hint`;
+  is present, and, when an `accept` gives it, that its SHA-256 is one of
+  them (it MAY check `sha1` and `md5` where no `sha256` is given);
+  otherwise, launch nothing, and show the user each missing or unknown
+  file with its `hint`;
 - never fetch that data from the network: the user copies it from their
   own copy, by the means the device has.
 
-A port's data is the user's: uninstalling the port, by its manifest
-(§ 8.3), leaves it in place.
+A port's data files are never in its manifest: an update or an uninstall
+(§ 8.3) never removes or overwrites them.
 
 ## 9. Save backups (feature `saves`, scope `saves`)
 
@@ -670,6 +705,9 @@ newest first per title, where a save is:
  "note": "Chapter 4", "device": "Lea's Switch"}
 ```
 
+- `slot`, optional: which of the title's save folders it is, where a title
+  has several (Annex A), as the platform names it (1 to 64 letters,
+  digits, `.`, `_` and `-`).
 - `kind`: `account` (a user's save), `device` (the device's, shared by
   its users), `bcat` (data the system downloaded for the game), `cache`, or
   `other`, as the profile maps the platform's own kinds.
@@ -695,8 +733,8 @@ For a save of at most `limits.save_body` bytes:
 - `Content-Digest: sha-256=:<base64>:` (RFC 9530), REQUIRED: without it,
   `400`. The server checks it and answers `422` `digest_mismatch` when the
   body does not match.
-- `Lantern-Save-Kind`, `Lantern-Game-Version` (the integer
-  `game_version_code`), `Lantern-Profile` and `Lantern-Note` (UTF-8,
+- `Lantern-Save-Kind`, `Lantern-Save-Slot`, `Lantern-Game-Version` (the
+  integer `game_version_code`), `Lantern-Profile` and `Lantern-Note` (UTF-8,
   percent-encoded, within § 13's limits).
 
 → `201` with the save entry. A larger body gives `413`.
@@ -806,7 +844,7 @@ A client MUST bound what it reads and a server MUST stay within:
 | Titles read at once | 100 |
 | A manifest | 4096 files, each path 1024 bytes |
 | A homebrew's `packages` | 16 |
-| A port's `requires_data` | 256 files, each `sha256` list 32 |
+| A port's `requires_data` | 256 files, each `accept` list 32 |
 | A cheat set | 1 MiB |
 | A discovery datagram | 1200 bytes |
 
@@ -835,8 +873,8 @@ on the platform or the language also vary on `Lantern-Platform` and
 - A homebrew writes only its manifest's files, under the profile's roots,
   and nothing outside the roots that need no consent without the user's
   agreement (§ 8.3).
-- A port's game data comes from the user's own copy, never from Lantern
-  (§ 8.6).
+- A server never serves the data a port needs from the user's own copy
+  of the game (§ 8.6).
 - No credential goes to an external address (§ 7.1).
 - Servers are for the user's own games.
 
@@ -860,11 +898,13 @@ A profile says, for one platform, what the core leaves open. It gives:
 - the package `format`s;
 - for cheats: the file format, the form of `build_id` and where the client
   puts a set;
-- for saves: the kinds, and what the archive holds, at which root;
-- for homebrew: the package formats, the architectures (`arch`, § 8.2)
-  when there are several, the roots a client may write to without asking,
-  those that need the user's consent, a port's root (§ 8.6), and the keys
-  of `requires.min`.
+- for saves: the kinds, the slots where a title has several, and what the
+  archive holds, at which root;
+- for homebrew: the package formats and where a single file goes, the
+  `system_id` where there is one, the architectures (`arch`, § 8.2) when
+  there are several, the roots a client may write to without asking, those
+  that need the user's consent, the areas for a port's `data_root`
+  (§ 8.6), and the keys of `requires.min`.
 
 Paths are written as § 8.2 says; the profile says how they map to the
 device. The Switch's profile is complete. Those of the 3DS, the Vita, the
@@ -887,70 +927,96 @@ are open: no profile yet (Annex A.6).
 - **Cheats.** Atmosphère's text format. `build_id`: upper-case hex, 1 to 64
   digits; Atmosphère names its files with the first 16, those of the main
   executable's build id. The client writes a set to
-  `/atmosphere/contents/<title_id>/cheats/<build_id>.txt`.
+  `/atmosphere/contents/<title_id>/cheats/<build_id>.txt`, never to
+  `toggles.txt`, the file where Atmosphère keeps which cheats are on.
 - **Saves.** Kinds `account` (a user's save; `profile` is the user's
-  nickname), `device`, `bcat`, `cache`, and `other` for the rest. The zip
-  holds the save filesystem's files as they are in it, at the root of the
-  archive.
-- **Homebrew.** Formats `nro` (a single file, normally at
-  `/switch/<id>/<name>.nro`) and `zip`. Roots without consent:
-  `/switch/<id>/` and `/config/<id>/`. Roots that need consent:
-  `/atmosphere/` (sysmodules in `/atmosphere/contents/<program id>/`, among
-  others) and `/switch/.overlays/` (overlays). Nothing else. A port's root:
-  `/switch/<id>/`. One architecture, so no `arch`. `requires.min` keys:
-  `firmware` (the system version, `18.0.0`) and `atmosphere` (`1.7.0`).
-  A server reads an `.nro`'s name, author and version from the control data
-  (NACP) in its asset section.
+  nickname), `device`, `bcat`, `cache`, and `other` for the rest
+  (temporary, StreamPlay and system saves). No slots. The zip holds the
+  save filesystem's files as they are in it, at the root of the archive.
+- **Homebrew.** Formats `nro` (a single file, at `/switch/<id>/<id>.nro`:
+  the homebrew menu takes a folder's `.nro` of the folder's name, or its
+  only one), `ovl` (an overlay, a single file in `/switch/.overlays/`) and
+  `zip`; an archive puts at most one `.nro` in a folder, or one of the
+  folder's name. No `system_id`. One architecture, so no `arch`.
+  Roots without consent: `/switch/<id>/` and `/config/<id>/` (a
+  convention of homebrew, not a rule of the system). Roots that need
+  consent: `/atmosphere/`, which holds sysmodules
+  (`/atmosphere/contents/<program id>/`, with `exefs.nsp`,
+  `flags/boot2.flag` and `toolbox.json`), LayeredFS files and
+  `exefs_patches`; and `/switch/.overlays/`, which holds overlays (`.ovl`
+  files, which need nx-ovlloader: `requires.homebrew`). Nothing else.
+  Areas for a port's `data_root`: `/switch/` and `/config/`.
+  `requires.min` keys: `firmware` (the system version, `18.0.0`) and
+  `atmosphere` (`1.7.0`).
+- **Reading an `.nro`.** A server reads its name and author from the control
+  data (NACP) in its asset section; from system 21.0.0, its block of titles
+  may be compressed with Deflate (`TitlesDataFormat` 1). The NACP's version
+  is text only: `build` comes from the author's `homebrew.json`, never from
+  the NACP.
 
 ### A.2 New Nintendo 3DS (`3ds`), draft
 
 To be reviewed by someone who knows the platform.
 
 - **Ids.** `title_id`: 16 upper-case hex digits (`^[0-9A-F]{16}$`), the
-  game's id, which begins with `00040000`. `app_id`: the package's own id:
-  an update's begins with `0004000E`, an add-on's with `0004008C`, with the
-  same last 8 digits as the game's.
+  game's id, which begins with `00040000` (a demo's with `00040002`).
+  `app_id`: the package's own id: an update's begins with `0004000E`, an
+  add-on's with `0004008C`, with the same last 8 digits as the game's.
 - **Types**: `base`, `update`, `dlc`. An update is a package of its own.
 - **Versions.** `version_code`: the 16-bit title version of the title
-  metadata; `version_name`: its major, minor and micro parts (6, 6 and 4
-  bits) (to check).
-- **Formats**: `cia`. Cartridge dumps (`3ds`, `cci`) are not installed as
-  such (to check).
+  metadata; `version_name`: its top 6 bits, next 6 bits and low 4 bits,
+  as major, minor and micro (`2069` is `2.1.5`).
+- **Formats**: `cia` only. Cartridge dumps (`3ds`, `cci`) are never
+  installed.
 - **Paths**: `/` is the SD card's root.
-- **Cheats.** Luma3DS's text format, one file per game, at
-  `/cheats/<title_id>.txt` (to check). No `build_id`.
-- **Saves.** The game's save data, as `device` (the 3DS has a single user)
-  (to check); its extra data as `other` (to check). What the zip holds and
-  at which root (to check).
-- **Homebrew.** Formats `3dsx` (a single file, at `/3ds/<id>/<name>.3dsx`
-  (to check)) and `zip`; a `cia` is installed by the system as a title,
-  always after asking the user (to check). Roots without consent:
-  `/3ds/<id>/` (to check). Roots that need consent: `/luma/` (to check). A
-  port's root: `/3ds/<id>/` (to check). One architecture, so no `arch`.
-  `requires.min` keys: `firmware` and `luma` (to check).
+- **Cheats.** Gateshark codes in Luma3DS's text format, one file per game,
+  at `/cheats/<title_id>.txt`. No `build_id`. Rosalina prefers
+  `/luma/titles/<title_id>/cheats.txt`: when that file exists, the client
+  warns the user that it, not the new set, is the one in use.
+- **Saves.** The game's save data as `device` (the 3DS has a single
+  user); its extra data as `other`, in an archive of its own, its `slot`
+  the extra data's id (to check). What the zip holds and at which root
+  (to check).
+- **Homebrew.** Formats `3dsx` (a single file, at `/3ds/<id>/<id>.3dsx`)
+  and `zip`; a `cia` is installed by the system as a title, which installs
+  it without asking: the client always asks the user first, and its
+  `system_id` is the title id. A server reads a `3dsx`'s name and author
+  from its SMDH, which has no version: `build` comes from the author.
+  One architecture, so no `arch`. Roots without consent: `/3ds/<id>/`.
+  Roots that need consent: `/luma/` (plugins, titles' patches,
+  sysmodules), `/boot.firm`, `/boot.3dsx` and `/gm9/`. Areas for a port's
+  `data_root`: `/3ds/`. `requires.min` keys: `firmware` (the system
+  version without its region, `11.17.0`) and `luma`.
 
 ### A.3 PlayStation Vita (`vita`), draft
 
 To be reviewed by someone who knows the platform.
 
-- **Ids.** `title_id`: four upper-case letters and five digits
-  (`^[A-Z]{4}[0-9]{5}$`, `PCSE00000`). `app_id`: the `title_id` for the
-  game and its update; an add-on's content id (to check).
-- **Types**: `base`, `update`, `dlc`.
-- **Versions.** `version_code`: the application version `XX.YY` as the
-  integer `XXYY` (`01.03` gives `103`) (to check); `version_name`: that
-  version.
-- **Formats**: `vpk` (to check for the others).
-- **Paths**: `/ux0/…` is the storage `ux0:` (to check).
-- **Cheats.** Each cheat plugin has its own format and folder: none is
-  settled here (to check). No `build_id` (to check).
-- **Saves.** The game's save data folder, as `account` (to check); what the
-  zip holds and at which root (to check).
-- **Homebrew.** Format `vpk`, installed by the system's installer after
-  asking the user: no `path` (to check). Plugins and the files they need:
-  no root is settled yet (to check), so a client installs no manifest
-  here, nor a port's data, until the profile names its roots. One
-  architecture, so no `arch`.
+- **Ids.** `title_id`: nine upper-case letters and digits
+  (`^[A-Z0-9]{9}$`); a game's is four letters and five digits
+  (`PCSE00000`). `app_id`: the `title_id` for the game and its update; an
+  add-on's content id
+  (`^[A-Z]{2}[0-9]{4}-[A-Z0-9]{9}_[0-9]{2}-[A-Z0-9]{16}$`).
+- **Types**: `base` (`CATEGORY` `gd` in its `param.sfo`), `update` (`gp`),
+  `dlc` (`ac`).
+- **Versions.** `version_code`: `APP_VER` `XX.YY` as `XX`×100+`YY`
+  (`01.03` gives `103`); `version_name`: `APP_VER`.
+- **Formats**: `vpk`, and `pkg` only with its licence.
+- **Paths**: `/ux0/`, `/ur0/` and `/uma0/` are the storages `ux0:`, `ur0:`
+  and `uma0:`.
+- **Cheats.** VitaCheat's `.psv` files, at
+  `/ux0/vitacheat/db/<title_id>.psv`; no `build_id` (to check: VitaCheat is
+  closed source).
+- **Saves.** The game's save data as `device`; the zip holds the decrypted
+  folder `ux0:user/00/savedata/<title_id>/`, with its `sce_sys/`, at the
+  root of the archive.
+- **Homebrew.** Format `vpk`, unpacked and promoted by the client, which
+  asks the user first: no `path`, and the app lands in
+  `ux0:app/<title_id>/`. `system_id`: that title id. One architecture, so
+  no `arch`. Roots without consent: `/ux0/data/<id>/`. Roots that need
+  consent: `/ux0/tai/`, `/ur0/tai/` and the plugins' `config.txt` in them
+  (to check: which of them takes precedence). Areas for a port's
+  `data_root`: `/ux0/data/`.
 
 ### A.4 PlayStation 4 (`ps4`), draft
 
@@ -958,21 +1024,25 @@ To be reviewed by someone who knows the platform.
 
 - **Ids.** `title_id`: four upper-case letters and five digits
   (`^[A-Z]{4}[0-9]{5}$`, `CUSA00000`). `app_id`: the `title_id` for the
-  game and its update; an add-on's content id (to check).
+  game and its update; an add-on's content id.
 - **Types**: `base`, `update`, `dlc`.
-- **Versions.** `version_code`: the application version `XX.YY` as the
-  integer `XXYY` (to check); `version_name`: that version.
+- **Versions.** `version_code`: `APP_VER` `XX.YY` as `XX`×100+`YY`;
+  `version_name`: `APP_VER`.
 - **Formats**: `pkg`.
-- **Paths**: `/` is the system's root as homebrew see it (to check).
-- **Cheats.** GoldHEN's cheat files (to check: their formats, their folder
-  and how a file names the game's version). `build_id`: the game's version
-  the set is for (to check).
-- **Saves.** What a save holds and at which root (to check).
-- **Homebrew.** Format `pkg`, installed by the system after asking the
-  user: no `path`. Plugins: no root is settled yet (to check), so a client
-  installs no manifest here, nor a port's data, until the profile names its
-  roots. One architecture, so no `arch`. `requires.min` keys: `firmware`
-  (to check).
+- **Paths**: `/` is the system's root as homebrew see it; `/data/` is
+  `/user/data/`.
+- **Cheats.** GoldHEN's formats, `json`, `shn` and `mc4`, at
+  `/data/GoldHEN/cheats/<format>/<title_id>_<build_id>.<format>`, one format
+  per title and version. `build_id`: the game's `APP_VER` (`01.03`), with
+  `_<process>` when a set is for another process than the game's.
+- **Saves.** `account`, one backup per save directory, its `slot` the
+  directory's name (to check: how they lie on the disk).
+- **Homebrew.** Format `pkg`, installed by the system's package service,
+  which shows nothing: the client asks the user first (to check). No
+  `path`. `system_id`: its title id. One architecture, so no `arch`. Roots
+  without consent: `/data/<id>/`. Roots that need consent:
+  `/data/GoldHEN/`. Areas for a port's `data_root`: `/data/`.
+  `requires.min` keys: `firmware` and `goldhen`.
 
 ### A.5 Android (`android`), draft
 
@@ -981,19 +1051,23 @@ To be reviewed by someone who knows the platform.
 - **Ids.** `title_id`: the app's package name
   (`^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$`); `app_id`: the same.
 - **Types**: `base` only: a newer package of the same `app_id` replaces the
-  old one, and is the update § 6.3 looks for. Add-ons and expansion files
-  (to check).
+  old one, and is the update § 6.3 looks for. The system has no add-ons,
+  and this version has no expansion files (OBB).
 - **Versions.** `version_code`: the package's `versionCode`;
   `version_name`: its `versionName`.
-- **Formats**: `apk` (split packages: to check).
+- **Formats**: `apk`, and `apks` (split packages, installed in one session).
 - **Cheats**: none.
-- **Saves**: no profile yet (an app's data is its own) (to check).
-- **Homebrew.** Format `apk`, installed by the system's installer, which
-  always asks the user: no `path`. `arch`: `aarch64` (the ABI
-  `arm64-v8a`), `armhf` (`armeabi-v7a`), `x86` and `x86_64`; a package
-  without `arch` holds every ABI it needs. A port's root: a folder the user
-  picks for it (to check). `requires.min` keys: `sdk` (the lowest API
-  level, `26`).
+- **Saves**: no profile (an app's data is its own).
+- **Homebrew.** Formats `apk` and `apks`, installed by the system's
+  installer: no `path`. The installer asks the user, unless the client is
+  the app's installer of record and the conditions of `setRequireUserAction`
+  hold. `system_id`: the package name. `signer_sha256` (§ 8.2): the
+  SHA-256 of the signing certificate, which an update must share. `arch`:
+  `aarch64` (the ABI `arm64-v8a`), `armhf` (`armeabi-v7a`), `x86` and
+  `x86_64`; a package without `arch` holds every ABI it needs. Areas for a
+  port's `data_root`: a folder the user picks for it (to check).
+  `requires.min` keys: `sdk` (the lowest API level, `26`). Android 14 and
+  15 refuse a package whose `targetSdkVersion` is below 23 and 24.
 
 ### A.6 Open platforms
 
@@ -1053,12 +1127,14 @@ server and a client do on them.
     manifest, per architecture where a platform has several, the rules a
     client follows to install and uninstall them, an optional ed25519
     signature whose key is pinned per id, and the updates of what is
-    installed. Game ports name their original game and engine, and the
-    files the user supplies from their own copy, which Lantern never
+    installed; dependencies on other homebrew, and the platform's own id
+    of what is installed, which a client never lets two entries share.
+    Game ports name their original game, engine and data folder, and the
+    files the user supplies from their own copy, which a server never
     serves. Mods are out of scope.
   - Saves (§ 9): resumable uploads in chunks; `Content-Digest` required on
     a save sent in one request, and checked (422 `digest_mismatch`); a
-    save's `kind`, `game_version_code`, `profile` and `platform`; the
+    save's `kind`, `slot`, `game_version_code`, `profile` and `platform`; the
     handshake's `limits` say the sizes and how many backups are kept.
   - Cheats (§ 10): several sets per build, each with its id, source,
     update time and SHA-256, read by id; writing them needs
