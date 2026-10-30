@@ -17,7 +17,11 @@ decides.
 - version-codes.json: version_code and version_name per profile (Annex A);
 - requires.json: requirements and devices, and whether a client offers the
   package, warns or refuses (§ 8.7);
-- rating-caps.json: ratings and caps, and whether a server hides (§ 5.6).
+- rating-caps.json: ratings and caps, and whether a server hides (§ 5.6);
+- ed25519-refused.json: Ed25519 signatures a verifier refuses whatever the
+  equation says (§ 8.4, § 5.4): keys and R of small order (each pair of the
+  8, with S = 0, which the cofactorless equation accepts for about one
+  message in 8), encodings that are not canonical, S >= L.
 
 Everything is computed by the reference (conformance/lantern_client.py and
 server/), deterministically: the keys are RFC 8032's first test key and
@@ -27,7 +31,6 @@ fingerprints are computed again. tests/test_v04.py checks the vectors
 against the reference, both ways. Standard library only.
 """
 import base64
-import hashlib
 import json
 import subprocess
 import sys
@@ -37,9 +40,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "conformance"))
-import lantern_client as client  # noqa: E402
+import lantern_client as client
 
-from server import lantern_server as ls  # noqa: E402
+from server import lantern_server as ls
 
 OUT = ROOT / "vectors"
 SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")    # RFC 8032 § 7.1, test 1
@@ -285,10 +288,53 @@ def cap_vectors():
                       for n, r, c in cases])
 
 
+# The eight encodings of the points of small order: the identity, and the points of order 2, 4 and 8.
+SMALL_ORDER = ["0100000000000000000000000000000000000000000000000000000000000000",
+               "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+               "0000000000000000000000000000000000000000000000000000000000000000",
+               "0000000000000000000000000000000000000000000000000000000000000080",
+               "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+               "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85",
+               "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+               "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa"]
+L = 2 ** 252 + 27742317777372353535851937790883648493
+
+
+def ed25519_vectors():
+    messages = [f"Frostline Tales {n}" for n in range(16)]
+    public = client.ed25519_public(AUTHOR)
+    good = client.ed25519_sign(AUTHOR, b"Lantern")
+    s = int.from_bytes(good[32:], "little")
+    p = 2 ** 255 - 19
+    cases = [
+        {"name": "A valid signature, for contrast", "public_key": public.hex(), "message": "Lantern",
+         "signature": good.hex(), "verifies": True},
+        {"name": "S + L: the same S, not reduced (S >= L)", "public_key": public.hex(), "message": "Lantern",
+         "signature": good[:32].hex() + (s + L).to_bytes(32, "little").hex(), "verifies": False},
+        {"name": "A key whose y is p (not canonical)", "public_key": p.to_bytes(32, "little").hex(),
+         "message": "Lantern", "signature": good.hex(), "verifies": False},
+        {"name": "A key whose y is p + 1, the identity not canonical", "public_key": (p + 1).to_bytes(32, "little").hex(),
+         "message": "Lantern", "signature": bytes(64).hex(), "verifies": False},
+        {"name": "The identity with its sign bit set (x = 0, not canonical)",
+         "public_key": "0100000000000000000000000000000000000000000000000000000000000080",
+         "message": "Lantern", "signature": bytes(64).hex(), "verifies": False},
+        {"name": "A real key, R of small order, S = 0", "public_key": public.hex(), "message": "Lea",
+         "signature": SMALL_ORDER[4] + "00" * 32, "verifies": False},
+    ]
+    for c in cases:
+        got = client.ed25519_verify(bytes.fromhex(c["public_key"]), c["message"].encode(), bytes.fromhex(c["signature"]))
+        assert got == c["verifies"], c["name"]
+    return doc("ed25519-refused", "Ed25519 signatures a verifier MUST refuse whatever the verification equation says "
+               "(SPEC.md § 8.4, § 5.4): every pair of the small-order encodings below as the key and as R, with S = 0, "
+               "over each message, never verifies (the cofactorless equation alone accepts about one message in 8); "
+               "then single cases, a valid one for contrast. Keys, R and signatures in hex; messages as UTF-8.",
+               small_order=SMALL_ORDER, messages=messages, small_order_pairs_verify=False, cases=cases)
+
+
 def everything():
     return {"signatures": signature_vectors(), "homebrew-signatures": homebrew_vectors(), "spki": spki_vectors(),
             "paths": path_vectors(), "version-codes": version_vectors(), "requires": requires_vectors(),
-            "rating-caps": cap_vectors()}
+            "rating-caps": cap_vectors(), "ed25519-refused": ed25519_vectors()}
 
 
 def text(doc):

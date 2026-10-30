@@ -238,6 +238,12 @@ def _point(raw):
     return None if x is None else (x, y & ((1 << 255) - 1), 1, x * (y & ((1 << 255) - 1)) % _P)
 
 
+def small_order(point):
+    """Whether [8]P is the identity: one of the 8 points of small order."""
+    q = _mul(8, point)
+    return q[0] % _P == 0 and (q[1] - q[2]) % _P == 0
+
+
 _GY = 4 * pow(5, _P - 2, _P) % _P
 _G = (_x(_GY, 0), _GY, 1, _x(_GY, 0) * _GY % _P)
 
@@ -248,7 +254,9 @@ def ed25519_verify(public, message, signature):
         return False
     a, r = _point(public), _point(signature[:32])
     s = int.from_bytes(signature[32:], "little")
-    if a is None or r is None or s >= _L:
+    # A key or an R of small order, or not canonically encoded, is refused before the equation (SPEC.md
+    # § 8.4): with S = 0 they satisfy it for about one message in 8.
+    if a is None or r is None or s >= _L or small_order(a) or small_order(r):
         return False
     h = int.from_bytes(hashlib.sha512(signature[:32] + public + message).digest(), "little") % _L
     left, right = _mul(s, _G), _add(r, _mul(h, a))
@@ -658,7 +666,8 @@ def rating_age(ratings, cap):
     """The age of a title or homebrew of these `ratings` for `cap`: its
     rating of the cap's system when it has one, else the highest age the
     table reads; None when unrated."""
-    ratings = [r for r in ratings or [] if isinstance(r, dict)]
+    ratings = [r for r in ratings or [] if isinstance(r, dict) and isinstance(r.get("system"), str)
+               and isinstance(r.get("rating"), str)]
     if "system" in cap:
         own = [RATING_AGES.get(r.get("system"), {}).get(r.get("rating")) for r in ratings if r.get("system") == cap["system"]]
         own = [a for a in own if a is not None]

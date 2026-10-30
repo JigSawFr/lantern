@@ -18,7 +18,7 @@ cheats, saves and homebrew go) is in that platform's profile, in Annex A.
 
 The key words MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT and MAY are used
 as in RFC 2119 and RFC 8174, in capitals only. Each requirement has a stable
-id written next to it in brackets, such as [L-5.2-3]: § 3.5 says how ids are
+id written next to it in brackets, such as `[L-5.2-3]`: § 3.5 says how ids are
 kept, and the conformance suite (§ 17) names the ones each of its checks
 covers. Annex B is advice to client authors, without requirements.
 
@@ -529,6 +529,11 @@ A body that does not match its `Content-Digest` gives `422`
   and `"@target-uri"` alone. The server MUST give the token only to a poll
   so signed, and answer `401` `signature_required` or `signature_invalid`
   to any other. [L-5.4-11] An address of a poll that leaks gives nothing.
+- **Keys of small order.** A server MUST refuse at pairing, with `400`, a
+  device key that does not decode canonically or is one of the 8 points of
+  small order. [L-5.4-12] It checks every signature of a request as § 8.4
+  says (`L-8.4-4`): a key or an R of small order, or S at L or above,
+  never verifies.
 - Revoking a device revokes its token and the binding with it; a device
   changes its key by pairing again.
 
@@ -547,8 +552,8 @@ it (§ 5.7) and hands it over, as a link or a code.
 
 - `code`: of the pairing alphabet (§ 5.2), 16 to 32 symbols (at least 80
   bits), in groups of 4. `link`: `verify` with `invitation=<code>` in its
-  query and, when no CA vouches for the server's certificate,
-  `spki=<its whole SHA-256, lower-case hex>` (§ 5.3).
+  query and the server's `spki=<its key's whole SHA-256, lower-case hex>`
+  (§ 5.3), always when no CA vouches for its certificate.
 - `user`: the account the devices join; `scopes`: what they may do, a
   subset of that account's; `expires`: when it stops, 30 days ahead at
   most; `devices`: how many devices may redeem it, 1 to 100; `used`: how
@@ -1052,11 +1057,21 @@ and `manifest_sha256`. Test vectors: `vectors/homebrew-signatures.json`.
   for an author. It SHOULD check a signature before it serves it. [L-8.4-1]
 - A client MUST check the signature of the package it installs when there
   is one, and refuse the package when it does not verify. [L-8.4-2]
+- A verifier of an Ed25519 signature (of a homebrew here, of a request in
+  § 5.4) MUST decode the public key and the signature's R first, and
+  refuse the signature when either does not decode, is not encoded
+  canonically (a y of p or more, or x = 0 with its sign bit set), or is one
+  of the 8 points of small order ([8]P is the identity), and when S is L or
+  more; only then does it check the equation. [L-8.4-4] Without that, a key
+  and an R of small order with S = 0 pass the cofactorless equation for
+  about one message in 8, and anyone can forge. Test vectors:
+  `vectors/ed25519-refused.json`.
 - On the first install of an `id`, the client pins its `public_key` (or
   that it had none). A later version signed by another key, or unsigned
   after a signed one, MUST be refused unless the user explicitly accepts the
   change, after the client showed both keys' short fingerprints (the
   SHA-256 of the 32 bytes, in the form of § 5.3). [L-8.4-3]
+- A server MUST NOT serve a signature that L-8.4-4 refuses. [L-8.4-5]
 
 ### 8.5 Routes
 
@@ -1450,6 +1465,11 @@ DNS answer or discovery reply, someone recording the traffic).
   the server's page or an admin app (§ 5.1, § 5.7); the server keeps only
   hashes of tokens (§ 5.1); scopes and a rating cap limit what a token can
   do (§ 5.1, § 5.6); a poll address that leaks gives nothing (§ 5.4).
+- Forged signatures: a key or an R of small order, or a signature not
+  encoded canonically, is refused before the verification equation, by
+  every verifier, and a device key of small order at pairing (§ 8.4,
+  § 5.4): with them, the equation alone takes a forgery for about one
+  message in 8, for requests and homebrew alike.
 - Not protected: a stolen device holds its key and its token until the user
   revokes it; a bearer-only token, which a server may refuse (§ 5.4),
   works for whoever copies it.
@@ -1977,6 +1997,13 @@ device's own zone.
     and packages, and a client that decides what fits (§ 6.3); `ratings`
     on homebrew (§ 8.1).
   - `DELETE <base>/v1/requests/{id}` (§ 11).
+  - A security fix to Ed25519 verification (§ 8.4, § 5.4): a verifier
+    refuses a key or an R of small order and encodings that are not
+    canonical, before the equation, which alone accepted a forgery (a key
+    and an R of small order, S = 0) for about one message in 8; a server
+    refuses a device key of small order at pairing. The reference server and
+    the suite's reference client did accept such forgeries until 0.4;
+    `vectors/ed25519-refused.json` holds the cases.
   - A server refuses a document beyond the limits without failing (§ 13).
   - A threat model (§ 16); conformance levels, the name and the badge
     (§ 17); test vectors (`vectors/`); client guidelines (Annex B).
