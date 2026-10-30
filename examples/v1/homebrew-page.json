@@ -4,6 +4,7 @@
     {
       "id": "org.example.frostline",
       "platform": "switch",
+      "kind": "app",
       "name": "Frostline",
       "author": "Noor",
       "category": "tool",
@@ -44,6 +45,7 @@
     {
       "id": "org.example.paperlamp",
       "platform": "switch",
+      "kind": "game",
       "name": "Paper Lamp",
       "author": "Ines",
       "category": "game",
@@ -62,8 +64,102 @@
         "manifest_sha256": "4638e8490792dd59a0912a83cad84b4ecff5a7772a8a4c53fa4e64e53342ce06",
         "path": "/switch/org.example.paperlamp/paperlamp.nro"
       }
+    },
+    {
+      "id": "org.example.harborlights",
+      "platform": "switch",
+      "kind": "port",
+      "name": "Harbor Lights",
+      "author": "Lea",
+      "category": "game",
+      "version": "2.1.0",
+      "build": 20100,
+      "license": "GPL-2.0-or-later",
+      "source": "https://code.example.org/lea/harborlights",
+      "language": "en",
+      "summary": "The lighthouse-keeping classic, on the Switch. Needs your own copy of the game.",
+      "updated": "2026-10-30T08:00:00Z",
+      "package": {
+        "format": "nro",
+        "file": "/api/lantern/v1/files/f_Hl3Qw7",
+        "size": 3145728,
+        "sha256": "1a938f454b492bc4468cbe305b2ad9970800fcb35b0d492622b9614315c523f2",
+        "manifest_sha256": "6dcd5259ef9a33f85b81e0a8c70fe6726f5b24d360be86eb3ac057566bb06940",
+        "path": "/switch/org.example.harborlights/harborlights.nro"
+      },
+      "original": {
+        "title": "Harbor Lights",
+        "platform": "windows",
+        "atlas_id": "harbor-lights"
+      },
+      "engine": "Lighthouse, a recreation of the original engine",
+      "requires_data": [
+        {
+          "name": "The game's data archive",
+          "path": "data/harbor.pak",
+          "size": 214748364,
+          "sha256": [
+            "ccb4f6dd7c64f561c5f04544f877ca19b408b9d35c4c480384c9f097c1beb55b",
+            "3a51ecc4a3bec1eae869fc277a4b5df8e9fdd2e18a2643873bd2f22d63a9e143"
+          ],
+          "hint": "In the folder where the game is installed on your computer."
+        },
+        {
+          "name": "The music",
+          "path": "data/music.pak",
+          "optional": true,
+          "hint": "Next to harbor.pak, in the editions that have it."
+        }
+      ]
+    },
+    {
+      "id": "org.example.frostline",
+      "platform": "android",
+      "kind": "app",
+      "name": "Frostline",
+      "author": "Noor",
+      "category": "tool",
+      "version": "1.4.0",
+      "build": 10400,
+      "license": "MIT",
+      "source": "https://code.example.org/noor/frostline",
+      "language": "en",
+      "summary": "A pocket journal for long nights.",
+      "requires": {
+        "text": "Android 8.0 or later",
+        "min": {
+          "sdk": "26"
+        }
+      },
+      "updated": "2026-10-29T08:00:00Z",
+      "package": {
+        "format": "apk",
+        "arch": "aarch64",
+        "file": "/api/lantern/v1/files/f_Fa64Lp",
+        "size": 6291456,
+        "sha256": "ec53ddabd2c7ecc9960e23566a567a8cb97147fbf0f26c36c69767ee1f5904b6",
+        "manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "packages": [
+        {
+          "format": "apk",
+          "arch": "armhf",
+          "file": "/api/lantern/v1/files/f_Fa32Lp",
+          "size": 5767168,
+          "sha256": "a73bf7213cd10694a8b9d82526404641b23e0f2fb5f93f9e2c8025615d7d5627",
+          "manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        {
+          "format": "apk",
+          "arch": "x86_64",
+          "file": "/api/lantern/v1/files/f_Fx64Lp",
+          "size": 6553600,
+          "sha256": "cb72269c9e9085c400a4f778cc34871d61ac103700c576201557faf7ffeffb4a",
+          "manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      ]
     }
   ],
-  "total": 2,
+  "total": 4,
   "next": null
 }

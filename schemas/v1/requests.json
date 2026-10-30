@@ -11,38 +11,7 @@
     "requests": {
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "common.json#/$defs/opaque"
-          },
-          "platform": {
-            "$ref": "common.json#/$defs/platform"
-          },
-          "title_id": {
-            "$ref": "common.json#/$defs/id"
-          },
-          "name": {
-            "$ref": "common.json#/$defs/name"
-          },
-          "status": {
-            "enum": [
-              "open",
-              "done",
-              "declined"
-            ]
-          },
-          "created": {
-            "$ref": "common.json#/$defs/time"
-          }
-        },
-        "required": [
-          "id",
-          "platform",
-          "title_id",
-          "status",
-          "created"
-        ]
+        "$ref": "common.json#/$defs/request"
       }
     }
   },

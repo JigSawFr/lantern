@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "id": "org.example.harborlights",
+  "platform": "switch",
+  "kind": "port",
+  "name": "Harbor Lights",
+  "author": "Lea",
+  "category": "game",
+  "version": "2.1.0",
+  "build": 20100,
+  "license": "GPL-2.0-or-later",
+  "source": "https://code.example.org/lea/harborlights",
+  "language": "en",
+  "summary": "The lighthouse-keeping classic, on the Switch. Needs your own copy of the game.",
+  "updated": "2026-10-30T08:00:00Z",
+  "package": {
+    "format": "nro",
+    "file": "/api/lantern/v1/files/f_Hl3Qw7",
+    "size": 3145728,
+    "sha256": "1a938f454b492bc4468cbe305b2ad9970800fcb35b0d492622b9614315c523f2",
+    "manifest_sha256": "6dcd5259ef9a33f85b81e0a8c70fe6726f5b24d360be86eb3ac057566bb06940",
+    "path": "/switch/org.example.harborlights/harborlights.nro",
+    "manifest": [
+      {
+        "path": "/switch/org.example.harborlights/harborlights.nro",
+        "size": 3145728,
+        "sha256": "1a938f454b492bc4468cbe305b2ad9970800fcb35b0d492622b9614315c523f2"
+      }
+    ]
+  },
+  "original": {
+    "title": "Harbor Lights",
+    "platform": "windows",
+    "atlas_id": "harbor-lights"
+  },
+  "engine": "Lighthouse, a recreation of the original engine",
+  "requires_data": [
+    {
+      "name": "The game's data archive",
+      "path": "C:/Games/Harbor Lights/harbor.pak",
+      "size": 214748364,
+      "sha256": [
+        "ccb4f6dd7c64f561c5f04544f877ca19b408b9d35c4c480384c9f097c1beb55b",
+        "3a51ecc4a3bec1eae869fc277a4b5df8e9fdd2e18a2643873bd2f22d63a9e143"
+      ],
+      "hint": "In the folder where the game is installed on your computer."
+    },
+    {
+      "name": "The music",
+      "path": "data/music.pak",
+      "optional": true,
+      "hint": "Next to harbor.pak, in the editions that have it."
+    }
+  ]
+}

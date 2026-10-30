@@ -10,7 +10,7 @@ openapi: 3.1.0
 info:
   title: Lantern protocol
   version: 0.3.0
-  summary: An open protocol between console homebrews and self-hosted game library servers.
+  summary: An open protocol between homebrews and apps on every platform and self-hosted game library servers.
   license:
     name: MIT
     identifier: MIT
@@ -127,8 +127,8 @@ paths:
         default: { $ref: "#/components/responses/Problem" }
   /v1/pairing:
     post:
-      summary: Ask to pair a console (§ 5.2)
-      description: "Without a token. The user approves the code on the server's side (its verify page), never on the console."
+      summary: Ask to pair a device (§ 5.2)
+      description: "Without a token. The user approves the code on the server's side (its verify page), never on the device."
       security: [ {} ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/pairing-request.json" } } } }
       responses:
@@ -164,7 +164,7 @@ paths:
         default: { $ref: "#/components/responses/Problem" }
   /v1/apps/missing:
     post:
-      summary: What the console is missing, on its platform (§ 6.3)
+      summary: What the device is missing, on its platform (§ 6.3)
       description: "A platform is required: Lantern-Platform or ?platform=, else 400."
       parameters: [ { $ref: "#/components/parameters/Platform" }, { $ref: "#/components/parameters/PlatformQuery" }, { $ref: "#/components/parameters/PageSize" }, { $ref: "#/components/parameters/Cursor" } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/missing-request.json" } } } }
@@ -336,9 +336,10 @@ paths:
         default: { $ref: "#/components/responses/Problem" }
     post:
       summary: Add a cheat set (§ 10, scope cheats.write; optional, 405 without)
+      parameters: [ { $ref: "#/components/parameters/Platform" } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/cheat-write.json" } } } }
       responses:
-        "201": { description: "Added." }
+        "201": { description: "Added: the new set.", content: { application/json: { schema: { $ref: "schemas/v1/cheat.json" } } } }
         default: { $ref: "#/components/responses/Problem" }
   /v1/cheats/{id}:
     parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
@@ -346,7 +347,7 @@ paths:
       summary: A cheat set's text, as a file (§ 10)
       parameters: [ { $ref: "#/components/parameters/Platform" } ]
       responses:
-        "200": { description: "Its text, in the platform's own format (Atmosphère's on a Switch).", headers: { Repr-Digest: { $ref: "#/components/headers/ReprDigest" } }, content: { text/plain: {} } }
+        "200": { description: "Its text, in the platform's own format (SPEC.md Annex A).", headers: { Repr-Digest: { $ref: "#/components/headers/ReprDigest" } }, content: { text/plain: {} } }
         default: { $ref: "#/components/responses/Problem" }
     put:
       summary: Replace a cheat set (§ 10, scope cheats.write; optional, 405 without)
@@ -370,6 +371,6 @@ paths:
       parameters: [ { $ref: "#/components/parameters/Platform" } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/request-create.json" } } } }
       responses:
-        "200": { description: "The open request for the same title." }
-        "201": { description: "Asked." }
+        "200": { description: "The open request for the same title.", content: { application/json: { schema: { $ref: "schemas/v1/request.json" } } } }
+        "201": { description: "Asked: the new request.", content: { application/json: { schema: { $ref: "schemas/v1/request.json" } } } }
         default: { $ref: "#/components/responses/Problem" }

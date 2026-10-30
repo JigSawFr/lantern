@@ -2,6 +2,7 @@
   "schema": 1,
   "id": "org.example.frostline",
   "platform": "switch",
+  "kind": "app",
   "name": "Frostline",
   "author": "Noor",
   "category": "tool",
