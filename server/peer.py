@@ -71,6 +71,13 @@ class PeerHandler(BaseHTTPRequestHandler):
     def version_string(self):
         return self.server_version
 
+    def setup(self):
+        super().setup()
+        try:    # no wait for the client's delayed ACK between the headers and the file (Nagle)
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
+
     def log_message(self, fmt, *args):
         if not self.server.quiet:
             super().log_message(fmt, *args)
@@ -117,6 +124,8 @@ class PeerHandler(BaseHTTPRequestHandler):
                                 {"Retry-After": "5"})
         try:
             self.send_file(held["path"], held["size"], sha)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True        # the client went away mid-file: its slot is free again
         finally:
             peer.release()
 

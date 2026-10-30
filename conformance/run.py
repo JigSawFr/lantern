@@ -84,6 +84,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import checks_v05
+import checks_v06
 import lantern_client as client
 import static_check
 
@@ -92,7 +93,7 @@ try:                    # Python 3.14 and later: zstd, to read what a server com
 except ImportError:
     zstd = None
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
             "signatures", "admin", "events", "peers", "sync", "encrypted_saves")
 LEVELS = ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
@@ -110,6 +111,7 @@ NO_SUCH_PLATFORM = "x-lantern-conformance"
 CODE = re.compile(r"[2-9A-HJ-NP-Z]{4}(-[2-9A-HJ-NP-Z]{4}){1,7}")  # SPEC.md § 5.2
 PAIRING = {"schema": 1, "device": "Lantern conformance", "scopes": ["library"]}
 SAVE_KINDS = ("account", "device", "bcat", "cache", "other")
+NO_BUILD = ("3ds", "vita")      # profiles whose cheats have no build_id (Annex A.2, A.3)
 # SPEC.md § 12: the codes each status may carry.
 CODES = {400: {"bad_request", "key_required"},
          401: {"unauthorized", "signature_required", "signature_invalid", "signature_expired", "signature_replayed"}, 403: {"forbidden", "account_frozen"},
@@ -155,7 +157,7 @@ REQS = {
     "apps.first-page": ["L-3.2-5"], "features": ["L-4.2-4", "L-4.2-7", "L-4.2-8"],
     "features.anonymous": ["L-4.2-4", "L-4.2-7"],
     "apps.pages": ["L-6.2-2", "L-6.2-3"], "apps.sha256": ["L-6.1-1"], "apps.platforms": ["L-4.2-2"],
-    "apps.page-size": ["L-6.2-5"], "apps.bad-cursor": ["L-6.2-4"], "apps.filters": ["L-6.2-1"], "apps.etag": ["L-14-1"],
+    "apps.page-size": ["L-6.2-5", "L-6.2-6"], "apps.bad-cursor": ["L-6.2-4"], "apps.filters": ["L-6.2-1"], "apps.etag": ["L-14-1"],
     "platforms.filter": ["L-4.3-1"], "platforms.query": ["L-4.3-5"], "platforms.unknown": ["L-4.3-2"],
     "platforms.bad-name": ["L-4.3-3"], "platforms.vary": ["L-4.3-6"],
     "missing.no-platform": ["L-4.3-4"], "missing.installed": ["L-6.3-1"], "missing.up-to-date": ["L-6.3-1"],
@@ -188,14 +190,14 @@ REQS = {
     "admin.refused": ["L-5.7-1"], "admin.users": ["L-5.7-2"], "admin.users-write": ["L-5.7-3"],
     "admin.pairings": ["L-5.7-2", "L-5.7-4", "L-5.2-4", "L-5.2-3"], "admin.refuse": ["L-5.2-3"],
     "admin.rating-cap": ["L-5.6-1", "L-5.6-2"], "admin.devices": ["L-5.1-4", "L-5.7-2", "L-5.7-3"],
-    "admin.invitations": ["L-5.5-1", "L-5.5-2"],
+    "admin.invitations": ["L-5.5-1", "L-5.5-2", "L-5.5-4"],
     "errors.problem": ["L-12-1", "L-12-2"], "errors.never-200": ["L-12-1"], "errors.www-authenticate": ["L-5.1-5"],
     "auth.no-basic": ["L-5.1-1"], "documents.schema": ["L-3.2-1"], "documents.type": ["L-2-4"],
     "documents.limits": ["L-13-2"], "documents.date": ["L-5.4-7"], "caching.private": ["L-14-2"],
     "deprecation.headers": ["L-3.4-1", "L-3.4-2"],
     # Draft 0.5 (checks_v05.py, static_check.py).
     "events.stream": ["L-18.1-1", "L-18.1-2", "L-18.1-7", "L-18.4-1"], "events.heartbeat": ["L-18.1-6"],
-    "events.resume": ["L-18.1-3", "L-18.2-1", "L-18.3-2"], "events.bad-token": ["L-18.1-4"],
+    "events.resume": ["L-18.1-3", "L-18.1-10", "L-18.2-1", "L-18.3-2"], "events.bad-token": ["L-18.1-4"],
     "events.long-poll": ["L-18.3-1", "L-18.3-3"], "events.limit": ["L-18.4-2"], "events.revoked": ["L-18.1-8"],
     "peers.handshake": ["L-19.3-3"], "peers.grant": ["L-19.3-1", "L-19.3-2"], "peers.mirrors": ["L-19.2-2"],
     "peer.refused": ["L-19.4-1", "L-19.4-5"], "peer.serves": ["L-19.4-2"], "peer.rate": ["L-19.4-4"],
@@ -204,18 +206,30 @@ REQS = {
     "sync.if-match": ["L-20.4-3"], "sync.generation": ["L-20.4-4"], "sync.installed": ["L-20.4-5"],
     "sync.malformed": ["L-20.4-6"], "sync.limits": ["L-20.5-4"],
     "e2e.upload": ["L-9.4-4"], "e2e.not-offered": ["L-9.4-5"],
-    "admin.users-delete": ["L-5.7-6", "L-5.7-7", "L-20.5-1"],
+    "admin.users-delete": ["L-5.7-6", "L-5.7-7", "L-20.5-1", "L-20.5-3"],
     "pairing.rate-limit": ["L-5.2-8"], "invitations.rate-limit": ["L-5.5-3"], "discovery.dns-sd": ["L-4.1-4"],
     "transport.pin": [],
     "static.handshake": ["L-21.2-1", "L-3.2-5"], "static.pages": ["L-21.1-1"], "static.titles": ["L-21.1-1"],
     "static.homebrew": ["L-21.1-1", "L-8.1-3"], "static.cheats": ["L-21.1-1"], "static.paths": ["L-21.1-2"],
     "static.files": ["L-21.1-1"],
+    # Draft 0.6 (checks_v06.py, and admin.requests here).
+    "values.i-json-refused": ["L-2.3-1"], "documents.i-json": ["L-2.3-1"], "documents.times": ["L-2.3-2"],
+    "documents.nfc": ["L-2.3-5"], "values.hex-case": ["L-2.3-4"], "apps.search": ["L-2.3-6", "L-6.2-1"],
+    "apps.empty": ["L-2.3-7"], "routes.paths": ["L-2.4-1"], "routes.no-redirect": ["L-2.4-1"],
+    "routes.query-twice": ["L-2.4-3"], "routes.query-lenient": ["L-2.4-4", "L-2.4-5"], "routes.head": ["L-2.4-6"],
+    "routes.content-type": ["L-2.4-7"], "homebrew.ambiguous": ["L-4.3-8"], "missing.want": ["L-6.3-2"],
+    "files.if-range": ["L-6.6-6", "L-6.6-7"], "caching.not-modified": ["L-14-3", "L-14-4"],
+    "admin.requests": ["L-11-3", "L-11-4", "L-11-5", "L-11-6"], "auth.tokens": ["L-5.1-2"],
+    "titles.images": ["L-7.1-2"], "discovery.rate": ["L-4.1-3"], "peers.mirrors-fetch": ["L-19.2-2"],
+    "peer.slots": ["L-19.4-4"],
 }
 # Rules only a client keeps: the suite cannot see them (SPEC.md § 17).
 CLIENT_RULES = [
     ("2", ["L-2-1", "L-2-2"], "Certificates are verified; plain HTTP only to a loopback address"),
     ("2", ["L-2-5", "L-2-6", "L-2-7"], "User-Agent, Accept-Language and Lantern-Platform on every call"),
     ("2", ["L-2-8"], "Tokens and signatures go to the server's origin alone"),
+    ("2.3", ["L-2.3-3"], "A time's fraction of 1 to 9 digits is read"),
+    ("2.4", ["L-2.4-2"], "No redirect of a route is followed"),
     ("3.2", ["L-3.2-2"], "A reader ignores the fields it does not know"),
     ("3.2", ["L-3.2-3", "L-3.2-4"], "A reader treats a newer schema as absent and never writes it back"),
     ("3.4", ["L-3.4-5"], "A client records a Deprecation for its developers"),
@@ -264,14 +278,13 @@ CLIENT_RULES = [
 UNSEEN = {
     "L-3.1-1": "keeping an old major version needs one",
     "L-3.4-3": "a Sunset is in the future of a run", "L-3.4-4": "as is an older schema's last day",
-    "L-4.1-2": "the suite asks from one network", "L-4.1-3": "it would take many datagrams",
-    "L-5.1-2": "a token's entropy cannot be measured from one", "L-5.1-3": "what a server keeps is inside it",
+    "L-4.1-2": "the suite asks from one network",
+    "L-5.1-3": "what a server keeps is inside it",
     "L-5.2-2": "the protocol has no route for it, which is what the rule says",
-    "L-7.1-2": "the suite does not fetch images",
+    "L-5.2-14": "a code is typed on the server's own page, behind its sign-in",
     "L-18.2-2": "a server stops when its owner says, not the suite",
     "L-19.4-3": "whether a peer's user allowed it, and its networks, are the device's",
     "L-20.5-2": "thirty days are longer than a run",
-    "L-20.5-3": "the data of a deleted account cannot be read any more",
 }
 
 
@@ -423,7 +436,7 @@ class Client:
         return res
 
 
-class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
+class Suite(checks_v05.NewFamilies, checks_v06.Sweep, static_check.StaticChecks):
     version = VERSION
 
     def __init__(self, args):
@@ -611,6 +624,15 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
             self.check("apps.filters", "6.2", "type and title_id filter; a bad value gives 400", self.c_filters)
             self.check("apps.etag", "14", "A listing has an ETag and honours If-None-Match", self.c_etag,
                        level="should")
+            self.check("caching.not-modified", "14", "If-None-Match, weak or *: 304 with the 200's headers; a tag "
+                       "per page and platform", self.c_not_modified)
+            self.check("apps.search", "6.2", "q: names held, by canonical caseless match", self.c_apps_search)
+            self.check("apps.empty", "2.3", "A listing of nothing: an empty page", self.c_apps_empty)
+            self.check("routes.query-twice", "2.4", "A parameter given twice gives 400", self.c_query_twice)
+            self.check("routes.query-lenient", "2.4", "Empty values are absent; an unknown parameter is ignored",
+                       self.c_query_lenient)
+            self.check("missing.want", "6.3", "want empty or of another type: 400; an unknown installed app ignored",
+                       self.c_missing_want)
             self.check("platforms.filter", "4.3", "Lantern-Platform: that platform's apps only, all of them",
                        self.c_platform_filter)
             self.check("platforms.query", "4.3", "?platform= overrides Lantern-Platform", self.c_platform_query)
@@ -634,6 +656,7 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
                        self.c_ranges)
             self.check("files.unsatisfiable", "6.6", "A range outside the file gives 416 with Content-Range", self.c_416)
             self.check("files.unknown", "6.6", "An unknown file id gives 404 or 410", self.c_unknown_file)
+            self.check("files.if-range", "6.6", "If-Range honoured; several ranges never multipart", self.c_if_range)
             self.check("compression.json", "2.1", "JSON compressed as Accept-Encoding asks: zstd or br, and gzip",
                        self.c_compression_json, level="should")
             self.check("compression.etag", "2.1", "Compressed JSON: Vary Accept-Encoding, an ETag of its own",
@@ -652,6 +675,8 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
             self.check("titles.unknown", "7.1", "An unknown title gives 404", self.c_unknown_title)
             self.check("titles.bulk", "7.2", "Many titles at once: those known, and the ids unknown", self.c_titles)
             self.check("titles.bulk-limit", "7.2", f"More than {TITLES_AT_ONCE} ids give 400", self.c_titles_limit)
+            self.check("titles.images", "7.1", "Images on the server's origin: a long cache lifetime", self.c_images,
+                       level="should")
             self.check("titles.changes", "7.3", "Title changes: a token, then from it", self.c_title_changes)
             self.check("titles.bad-token", "7.3", "An unknown since token gives 400 or 410", self.c_title_bad_since)
         self.level = "homebrew"
@@ -678,6 +703,8 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
             self.check("homebrew.updates-platform", "8.5", "Updates without a platform give 400",
                        self.c_homebrew_updates_unnamed)
             self.check("homebrew.unknown", "8.1", "An unknown id gives 404", self.c_homebrew_unknown)
+            self.check("homebrew.ambiguous", "4.3", "An id of two platforms gives 400 without a platform",
+                       self.c_ambiguous)
         self.level = "cheats"
         if mine["cheats"]:
             self.check("cheats.sets", "10", "Cheat sets: valid, ids unique, filtered as asked", self.c_cheats)
@@ -739,6 +766,8 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
                        "once", self.c_admin_devices)
             self.check("admin.invitations", "5.5", "An invitation: made, listed, redeemed once, then 410; revoked",
                        self.c_admin_invitations)
+            self.check("admin.requests", "11", "Requests decided: declined with a reason the requester reads, then "
+                       "final; done; an event at each change", self.c_admin_requests)
             self.check("admin.users-delete", "5.7", "An account deleted: confirmed by its name, its token and "
                        "invitations dead, its sync data erased", self.c_admin_users_delete)
         self.level = "events"
@@ -748,8 +777,6 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
             self.check("events.resume", "18.1", "An event of the suite's own: on the stream, again with "
                        "Last-Event-ID, in a long poll, not on another platform's stream", self.c_events_resume)
             self.check("events.bad-token", "18.1", "A Last-Event-ID never given: 400 or 410", self.c_events_bad_token)
-            self.check("events.long-poll", "18.3", "changes with wait: answers by then; wait without since gives 400",
-                       self.c_events_long_poll)
             self.check("events.heartbeat", "18.1", "Something on the stream every limits.heartbeat seconds",
                        self.c_events_heartbeat)
             self.check("events.limit", "18.4", "Beyond limits.event_streams: 429 with Retry-After", self.c_events_limit)
@@ -763,12 +790,16 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
                        self.c_peers_grant)
             self.check("peers.mirrors", "19.2", "Mirrors: HTTPS, or HTTP on a private network, no token in them",
                        self.c_peers_mirrors)
+            self.check("peers.mirrors-fetch", "19.2", "Mirrors serve the file's bytes, read without a credential",
+                       self.c_mirrors_fetch)
+            self.check("values.hex-case", "2.3", "A SHA-256 in a path, in upper case: 404", self.c_hex_case)
             self.check("peer.refused", "19.4", "The peer: without a grant, with a changed one or another file's, 403",
                        self.c_peer_refused)
             self.check("peer.serves", "19.4", "The peer serves a file granted: its bytes, Repr-Digest, ranges",
                        self.c_peer_serves)
             self.check("peer.discovery", "19.5", "The peer answers discovery that asks for peers, and only that",
                        self.c_peer_discovery)
+            self.check("peer.slots", "19.4", "The peer's slots: its downloads at once, then 429", self.c_peer_slots)
             self.check("peer.rate", "19.4", "The peer limits requests: 429 with Retry-After", self.c_peer_rate)
         self.level = "sync"
         if mine["sync"]:
@@ -783,6 +814,11 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
             self.check("sync.installed", "20.4", "Another device's item of installed: 403", self.c_sync_installed)
             self.check("sync.malformed", "20.4", "An item of another form: 400", self.c_sync_malformed)
             self.check("sync.limits", "20.5", "limits.sync_items", self.c_sync_limits, level="should")
+        if mine["events"]:
+            # Late, so that its wait passed while the checks above ran (events.stream began it).
+            self.level = "events"
+            self.check("events.long-poll", "18.3", "changes with wait: answers by then; wait without since gives 400",
+                       self.c_events_long_poll)
         self.level = "core"
         for family, (path, _) in BODIES.items():
             if mine[family] and (family != "saves" or "saves" in self.scopes()):
@@ -791,7 +827,13 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
                            lambda f=family: self.c_schema_2(f))
         self.level = "core"
         self.check("errors.unknown-route", "12", "An unknown route gives 404 not_found", self.c_unknown_route)
+        self.check("routes.paths", "2.4", "A trailing / is another path; <base>/v1 the handshake", self.c_routes)
+        self.check("routes.head", "2.4", "HEAD as GET, without a body, on every GET route", self.c_head)
+        self.check("routes.content-type", "2.4", "A document of another Content-Type gives 400", self.c_content_type)
+        self.check("values.i-json-refused", "2.3", "A document that is not I-JSON gives 400", self.c_i_json_refused)
         self.check("discovery.reply", "4.1", "LAN discovery reply", self.c_discovery)
+        self.check("discovery.rate", "4.1", "Discovery: 10 replies a second to an address at most",
+                   self.c_discovery_rate, level="should")
         self.check("discovery.dns-sd", "4.1", "DNS-SD: _lantern._tcp, its uid, path, versions and port",
                    self.c_dns_sd, level="should")
         if self.features(self.hello_anon)["pairing"]:
@@ -810,6 +852,11 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
         self.check("documents.type", "2", "Every document is application/json", self.g_ctype)
         self.check("documents.limits", "13", "Documents stay within the limits", self.g_limits)
         self.check("documents.date", "5.4", "Every response carries Date", self.g_date)
+        self.check("documents.i-json", "2.3", "Every document is I-JSON", self.g_i_json)
+        self.check("documents.times", "2.3", "Every time in UTC with Z, every date YYYY-MM-DD", self.g_times)
+        self.check("documents.nfc", "2.3", "Text in Normalization Form C", self.g_nfc, level="should")
+        self.check("routes.no-redirect", "2.4", "No route answers with a redirect", self.g_no_redirect)
+        self.check("auth.tokens", "5.1", "Tokens of 128 bits at least, each its own", self.g_tokens)
         self.check("deprecation.headers", "3.4", "Deprecation and Sunset, where sent, are of their forms",
                    self.g_deprecation)
         self.check("caching.private", "14", "Authenticated answers: Cache-Control private, Vary Authorization",
@@ -1409,6 +1456,7 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
         expect(got | set(doc["unknown"]) >= set(ids) | {unknown}, "an id neither known nor unknown")
         for t in doc["titles"]:
             self.check_title(t, f"title {t['title_id']}")
+        self.titles_read = doc["titles"]
         return f"{len(doc['titles'])} known, {len(doc['unknown'])} unknown, of {len(ids) + 1} ids on {platform}"
 
     def c_titles_limit(self):
@@ -1735,6 +1783,8 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
         text = "[Lantern conformance]\n04000000 00000000 00000000\n"
         body = {"schema": 1, "platform": platform, "title_id": tid, "build_id": "0123456789ABCDEF",
                 "source": "Lantern conformance", "note": "Lantern conformance", "text": text}
+        if platform in NO_BUILD:        # a set per game, without a build (Annex A.2, A.3)
+            del body["build_id"]
         r = self.http.request("POST", self.api("/v1/cheats"), body=body, platform=platform)
         expect(r.status == 201, f"{r}, expected 201" + problem_detail(r))
         doc = r.json()
@@ -1743,10 +1793,10 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
         path = self.api(f"/v1/cheats/{quote(sid, safe='')}")
         try:
             for key in ("platform", "title_id", "build_id", "source"):
-                expect(doc.get(key) == body[key], f"{r}: {key} {doc.get(key)!r}, sent {body[key]!r}")
+                expect(doc.get(key) == body.get(key), f"{r}: {key} {doc.get(key)!r}, sent {body.get(key)!r}")
             expect(doc["size"] == len(text.encode()) and doc["sha256"] == hashlib.sha256(text.encode()).hexdigest(),
                    f"{r}: size and sha256 are not those of the text sent")
-            query = f"title_id={quote(tid, safe='')}&build_id=0123456789ABCDEF"
+            query = f"title_id={quote(tid, safe='')}" + ("&build_id=0123456789ABCDEF" if "build_id" in body else "")
             _, listed = self.get_json(self.api(f"/v1/cheats?{query}"), "cheats", platform=platform)
             expect([c["id"] for c in listed["cheats"]] == [sid], f"{query}: not the set posted, alone")
             self.fetch(path, doc["size"], doc["sha256"], platform)
@@ -1839,7 +1889,7 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
             if platform in ("switch",):
                 tid = f"05{secrets.token_hex(5).upper()}0000"
             elif platform == "3ds":
-                tid = f"00040000F{secrets.token_hex(3).upper()}00"
+                tid = f"00040000F{secrets.token_hex(3).upper()}0"
             elif platform in ("vita", "ps4"):
                 tid = "XLCF" + "".join(secrets.choice("0123456789") for _ in range(5))
             elif platform == "android":
@@ -2325,6 +2375,79 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
                 return items
         raise Fail(f"{path}: still a next page after 1000")
 
+    def c_admin_requests(self):
+        """SPEC.md § 11's states, by the administration API: a request declined with a reason, final; one done."""
+        if not self.features(self.hello)["requests"]:
+            raise Skip("the server does not offer requests to this caller")
+        if not {"admin", "requests"} <= self.scopes():
+            raise Blind("needs the scopes admin and requests")
+        platform, tid = self.own_title(self.sample_platform())
+        body = {"schema": 1, "platform": platform, "title_id": tid}
+        since = self.events_token() if self.features(self.hello)["events"] else None
+        made = []
+        try:
+            r = self.http.request("POST", self.api("/v1/requests"), body=body, platform=platform)
+            expect(r.status == 201, f"{r}, expected 201" + problem_detail(r))
+            rid = r.json()["id"]
+            made.append(rid)
+            listed = self.admin_walk(self.api("/v1/admin/requests?status=open"), "admin-requests")
+            mine = next((q for q in listed if q["id"] == rid), None)
+            expect(mine is not None and mine["user"] == self.hello["account"].get("name") and mine["status"] == "open",
+                   f"request {rid} is not listed open, with its user, by GET /v1/admin/requests?status=open")
+            expect(all(q["status"] == "open" for q in listed), "?status=open lists requests of another status")
+            path = self.api(f"/v1/admin/requests/{quote(rid, safe='')}")
+            self.expect_problem(self.http.request("POST", path, body={"schema": 1, "decision": "maybe"}), [400],
+                                {"bad_request"})
+            reason = "Lantern conformance: declined on purpose."
+            r = self.http.request("POST", path, body={"schema": 1, "decision": "decline", "reason": reason})
+            expect(r.status == 200, f"{r}, expected 200" + problem_detail(r))
+            self.validate(r.json(), "request", str(r))
+            expect((r.json()["status"], r.json().get("reason")) == ("declined", reason),
+                   f"{r}: status {r.json()['status']}, reason {r.json().get('reason')!r}")
+            _, own = self.get_json(self.api("/v1/requests"), "requests", platform=platform)
+            seen = next((q for q in own["requests"] if q["id"] == rid), {})
+            expect((seen.get("status"), seen.get("reason")) == ("declined", reason),
+                   f"the requester reads {seen.get('status')!r} and reason {seen.get('reason')!r}, not declined "
+                   "and the admin's reason")
+            self.expect_problem(self.http.request("POST", path, body={"schema": 1, "decision": "done"}), [409],
+                                {"conflict"})
+            r = self.http.request("POST", self.api("/v1/requests"), body=body, platform=platform)
+            expect(r.status == 201 and r.json()["id"] != rid,
+                   f"{r}: the same title asked again after a decline, expected 201 and a new request" + problem_detail(r))
+            again = r.json()["id"]
+            made.append(again)
+            r = self.http.request("POST", self.api(f"/v1/admin/requests/{quote(again, safe='')}"),
+                                  body={"schema": 1, "decision": "done"})
+            expect(r.status == 200 and r.json()["status"] == "done" and "reason" not in r.json(),
+                   f"{r}: marked done, expected 200 done without a reason" + problem_detail(r))
+            self.expect_problem(self.http.request("POST", self.api("/v1/admin/requests/r_lantern-conformance-"
+                                                                   + secrets.token_hex(6)),
+                                                  body={"schema": 1, "decision": "done"}), [404], {"not_found"})
+            told = ""
+            if since is not None:
+                r = self.http.request("GET", self.api(f"/v1/changes?since={quote(since, safe='')}&wait=0"))
+                expect(r.status == 200, f"{r}, expected 200" + problem_detail(r))
+                got = [(e["data"].get("id"), e["data"].get("status")) for e in r.json().get("events", [])
+                       if e.get("event") == "request"]
+                for want in ((rid, "open"), (rid, "declined"), (again, "open"), (again, "done")):
+                    expect(want in got, f"{r}: no event request {want[1]} for {want[0]} (SPEC.md § 18.2)")
+                told = "; an event at each change"
+        finally:
+            for rid in made:
+                self.http.request("DELETE", self.api(f"/v1/requests/{quote(rid, safe='')}"), platform=platform)
+        return f"{made[0]} declined with its reason, then final (409); {made[1]} done{told}"
+
+    def events_token(self):
+        """The token events start from now: ready's id on a stream opened and closed at once (SPEC.md § 18.1)."""
+        s = self.open_stream()
+        if not isinstance(s, checks_v05.Stream):
+            return None
+        try:
+            rid, _ = self.ready(s)
+        finally:
+            s.close()
+        return rid
+
     def c_admin_refused(self):
         anon = self.http.request("GET", self.api("/v1/admin/users"), auth="none")
         self.expect_problem(anon, [401, 404], {"unauthorized", "not_found"})
@@ -2407,6 +2530,7 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
             r = self.http.request("GET", self.file_path(poll), auth="none", seed=seed)
             if r.status == 200:
                 self.validate(r.json(), "pairing-token", str(r))
+                self.tokens_seen = getattr(self, "tokens_seen", []) + [r.json().get("token", "")]
                 return r.json()
             expect(r.status in (202, 429), f"{r}, expected the token" + problem_detail(r))
             time.sleep(min(int(r.header("Retry-After") or 1), 5))
@@ -2524,8 +2648,9 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
             expect("invitation=" in link.query, f"link {inv['link']}: no invitation in its query")
             listed = self.admin_walk(self.api("/v1/admin/invitations"), "invitations")
             expect(inv["id"] in {i["id"] for i in listed}, "the invitation is not listed")
-            seed, _, p = self.keyed_pairing(["library", "saves"], inv["code"])
-            expect(p.status == 200, f"{p}: redeeming the invitation, expected 200" + problem_detail(p))
+            typed = inv["code"].lower().replace("-", " ")     # as a user types it (SPEC.md § 5.5, L-5.5-4)
+            seed, _, p = self.keyed_pairing(["library", "saves"], typed)
+            expect(p.status == 200, f"{p}: redeeming the invitation typed {typed!r}, expected 200" + problem_detail(p))
             token = self.collect(p.json()["poll"], seed)
             expect(set(token["scopes"]) <= {"library"}, f"scopes {token['scopes']}: beyond the invitation's")
             _, _, again = self.keyed_pairing(["library"], inv["code"])
@@ -2651,6 +2776,7 @@ class Suite(checks_v05.NewFamilies, static_check.StaticChecks):
 checks_v05.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Response=Response, Client=Client,
                 check_repr_digest=lambda r, d: check_repr_digest(r, d), problem_detail=lambda r: problem_detail(r))
 static_check.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Client=Client)
+checks_v06.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
 
 
 def client_rule():
@@ -2801,6 +2927,8 @@ def main(argv=None, out=None):
                    "client does (SPEC.md § 5.3), instead of a CA")
     p.add_argument("--peer", metavar="URL", help="also check a peer (SPEC.md § 19.4): its address and base, e.g. "
                    "http://192.168.1.20:47116/lantern")
+    p.add_argument("--fetch-mirrors", action="store_true", help="also read the bytes of every mirror the library "
+                   "names, without any credential of the server, and check their size and SHA-256 (SPEC.md § 19.2)")
     p.add_argument("--peer-discover-port", type=int, help="the UDP port the peer answers discovery on (default: "
                    "--discover-port's)")
     p.add_argument("--dns-sd", metavar="ADDRESS[:PORT]", help="also ask DNS-SD for _lantern._tcp, unicast, at this "

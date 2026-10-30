@@ -616,7 +616,7 @@ class Requirements(unittest.TestCase):
         self.addCleanup(srv.close)
         code, report = run_suite(srv.url)
         self.assertEqual(code, 0, report)
-        self.assertIn("Levels reached (SPEC.md § 17, draft 0.5): Lantern Core +titles +homebrew +peers\n", report)
+        self.assertIn("Levels reached (SPEC.md § 17, draft 0.6): Lantern Core +titles +homebrew +peers\n", report)
 
 
 class PairForCIKey(unittest.TestCase):

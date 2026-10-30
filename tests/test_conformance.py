@@ -69,9 +69,12 @@ def self_signed(folder):
 class Running:
     """A reference server on a free port, over a fresh library."""
 
-    def __init__(self, users=None, handler=ls.Handler, discovery=False, tls=False):
+    def __init__(self, users=None, handler=ls.Handler, discovery=False, tls=False, large=False, mirror=None,
+                 folder=None):
+        """`large` and `mirror`: library.make()'s; `folder`: where to make the library, else in a folder of its
+        own."""
         self.tmp = tempfile.TemporaryDirectory()
-        self.root = library.make(Path(self.tmp.name) / "library")
+        self.root = library.make(folder or Path(self.tmp.name) / "library", large, mirror)
         users_path = None
         if users is not None:
             users_path = Path(self.tmp.name) / "users.json"
@@ -87,12 +90,14 @@ class Running:
             spki, self.cafile = ls.spki_sha256(cert.read_text()), str(cert)
         self.server = ls.LanternServer(("127.0.0.1", 0), self.lib, ls.Accounts(users_path), rescan=0,
                                        quiet=True, handler=handler, tls=context, spki=spki,
-                                       heartbeat=5)     # limits.heartbeat's least (SPEC.md § 18.4), for short runs
+                                       heartbeat=5,     # limits.heartbeat's least (SPEC.md § 18.4)
+                                       beat=0.25)       # heartbeats written more often, for short runs
         self.port = self.server.server_address[1]
         self.url = f"{'https' if tls else 'http'}://127.0.0.1:{self.port}/"
         self.client_tls = ssl.create_default_context(cafile=self.cafile) if tls else None
         self.udp = ls.discovery(self.server, 0, self.port) if discovery else None
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        # A short poll interval: shutdown() waits for it, at every test's end.
+        self.thread = threading.Thread(target=self.server.serve_forever, args=(0.05,), daemon=True)
         self.thread.start()
 
     def close(self):
@@ -223,7 +228,7 @@ class SuiteAgainstReference(unittest.TestCase):
                                      "admin.users", "admin.users-write", "admin.pairings", "admin.rating-cap",
                                      "admin.refuse", "admin.devices", "admin.invitations", "language.problem",
                                      "compression.files", "limits.depth", "budget.cold-start"])
-        self.assertIn("Levels reached (SPEC.md § 17, draft 0.5): Lantern Core +titles +homebrew +saves +cheats "
+        self.assertIn("Levels reached (SPEC.md § 17, draft 0.6): Lantern Core +titles +homebrew +saves +cheats "
                       "+requests +admin +events +peers +sync +encrypted_saves\n", report)
         self.assertIn("4 backup(s) deleted", report)                     # two in clear, two encrypted (§ 9.4)
         self.assertIn("for another architecture", report)                # the Linux port's packages, read
@@ -303,11 +308,33 @@ class PairForCI(unittest.TestCase):
 
 
 class SuiteCatchesFaults(unittest.TestCase):
-    """The suite fails a server that breaks a MUST."""
+    """The suite fails a server that breaks a MUST.
+
+    The faults of a public server share one server, each with its own handler: the suite writes nothing on it
+    without a token, and a public server does not pair, so no run leaves anything (a code, a rate limit) that
+    the next one would meet. A private server is made for each fault."""
+    shared = None
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.shared is not None:
+            cls.shared.close()
+            cls.shared = None
+
+    def public(self, handler):
+        cls = type(self)
+        if cls.shared is None:
+            cls.shared = Running()
+        cls.shared.server.RequestHandlerClass = handler
+        self.addCleanup(setattr, cls.shared.server, "RequestHandlerClass", ls.Handler)
+        return cls.shared
 
     def fails(self, handler, cid, users=None, token_for=None, level="FAIL"):
-        srv = Running(users, handler=handler)
-        self.addCleanup(srv.close)
+        if users is None and token_for is None:
+            srv = self.public(handler)
+        else:
+            srv = Running(users, handler=handler)
+            self.addCleanup(srv.close)
         args = ["--token", srv.pair(*token_for)] if token_for else []
         code, report = run_suite(srv.url, *args)
         if level == "FAIL":

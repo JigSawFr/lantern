@@ -102,7 +102,9 @@ class NroReader(unittest.TestCase):
         cut = bytearray(good)
         struct.pack_into("<H", cut, 0, size // 2)                   # a stream cut short
         garbage = bytearray(good)
-        garbage[2:2 + size] = os.urandom(size)                     # not Deflate
+        # Not Deflate: a first block of the reserved type 3 (RFC 1951 § 3.2.3), so that no random bytes make a
+        # stream that inflates by chance.
+        garbage[2:2 + size] = bytes([0b111]) + os.urandom(size - 1)
         zero = bytearray(good)
         struct.pack_into("<H", zero, 0, 0)
         huge = bytearray(good)

@@ -217,8 +217,8 @@ class Events(Live):
                                                                         "title_id": "0100FFFF00090000"})
         self.assertEqual(status, 201)
         got = events(s.blocks(5, until=lambda b: events(b, "request")), "request")
-        self.assertEqual(got[0][2], {"schema": 1, "id": req["id"], "platform": "switch",
-                                     "title_id": "0100FFFF00090000", "status": "open"})
+        self.assertEqual(got[0][2], {"schema": 1, "id": req["id"], "platform": "switch",      # L-11-6: to an admin,
+                                     "title_id": "0100FFFF00090000", "status": "open", "user": ADMIN})  # with its user
         status, _, doc = self.call(f"/api/lantern/v1/changes?since={got[0][0]}")
         self.assertEqual((status, doc["added"]), (200, []))
         again = self.stream(headers={"Last-Event-ID": ready["id"]})
@@ -349,7 +349,7 @@ class Peers(Live):
         held = peer.held_files(self.srv.root, wanted)
         self.assertNotIn(hashlib.sha256(stray.read_bytes()).hexdigest(), held)        # not a library's file
         p = peer.Peer(("127.0.0.1", 0), held, {uid: key}, slots=1, name="Lea's Switch")
-        threading.Thread(target=p.serve_forever, daemon=True).start()
+        threading.Thread(target=p.serve_forever, args=(0.05,), daemon=True).start()
         self.addCleanup(p.server_close)
         self.addCleanup(p.shutdown)
         sha = next(iter(held))
@@ -389,11 +389,11 @@ class Peers(Live):
 
     def test_suite_with_a_peer(self):
         """The suite's --peer checks pass against the reference peer."""
-        srv = Running(discovery=True)
+        srv = Running(discovery=True, large=True)        # a game large enough to hold the peer's slots
         self.addCleanup(srv.close)
         uid, key, wanted = peer.server_files(srv.url)
         p = peer.Peer(("127.0.0.1", 0), peer.held_files(srv.root, wanted), {uid: key})
-        threading.Thread(target=p.serve_forever, daemon=True).start()
+        threading.Thread(target=p.serve_forever, args=(0.05,), daemon=True).start()
         self.addCleanup(p.server_close)
         self.addCleanup(p.shutdown)
         udp = p.discovery(0)
@@ -402,7 +402,8 @@ class Peers(Live):
                                  "127.0.0.1", "--discover-port", str(srv.udp.getsockname()[1]),
                                  "--peer-discover-port", str(udp.getsockname()[1]))
         self.assertEqual(code, 0, report)
-        for cid in ("peer.refused", "peer.serves", "peer.discovery", "peer.rate", "peers.mirrors", "discovery.reply"):
+        for cid in ("peer.refused", "peer.serves", "peer.discovery", "peer.slots", "peer.rate", "peers.mirrors",
+                    "discovery.reply", "discovery.rate"):
             self.assertRegex(report, rf"PASS  § \S+\s+{re.escape(cid)} ")
 
 
@@ -592,12 +593,12 @@ class StaticLibraries(unittest.TestCase):
         self.assertEqual((hello["base"], hello["static"]["page_size"], hello["features"]["pairing"]), (".", 3, 0))
         code, report = run_suite("--static", str(out))
         self.assertEqual(code, 0, report)
-        self.assertIn("Levels reached (SPEC.md § 17, draft 0.5): Lantern Static\n", report)
+        self.assertIn("Levels reached (SPEC.md § 17, draft 0.6): Lantern Static\n", report)
         class Quiet(http.server.SimpleHTTPRequestHandler):
             def log_message(self, *args):
                 pass
         httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), partial(Quiet, directory=str(out)))
-        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        threading.Thread(target=httpd.serve_forever, args=(0.05,), daemon=True).start()
         self.addCleanup(httpd.server_close)
         self.addCleanup(httpd.shutdown)
         code, report = run_suite("--static", f"http://127.0.0.1:{httpd.server_address[1]}/")

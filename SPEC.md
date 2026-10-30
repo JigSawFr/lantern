@@ -1,6 +1,7 @@
 # Lantern — an open protocol for game library servers
 
-Draft 0.5, 2026-10-30. Status: **draft**, open to change until 1.0.
+Draft 0.6, 2026-10-30. Status: **draft**, open to change until 1.0: the draft that readies the
+text for it (Annex C).
 This text is licensed under [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
 Lantern lets a client (a homebrew on a console, or an app on a phone, a
@@ -105,6 +106,74 @@ the texts a server writes for people: a title's and a homebrew's `summary`,
 - Codes, field names and listed values (`code`, `kind`, `genres`, `state`)
   never change with the language.
 
+### 2.3 Values
+
+The forms every document and every route share, so that two readers never
+read one value two ways:
+
+- **JSON.** Every document is I-JSON (RFC 7493): UTF-8 without a byte order
+  mark, no member name twice in one object, no unpaired surrogate, and
+  every integer between −(2^53 − 1) and 2^53 − 1, written without a
+  fraction or an exponent (`size` and `version_code` included). A server
+  MUST write only such documents, and answer `400` to a request document
+  that is not one. [L-2.3-1]
+- **Times.** A time is RFC 3339's `date-time` in UTC, with `Z` and no
+  offset: `2026-10-30T09:12:03Z`, or with a fraction of a second,
+  `2026-10-30T09:12:03.250Z`. A date, such as a title's `release`, is
+  `2026-03-14`. A server MUST write every time and date of its documents in
+  these forms. [L-2.3-2] A reader MUST read a fraction of 1 to 9 digits
+  where this text does not bound it (a sync item's `updated` has 3 at
+  most, § 20.2). [L-2.3-3]
+- **Digests in hex** are lower-case: `sha256`, `manifest_sha256`,
+  `signer_sha256`, a save key's id, and the `{hex}` of a path (§ 19.3,
+  § 19.4, § 21.1). A server MUST write them in lower case, and answer
+  `404` to a route whose path holds a SHA-256 that is not 64 lower-case
+  hex digits. [L-2.3-4] A reader compares them as they are, case included.
+  A short fingerprint (§ 5.3), for people, is the only hex in upper case;
+  the ids of a platform (Annex A) have their own forms.
+- **Base64** is RFC 4648 § 4's, with its padding; **base64url**, § 5's,
+  without it. Each field says which.
+- **Text for people** (names, summaries, notes) is Unicode. A server SHOULD
+  write it in Normalization Form C. [L-2.3-5] Where this text compares or
+  searches names (`q`, § 6.2 and § 8.5; the paths of a manifest, § 8.2), it
+  compares them by Unicode's canonical caseless match (The Unicode
+  Standard § 3.13, D145: NFD, then default case folding, then NFD), so that
+  `É` and `é`, or `ß` and `ss`, are the same; a server MUST compare them
+  so. [L-2.3-6] Ids, codes, tokens, keys and listed values (a platform, a
+  `kind`, a genre) are compared exactly, byte for byte.
+- **Nothing** is an empty list, never an error: a listing that has nothing
+  for its caller and its filters MUST answer `200` with `"items": []`,
+  `"next": null` and, when it gives one, `"total": 0`. [L-2.3-7] A file
+  may be empty: its `size` is 0, it has a SHA-256 like any other
+  (`e3b0c442…`), and any `Range` of it gives `416` (RFC 9110 § 14.1.1).
+
+### 2.4 Routes and queries
+
+- A route's path is the one this text writes, below `<base>`, its segments
+  percent-encoded as RFC 3986 says (the ids of this text need no encoding).
+  A trailing `/` makes another path: `<base>/v1/apps/` is not a route, and
+  gives `404`; `<base>/v1` and `<base>/v1/` are both the handshake. A
+  server MUST NOT answer a route of this text with a redirect (`3xx`).
+  [L-2.4-1] A client MUST NOT follow a redirect of a route, so that its
+  token and its signatures go only where it sent them (§ 2). [L-2.4-2]
+- Each query parameter is given once: a server MUST answer `400` to a
+  request that gives one twice (`?type=base&type=dlc`). [L-2.4-3] A list is
+  one parameter, its values comma-separated (`ids`, § 7.2).
+- A parameter with an empty value is absent: `?platform=&type=` asks for
+  every platform and every type, so that a client may fill in a template
+  as this text writes it. A server MUST read it so. [L-2.4-4] It MUST
+  ignore a parameter this text does not give for that route, so that a
+  later version can add one; that version says how a client learns that a
+  server reads it. [L-2.4-5]
+- Every route that answers `GET` MUST answer `HEAD` as it answers `GET`:
+  the same status and headers, without a body (RFC 9110 § 9.3.2).
+  [L-2.4-6] But a pairing's poll (§ 5.2), which a `HEAD` would not
+  collect, and the event stream (§ 18.1), which never ends, MAY answer
+  `HEAD` with `405`.
+- A request document is sent with `Content-Type: application/json`, a
+  `charset=utf-8` parameter allowed. A server MUST answer `400` to a
+  route's document of another type. [L-2.4-7]
+
 ## 3. Versions
 
 ### 3.1 Protocol version
@@ -129,6 +198,11 @@ MUST have an integer `schema` at its top level. [L-3.2-1]
   example in `examples/v1/`. The schemas describe schema 1 and allow fields
   they do not list, as a reader must. A server's documents MUST be valid
   against them. [L-3.2-5]
+- Each schema's `$id` is its stable address,
+  `https://lantern.boreale.dev/schemas/v1/<name>.json` (`apps.json`,
+  `common.json`…), where the site serves it: the address of a schema of
+  `/v1/` never changes, and each release of this text (§ 3.6) carries the
+  same files.
 - A server MUST answer a request document of a `schema` it cannot read with
   `422` `unsupported_schema` (§ 12). [L-3.2-6]
 - `features` (§ 4.2) gives, per family, the `schema` the server writes; a
@@ -197,6 +271,24 @@ How the text changes:
 Until 1.0, the drafts keep `/v1/` and `schema` 1: a draft may still change
 a shape another draft wrote, and its section "Changes" says so.
 
+### 3.6 Releases
+
+Each version of this text is released on the repository, by a tag
+`spec-v<version>` (`spec-v0.6`): its release holds SPEC.md, the schemas,
+their examples, the test vectors, `openapi.yaml` and the conformance suite,
+each as an asset of its own and all in one zip, with their SHA-256 sums in
+`SHA256SUMS`. GitHub attests that each asset was built from that tag by the
+repository's release workflow (a build provenance attestation, SLSA). To
+check an asset:
+
+```sh
+gh attestation verify lantern-0.6.zip --repo JigSawFr/lantern
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+An implementation names the version it follows, and the suite of that
+release checks it (§ 17).
+
 ## 4. Discovery, handshake and platforms
 
 ### 4.1 On the LAN
@@ -220,8 +312,8 @@ Lantern has its own discovery, on UDP port **47115**:
   it answers HTTPS on. [L-4.1-1]
 - Each datagram is UTF-8 JSON of at most 1200 bytes. A server answers only a
   request it can read (§ 3.2) and stays silent otherwise. It SHOULD answer
-  only addresses of its own networks. [L-4.1-2] It SHOULD answer only a few
-  times a second to the same address. [L-4.1-3]
+  only addresses of its own networks. [L-4.1-2] It SHOULD answer the same
+  address 10 times a second at most, and stay silent beyond. [L-4.1-3]
 - A server SHOULD also advertise itself with DNS-SD (RFC 6763) over
   multicast DNS (RFC 6762) as `_lantern._tcp`, with the TXT keys
   `uid=<uid>`, `path=<base>` and `v=1` (the versions, comma-separated).
@@ -283,7 +375,7 @@ return the same document, with or without a token. [L-4.2-1]
 - `auth` (§ 5.4): `bearer_only`, whether the server still issues and takes
   tokens that no key binds; `skew`, how many seconds a signature's
   `created` may differ from the server's clock.
-- `limits`: `page_size`, the most items on a page (§ 6.2); with `saves`,
+- `limits`: `page_size`, the most items on a page (§ 6.2), 1 to 1000; with `saves`,
   `save_body`, the largest save a single request takes (§ 9.2),
   `save_size`, the largest save at all (§ 9.3), and
   `saves_kept_per_title`, how many backups the server keeps per title,
@@ -318,7 +410,7 @@ version adds names to this list; a vendor's own begins with `x-<vendor>-`.
 - Every app (§ 6.1), title (§ 7), homebrew (§ 8), save (§ 9) and cheat set
   (§ 10) carries its `platform`.
 - A client says its own platform with the header
-  `Lantern-Platform: <name>` on every call.
+  `Lantern-Platform: <name>` on every call, as § 2 asks (`L-2-7`).
 - With the header, a server MUST answer for that platform only: the apps'
   listing, what is missing (§ 6.3), changes (§ 6.4), sections, titles,
   homebrew, saves and cheats list and read only what is of that platform;
@@ -329,8 +421,8 @@ version adds names to this list; a vendor's own begins with `x-<vendor>-`.
   route needs one: `POST <base>/v1/apps/missing` (§ 6.3),
   `POST <base>/v1/homebrew/updates` (§ 8.5) and the routes that write a save
   (§ 9) MUST give `400` without a platform. [L-4.3-4] A route that names a
-  `title_id` or a homebrew `id` known on several platforms gives `400` too,
-  until the client names the platform.
+  `title_id` or a homebrew `id` known on several platforms MUST give `400`
+  too, until the client names the platform. [L-4.3-8]
 - `?platform=<name>` on a listing (or on a route that needs a platform)
   MUST override the header. [L-4.3-5]
 - Responses that depend on the platform SHOULD carry
@@ -398,8 +490,10 @@ public one MAY, for what it gives beyond anonymous calls.
 
 - The code MUST use the alphabet `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no
   `0`, `O`, `1` or `I`), have 8 to 32 symbols (at least 40 bits), and be
-  shown in groups of 4 joined by `-`. [L-5.2-5] The server ignores case,
-  spaces and dashes when the user types it.
+  shown in groups of 4 joined by `-`. [L-5.2-5] A server MUST read a code
+  the user types, on its page or through § 5.7, ignoring case, spaces and
+  dashes: `kq4m 7txd` is `KQ4M-7TXD`. [L-5.2-14]
+- `interval` is 1 to 60 seconds.
 - A code MUST expire within 10 minutes (`expires`, in seconds, at most
   600). [L-5.2-6] The poll address MUST be unguessable (at least 128 bits)
   and give the token once. [L-5.2-7]
@@ -572,8 +666,9 @@ it (§ 5.7) and hands it over, as a link or a code.
   subset of that account's; `expires`: when it stops, 30 days ahead at
   most; `devices`: how many devices may redeem it, 1 to 100; `used`: how
   many did; `rating_cap` (§ 5.6) and `note`, optional.
-- A device redeems it by pairing (§ 5.2) with `"invitation": "<code>"`. The
-  pairing is approved at once, for the invitation's account, with the
+- A device redeems it by pairing (§ 5.2) with `"invitation": "<code>"`,
+  which a server MUST read ignoring case, spaces and dashes, as a pairing
+  code (§ 5.2). [L-5.5-4] The pairing is approved at once, for the invitation's account, with the
   scopes asked for that the invitation holds and its `rating_cap`: the
   first poll gives the token.
 - A server MUST NOT pair a device with an invitation that is unknown,
@@ -657,6 +752,8 @@ with `cursor` and `page_size`.
 | `GET <base>/v1/admin/invitations` | The invitations that can still be redeemed (§ 5.5). |
 | `POST <base>/v1/admin/invitations` | `{"schema":1, "user":"sam", "scopes":["library"], "expires":"2026-11-06T18:00:00Z", "devices":2, "rating_cap":{"age":12}, "note":"…"}` → `201` the invitation, with its `code` and `link`. |
 | `DELETE <base>/v1/admin/invitations/{id}` | Revokes it → `204`: its code gives `410`. |
+| `GET <base>/v1/admin/requests?status=&user=&platform=` | Every account's requests (§ 11), newest first, each with its `user`. |
+| `POST <base>/v1/admin/requests/{id}` | `{"schema":1, "decision":"decline", "reason":"…"}` or `{"schema":1, "decision":"done"}` → `200` the request (§ 11). |
 
 - A server MUST answer every route of this family with `403` `forbidden`
   to a token without the scope `admin` (`401` without a token). [L-5.7-1]
@@ -728,7 +825,7 @@ An app is one installable package: a base game, an update or an add-on.
 - `version_code`: an integer, as the profile derives it; clients compare
   integers, never text. `version_name`, optional, is the version people
   read (`1.3.0`), never compared. Test vectors: `vectors/version-codes.json`.
-- `size`: bytes, a 64-bit integer. `installed_size`, optional: the bytes
+- `size`: bytes, an integer of I-JSON's range (§ 2.3: 8 PiB at most). `installed_size`, optional: the bytes
   the app takes once installed, when the server knows them (an `nsz`'s,
   decompressed), which a client compares with its free space (§ 6.3).
 - `format`: a lower-case word from the profile's list of package formats.
@@ -738,7 +835,7 @@ An app is one installable package: a base game, an update or an add-on.
   the open data on games of Boréale: its Wikidata item, `Q` and digits
   (`Q900001`), the key of Atlas's `links.json`, which ties a game's ids on
   every platform together (a Switch title id, a Steam app id…). A client
-  MAY read Atlas's data with it (how well known a game is, its prices,
+  MAY read Atlas's data with it (how well known a game is,
   similar games); Atlas's files of one platform are keyed by that
   platform's own ids, which `links.json` gives. It is a hint about the
   game, never its identity: a client MUST NOT install or match anything by
@@ -755,9 +852,12 @@ An app is one installable package: a base game, an update or an add-on.
 ```
 
 - `platform` overrides `Lantern-Platform` (§ 4.3); `type` and `title_id`
-  MUST filter, and `q` searches names. [L-6.2-1]
-- `sort`: `name` (the default), `added` or `release` (both newest first);
-  ties MUST be broken by `id`, so the order is stable. [L-6.2-2]
+  MUST filter, and `q` keep the apps whose `name` holds it, compared as
+  § 2.3 says. [L-6.2-1] `q` is 256 bytes at most.
+- `sort`: `name` (the default), by `name` compared as § 2.3 says;
+  `added`, newest first; or `release`, newest first by the release of the
+  app's title, those without one last. Ties MUST be broken by `id`,
+  compared as bytes, smallest first, so the order is stable. [L-6.2-2]
 - `cursor` is opaque; `next` is `null` on the last page. Reading with a
   cursor while the library changes MUST neither skip nor repeat an app.
   [L-6.2-3]
@@ -766,7 +866,11 @@ An app is one installable package: a base game, an update or an add-on.
   another listing (or `410`, when the server cannot tell it from an expired
   one). [L-6.2-4]
 - `page_size` is at most `limits.page_size`; a larger one MUST be lowered
-  to it. [L-6.2-5]
+  to it. [L-6.2-5] One that is not a positive integer, or a `q` above 256
+  bytes, MUST give `400`. [L-6.2-6] Without `page_size`, the server
+  chooses, within `limits.page_size`.
+- `total`, optional, is how many items the whole listing holds for this
+  caller and these filters, when the server counts them.
 
 ### 6.3 What the device is missing
 
@@ -793,6 +897,12 @@ An app is one installable package: a base game, an update or an add-on.
 A server knows an installed app's game from its library, or from the
 profile's rule when it has one. Paginated with `cursor` in the query.
 
+`installed` is always sent, and may be empty (a console with nothing yet);
+`want` holds one or more of `base`, `update` and `dlc`. A server MUST
+answer `400` to a `want` empty or with another value, and ignore an
+installed `app_id` it does not know; an `app_id` listed twice counts by its
+highest `version_code`. [L-6.3-2]
+
 **Free space.** The client decides what fits, not the server: it compares
 its free space with each app's `installed_size` (its `size` when there is
 none), and says which ones do not fit before it downloads them. The request
@@ -809,6 +919,8 @@ named, or every platform. Without `since`, it MUST return no apps and the
 current token. [L-6.4-1] A `since` token MUST give `410` when it is too old
 for the server (the client then reads the whole library again), and `400`
 when the server never gave it (or `410`, as for a cursor, § 6.2). [L-6.4-2]
+An app whose file changed is another app (its `id` changes, § 6.1): the
+old id is in `removed`, the new app in `added`.
 With `wait`, a request waits for what changes, and its document carries
 the events of § 18 (§ 18.3).
 
@@ -830,6 +942,12 @@ client MAY show them next to its own.
   file, the same as the app's `sha256`. [L-6.6-2]
 - The bytes served MUST be those whose SHA-256 the document gives, of the
   size it gives, without a `Content-Encoding` (§ 2.1). [L-6.6-3]
+- MUST honour `If-Range` with its `ETag` (RFC 9110 § 13.1.5): the range
+  when the tag matches, the whole file (`200`) otherwise, so that a client
+  resuming a file that changed starts again (Annex B.4). [L-6.6-6]
+- A request of several ranges MAY get the whole file (`200`); a server MUST
+  NOT answer `multipart/byteranges`, which no client of this text reads.
+  [L-6.6-7] A suffix range (`bytes=-500`) is a range like another.
 - The id in the path is opaque and not enumerable. It MAY expire: the
   client then reads the app again. An unknown or expired one MUST give
   `404` or `410`. [L-6.6-4]
@@ -902,8 +1020,8 @@ shows next to its apps. Read with the scope `library`.
 `{"schema":1, "titles":[Title…], "unknown":["…"]}`: the titles the server
 has among those ids, for the platform the client named (or for each
 platform that has the id), and the ids it does not know. A server MUST put
-every id asked for in one of the two lists, and answer `400` to more than
-100 ids. [L-7.2-1]
+every id asked for in one of the two lists, an id asked twice once, and
+answer `400` to more than 100 ids or to none. [L-7.2-1]
 
 ### 7.3 Changes
 
@@ -1014,7 +1132,7 @@ A `path` is absolute on the device's storage, as the profile maps it: it
 starts with `/`; its parts are separated by `/`, none empty, `.` or `..`;
 it has no `\`, `:`, `"`, control character or NUL; a part is 255 bytes at
 most, the path 1024. No two paths of a manifest are the same when case is
-ignored. A server MUST NOT serve a manifest that breaks these rules, or
+ignored, compared as § 2.3 says. A server MUST NOT serve a manifest that breaks these rules, or
 whose paths lie outside the profile's roots for homebrew (Annex A).
 [L-8.2-4] Test vectors: `vectors/paths.json`.
 
@@ -1254,8 +1372,8 @@ filter a listing with them. [L-8.7-3]
 ### 9.1 Backups
 
 `GET <base>/v1/saves?platform=&title_id=` → `{"schema":1, "saves":[Save…]}`,
-which MUST hold the account's own backups, newest first per title, where a
-save is: [L-9.1-1]
+which MUST hold the account's own backups, newest first per title (the
+order of the titles is the server's), where a save is: [L-9.1-1]
 
 ```json
 {"platform": "switch", "title_id": "0100ABCD00010000", "save_id": "s_03",
@@ -1269,7 +1387,8 @@ save is: [L-9.1-1]
   digits, `.`, `_` and `-`).
 - `kind`: `account` (a user's save), `device` (the device's, shared by
   its users), `bcat` (data the system downloaded for the game), `cache`, or
-  `other`, as the profile maps the platform's own kinds.
+  `other`, as the profile maps the platform's own kinds. A backup sent
+  without one has none, and a reader reads it as `other`.
 - `game_version_code`: the game's `version_code` (§ 6.1) when it was
   saved, so that a client SHOULD warn before restoring a save on an older
   game. [L-9.1-2]
@@ -1459,9 +1578,15 @@ holds, not whether it is there.
 
 ## 11. Requests (feature `requests`)
 
+A user asks their server for a game it does not have; its admin adds it,
+or declines, and says why.
+
 - `GET <base>/v1/requests` → `{"schema":1, "requests":[{"id", "platform",
-  "title_id", "name", "status", "created"}…]}`: the account's own, of the
-  platform named (§ 4.3). `status`: `open`, `done` or `declined`.
+  "title_id", "name", "status", "created", "updated", "reason"}…]}`: the
+  account's own, of the platform named (§ 4.3), newest first. `status`:
+  `open`, `done` or `declined`; `updated`, when the status last changed;
+  `reason`, on a declined request only, the admin's words for its
+  requester (512 bytes at most).
 - `POST <base>/v1/requests` `{"schema":1, "platform":"switch",
   "title_id":"…"}` → `201` with the new request (`{"schema":1, "id":…}`,
   as listed), or `200` with the open request for the same title.
@@ -1472,6 +1597,34 @@ holds, not whether it is there.
   account's request or an unknown one. [L-11-2]
 - Every device of the account reads the same requests; the event `request`
   (§ 18.2) tells them when one is made, changes status or is withdrawn.
+
+**States.** A request goes only as this table says:
+
+| From | To | How | Event `request` (§ 18.2) |
+|---|---|---|---|
+| (none) | `open` | The account asks for a title it has no open request for (`POST`). | `"status": "open"` |
+| `open` | `done` | The title arrives in the library (the server sees it), or an admin says it is done. | `"status": "done"` |
+| `open` | `declined` | An admin declines it, with a `reason` or without. | `"status": "declined"` |
+| any | (none) | The account withdraws it (`DELETE`). | `"deleted": true` |
+
+- `done` and `declined` are final: a server MUST NOT change a request's
+  status but as the table says, and an account that asks again for the
+  same title makes a new request. [L-11-3]
+- With the scope `admin` (§ 5.7), `GET <base>/v1/admin/requests` lists
+  every account's requests, newest first, each with its `user`, a page as
+  in § 6.2, filtered by `status`, `user` and `platform`; `POST
+  <base>/v1/admin/requests/{id}` decides an open one: `{"schema":1,
+  "decision":"decline", "reason":"Only the games this household owns."}`
+  (`reason` optional, with `decline` only) or `{"schema":1,
+  "decision":"done"}`. A server MUST answer `200` with the request as it
+  then is, `409` `conflict` when it is no longer open, `404` when it does
+  not know it, and `400` to another decision or a `reason` with `done`.
+  [L-11-4]
+- A server MUST give a declined request's `reason` to its requester, in
+  their listing, as the admin wrote it. [L-11-5] It is for people, in the
+  admin's language: the server does not translate it.
+- A server MUST send the event `request` at each change of the table, to
+  the account's streams and to those of the scope `admin`. [L-11-6]
 
 ## 12. Errors
 
@@ -1490,12 +1643,12 @@ that status. [L-12-2] Its `type` is the code's page,
 
 | Status | `code` | When |
 |---|---|---|
-| 400 | `bad_request`, `key_required` | A malformed query or body; a cursor or `since` token the server never gave; a platform missing where one is needed; a pairing without a device key, on a server that issues only bound tokens (§ 5.4) |
+| 400 | `bad_request`, `key_required` | A malformed query or body, a parameter given twice, a body that is not I-JSON (§ 2.3, § 2.4); a cursor or `since` token the server never gave; a platform missing where one is needed; a pairing without a device key, on a server that issues only bound tokens (§ 5.4) |
 | 401 | `unauthorized`, `signature_required`, `signature_invalid`, `signature_expired`, `signature_replayed` | No token where one is needed, or an unknown, revoked or expired one (with `WWW-Authenticate: Bearer`); a bound token without a signature (§ 5.4); a signature that does not verify or is not of the form § 5.4 gives; a signature's `created` outside the server's window; a signature's `nonce` seen before |
 | 403 | `forbidden`, `account_frozen` | A scope missing; a frozen account; a peer's grant missing or not valid (§ 19.4); another device's `installed` (§ 20.4) |
 | 404 | `not_found` | |
 | 405 | `bad_request` | A method the route does not take (with `Allow`) |
-| 409 | `conflict` | An upload's offset that is not the server's (with `Upload-Offset`); a cheat set or an account that exists already (§ 10, § 5.7); an account that cannot be deleted (§ 5.7); a sync write of another generation (§ 20.4) |
+| 409 | `conflict` | An upload's offset that is not the server's (with `Upload-Offset`); a cheat set or an account that exists already (§ 10, § 5.7); an account that cannot be deleted (§ 5.7); a sync write of another generation (§ 20.4); a decision on a request no longer open (§ 11) |
 | 410 | `gone` | An expired cursor, `since` token, event id, sync revision, pairing, invitation or file id |
 | 412 | `precondition_failed` | A sync write whose `If-Match` is not the collection's (§ 20.4) |
 | 413 | `too_large` | A save or a chunk above the server's limit; a sync collection full (§ 20.5) |
@@ -1506,6 +1659,8 @@ that status. [L-12-2] Its `type` is the code's page,
 | 503 | `unavailable` | Scanning, maintenance (with `Retry-After`) |
 
 - An unknown route MUST give `404` `not_found`. [L-12-3]
+- The answer to a `HEAD` has no body, an error's included: its status and
+  headers say it.
 - `title` and `detail` are for people, in `language` (§ 2.2); a client
   shows them bounded and without control characters, and acts on `status`
   and `code` alone.
@@ -1520,7 +1675,8 @@ A client MUST bound what it reads. [L-13-1] A server MUST stay within:
 | What | At most |
 |---|---|
 | A JSON document | 32 MiB, nesting depth 16 |
-| A string field | 4 KiB (`name` 512 bytes, `note` 120 bytes, `profile` 64 bytes) |
+| A string field | 4 KiB (`name` and a request's `reason` 512 bytes, `note` 120 bytes, `profile` 64 bytes), in UTF-8 |
+| A listing's `q` | 256 bytes |
 | A page | 1000 items |
 | Titles read at once | 100 |
 | A manifest | 4096 files, each path 1024 bytes |
@@ -1541,7 +1697,13 @@ its own lower ones, with `400` or `413`, never fail on it. [L-13-3]
 ## 14. Caching
 
 Every `GET` returning JSON SHOULD carry an `ETag` and honour
-`If-None-Match` with `304`. [L-14-1] Responses to authenticated calls
+`If-None-Match` with `304`. [L-14-1] A server that sends an `ETag` MUST
+answer an `If-None-Match` that holds it (compared weakly, RFC 9110
+§ 13.1.2), or `*`, with `304`, without a body, and with the `ETag`, `Vary`
+and `Cache-Control` the `200` would carry; [L-14-3] and its `ETag` MUST
+change when the document it would send that caller changes: another page,
+another platform, language, encoding or rating cap. [L-14-4] A listing's
+pages are documents like the others, each with its tag. Responses to authenticated calls
 SHOULD carry `Cache-Control: private` and `Vary: Authorization`; responses
 that depend on the platform or the language also vary on
 `Lantern-Platform` and `Accept-Language`, and compressed ones on
@@ -1734,7 +1896,11 @@ token, it writes only what it then deletes: save backups, a cheat set, a
 request, sync items, the devices it pairs and the invitations it makes,
 and, with `--admin-writes`, an account of its own, which it then deletes
 (§ 5.7). With `--static`, it checks a static library (§ 21) instead of a
-server, at an address or in a folder; with `--peer`, a peer (§ 19.4). A
+server, at an address or in a folder; with `--peer`, a peer (§ 19.4), its
+slots of downloads included; with `--fetch-mirrors`, the bytes of every
+mirror the library names (§ 19.2), read without a token or any credential
+of the server. Its rate limits of pairing and invitations come last: they
+leave the suite's address limited for a while. A
 reference server (`server/`) serves a folder of packages and homebrew,
 exports it as a static library, and passes the suite; `server/peer.py` is a
 reference peer.
@@ -1749,7 +1915,7 @@ reference peer.
 | `+saves` | Save backups (§ 9) |
 | `+cheats` | Cheats, and writing them when offered (§ 10) |
 | `+requests` | Requests (§ 11) |
-| `+admin` | Administration, invitations, rating caps and deleting accounts (§ 5.5–5.7) |
+| `+admin` | Administration, invitations, rating caps, deleting accounts (§ 5.5–5.7), and deciding requests when requests are offered (§ 11) |
 | `+events` | Events: the stream, long polling and their limits (§ 18) |
 | `+peers` | Grants and mirrors (§ 19.2, § 19.3); with `--peer`, the peer's profile (§ 19.4) |
 | `+sync` | Sync: collections, the merge rule, deletion (§ 20) |
@@ -1765,7 +1931,7 @@ read with `--static`.
 
 **The name.** Only an implementation that passes the suite at a level may
 call itself "Lantern compatible" and show the badge, with that level and
-the version of the text: "Lantern compatible 0.5 · Core +titles". The
+the version of the text: "Lantern compatible 0.6 · Core +titles". The
 badges and the registry of implementations are
 [on the site](https://lantern.boreale.dev/conformance/); an implementation joins the
 registry by a pull request with its report.
@@ -1818,7 +1984,9 @@ data: {"schema":1,"id":"r_7Qm2","platform":"switch","title_id":"0100ABCD00010000
 - A client resumes with `Last-Event-ID: <token>`, or `?since=<token>` when
   it cannot set the header (the query wins). The server MUST then send,
   after `ready`, every event after that token that the caller may see, in
-  order, then the new ones as they come. [L-18.1-3] A token too old for the
+  order, then the new ones as they come. [L-18.1-3] It MUST send those
+  events before the stream's first heartbeat, so that a client knows, at
+  that heartbeat, that it has caught up. [L-18.1-10] A token too old for the
   server MUST give `410` `gone`, and one it never gave `400` (or `410`, as
   for `since`, § 6.4), before the stream begins. [L-18.1-4] The client then
   reads again what it shows (the library, its requests) and connects
@@ -1847,7 +2015,7 @@ data: {"schema":1,"id":"r_7Qm2","platform":"switch","title_id":"0100ABCD00010000
 |---|---|---|
 | `ready` | Every stream | `{"schema":1}`: the stream begins (18.1). |
 | `library` | Scope `library` | `{"schema":1, "families":["apps","titles","homebrew","cheats"], "platforms":["switch"]}`: something of those families changed on those platforms. The client reads their changes (§ 6.4, § 7.3) or their listings again. |
-| `request` | Scope `requests`: the account's own requests | `{"schema":1, "id", "platform", "title_id", "status"}` (§ 11); `"deleted": true` instead of `status` when it was withdrawn. |
+| `request` | Scope `requests`: the account's own requests; scope `admin`: every account's, with its `user` | `{"schema":1, "id", "platform", "title_id", "status"}` (§ 11), at each change of § 11's table; `"deleted": true` instead of `status` when it was withdrawn. |
 | `pairing` | Scope `admin` | A pairing waiting for approval, as § 5.7 lists it: `{"schema":1, "id", "code", "device", "key", "expires"}`. |
 | `save` | Scope `saves`: the account's own backups | A backup kept: `{"schema":1, "platform", "title_id", "save_id", "created", "device"}` (§ 9). |
 | `sync` | Scope `sync.read`: the account's own | `{"schema":1, "collection":"wishes", "rev":42}`: a collection changed (§ 20). |
@@ -1928,8 +2096,8 @@ An app (§ 6.1) or a homebrew package (§ 8.2) MAY carry `mirrors`, at most
 
 - A mirror's `url` is absolute, `https`, or `http` for an address of a
   private network: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
-  `fc00::/7` or `fe80::/10`. A client MUST NOT read a mirror over plain HTTP
-  at another address. [L-19.2-1]
+  `fc00::/7` or `fe80::/10`, or of loopback, for testing (§ 2). A client
+  MUST NOT read a mirror over plain HTTP at another address. [L-19.2-1]
 - A server MUST name as a mirror only an address that serves the file's
   exact bytes, and put none of its tokens in it. [L-19.2-2]
 - A client reads a mirror as a file (§ 6.6), with `Range` to resume. A
@@ -2218,7 +2386,9 @@ the size of its pages. Its `base` is `.`: the root.
   It has no changes and no events: a client reads `lantern.json` again,
   and its pages again when `static.generated` changed (their `ETag`, where
   HTTP gives one, spares those that did not).
-- Over HTTP, § 2 holds: HTTPS but on loopback. On a local storage, nothing
+- Over HTTP, § 2 holds: HTTPS but on loopback. A static library's files
+  are not a server's routes (§ 2.4): a client may follow a web host's
+  redirect between them over HTTPS, as it sends them no credential. On a local storage, nothing
   says who wrote the files but the user who plugged it in; the checks of
   § 6.6 and § 8 hold as for any server.
 - A client given an address tries the origin's `/.well-known/lantern`
@@ -2613,24 +2783,36 @@ device's own zone.
 ## Annex C — The road to 1.0
 
 Not normative: what this text needs before its version 1.0, when `/v1/`
-and `schema` 1 stop changing shape.
+and `schema` 1 stop changing shape, and where each criterion stands at this
+draft, 0.6.
 
-1. **Two independent servers and two independent clients** reach
-   `Lantern Core` with the conformance suite, each written from this text
-   by people who did not write the other ones, and each pair of them works
-   together: pairing, listing, downloading, what is missing.
-2. **A core with no open question**: every section from § 2 to § 14, and
-   § 17, without a part marked "to check", and no issue labelled as a
-   question on them left open.
-3. **Profiles reviewed for two platforms at least**, by people who know
-   them and are not this text's authors: the Switch's and one other,
-   their ids, formats, paths and roots tried on real devices.
-4. The families beyond the core (§ 7 to § 11, § 18 to § 21) may stay at
-   `schema` 1 and still grow after 1.0, by additions only (§ 3.5).
-5. Then the drafts' rule (§ 3.5) ends: a change of shape raises a
-   document's `schema`, and the older one stays served while clients read
-   it.
+| | Criterion | Where it stands at 0.6 |
+|---|---|---|
+| 1 | **Two independent servers and two independent clients** reach `Lantern Core` with the conformance suite, each written from this text by people who did not write the other ones, and each pair of them works together: pairing, listing, downloading, what is missing. | Open. One server passes the suite, the reference server of this repository; the libraries of lantern-sdk are written by this text's authors and do not count. The registry on the site lists who passes. |
+| 2 | **A core with no open question**: every section from § 2 to § 14, and § 17, without a part marked "to check", and no issue labelled as a question on them left open. | Met by this draft. 0.6 settled what the core left open (its Changes list each point), none of those sections is marked "to check", and the list below holds no question on them. It stays met while no issue labelled as a question on them is open. |
+| 3 | **Profiles reviewed for two platforms at least**, by people who know them and are not this text's authors: the Switch's and one other, their ids, formats, paths and roots tried on real devices. | Open. The Switch's profile is complete, not yet reviewed from outside; the drafts (A.2 to A.6) keep their "(to check)". |
+| 4 | **An outside review** of what holds keys: signed requests (§ 5.4), encrypted backups (§ 9.4), grants and peers (§ 19), by someone who did not write them. | Open. |
+| 5 | **A released, attested text**: each version a release of its files, with their sums and a build provenance attestation (§ 3.6). | Met from 0.6: the release workflow is in place; the first tag, `spec-v0.6`, is the maintainer's to make. |
 
+Then, at 1.0:
+
+- The families beyond the core (§ 7 to § 11, § 18 to § 21) may stay at
+  `schema` 1 and still grow after 1.0, by additions only (§ 3.5).
+- The drafts' rule (§ 3.5) ends: a change of shape raises a document's
+  `schema`, and the older one stays served while clients read it.
+
+**Open questions.** What is still to decide, which the 1.0 gate reads:
+criterion 2 holds while the first list is empty.
+
+- On the core (§ 2 to § 14, § 17): none.
+- Elsewhere:
+  1. Browser clients (`web`, Annex A.7): the CORS headers a server sends,
+     and how a page keeps a device key (§ 5.4). Decided with the `web`
+     profile; until then a browser app reads a server of its own origin.
+  2. Every "(to check)" of the drafts' profiles (Annex A.2 to A.6), which
+     only someone who knows the platform can settle.
+  3. Updates of large packages by their differences: after 1.0, as an
+     addition.
 
 ## Changes
 
@@ -2793,3 +2975,94 @@ and `schema` 1 stop changing shape.
   - A threat model for each addition (§ 16), conformance levels `+events`,
     `+peers`, `+sync`, `+encrypted_saves` and `Lantern Static` (§ 17),
     client guidelines B.10 to B.12, and the road to 1.0 (Annex C).
+- 0.6 (2026-10-30): the draft that readies the text for 1.0; still `/v1/`
+  and `schema` 1, as a draft. Every 0.5 route and field stays, with the
+  additions below; four points narrow what a document or a request may be,
+  each marked **(narrower)**: no server or client of this text wrote them,
+  and the schemas, which keep `schema` 1 (§ 3.5), now refuse them.
+  - A core with no open question (Annex C, criterion 2). What § 2 to § 14
+    and § 17 left open is settled:
+    - JSON is I-JSON (§ 2.3, `L-2.3-1`): no member name twice, no unpaired
+      surrogate, no byte order mark; integers between −(2^53 − 1) and
+      2^53 − 1, so `size` is no longer "a 64-bit integer" **(narrower)**; a
+      request document that is not I-JSON gives `400`.
+    - Times are RFC 3339 in UTC with `Z`, no offset **(narrower)**, a
+      fraction of 1 to 9 digits read by every reader; dates `YYYY-MM-DD`
+      (§ 2.3, `L-2.3-2`, `L-2.3-3`).
+    - Hex digests are lower-case everywhere, and a path's SHA-256 of
+      another form gives `404` (§ 2.3, `L-2.3-4`).
+    - Names are compared and searched by Unicode's canonical caseless
+      match, written in NFC; ids, codes and listed values exactly
+      (§ 2.3, `L-2.3-5`, `L-2.3-6`): `q` "searches names" (§ 6.2), which
+      said neither how nor in what, keeps the apps whose `name` holds it,
+      and a manifest's paths "the same when case is ignored" (§ 8.2) are
+      compared that way.
+    - Nothing is an empty page (`items` `[]`, `next` `null`), never an
+      error; an empty file has its SHA-256 and gives `416` to any range
+      (§ 2.3, `L-2.3-7`).
+    - Routes and queries (§ 2.4): paths exactly as written, a trailing `/`
+      another path, no redirect from a server and none followed by a
+      client (`L-2.4-1`, `L-2.4-2`); a parameter given twice gives `400`
+      **(narrower)** (`L-2.4-3`); an empty value is absent, so that the
+      templates this text writes (`?platform=&type=`) work as they are
+      (`L-2.4-4`); a parameter a route does not know is ignored
+      (`L-2.4-5`); `HEAD` on every `GET` route but a pairing's poll and
+      the event stream (`L-2.4-6`); a request document sent as anything but
+      `application/json` gives `400` (`L-2.4-7`).
+    - Listings (§ 6.2): the order of `name`, `added` and `release` (the
+      title's release, newest first, those without one last), ties by `id`
+      as bytes; `q` of 256 bytes at most; a `page_size` that is not a
+      positive integer gives `400` (`L-6.2-6`); `total` optional, exact when
+      given; `limits.page_size` 1 to 1000 (§ 4.2).
+    - What is missing (§ 6.3, `L-6.3-2`): `installed` may be empty, `want`
+      is one or more of `base`, `update` and `dlc`, anything else `400`
+      **(narrower)**; an unknown `app_id` is ignored, one listed twice
+      counts by its highest version.
+    - Changes (§ 6.4): an app whose file changed is removed, then added
+      under its new id.
+    - Files (§ 6.6): `If-Range` honoured (`L-6.6-6`), as Annex B.4 relied
+      on; several ranges may get the whole file, never
+      `multipart/byteranges` (`L-6.6-7`).
+    - Titles at once (§ 7.2): an id asked twice is answered once; no id
+      gives `400`. Saves (§ 9.1): newest first per title, the order of the
+      titles the server's; a backup without `kind` is read as `other`.
+    - Platforms (§ 4.3): an id known on several platforms gives `400`
+      without a platform, now with its id (`L-4.3-8`); a client's
+      `Lantern-Platform` is the SHOULD of § 2 (`L-2-7`), as § 4.3 now says.
+    - Pairing and invitations: a code typed is read ignoring case, spaces
+      and dashes, on the server's page and in an invitation (`L-5.2-14`,
+      `L-5.5-4`); `interval` is 1 to 60 seconds. Discovery: "a few times a
+      second" is 10 replies a second to an address at most (`L-4.1-3`).
+    - Caching (§ 14): a server that sends an `ETag` answers
+      `If-None-Match` with it, weakly compared, or `*`, by `304` with the
+      same `ETag`, `Vary` and `Cache-Control` (`L-14-3`), and its tag
+      changes with the document a caller would get (`L-14-4`).
+    - Errors (§ 12): a parameter twice, a body not I-JSON; the answer to a
+      `HEAD` has no body.
+    - The schemas' `$id` are their stable addresses,
+      `https://lantern.boreale.dev/schemas/v1/<name>.json` (§ 3.2), and
+      the times, dates, integers and pairing `interval` above are checked
+      by them.
+  - Requests (§ 11): their states and transitions as a table, `done` and
+    `declined` final (`L-11-3`); an admin declines a request, with a
+    `reason` its requester reads, or marks it done, at
+    `POST <base>/v1/admin/requests/{id}`, and lists every account's at
+    `GET <base>/v1/admin/requests` (`L-11-4`, `L-11-5`); a request gains
+    `updated` and `reason`; the event `request` at each transition, to the
+    account and to the scope `admin`, with the request's `user` (`L-11-6`,
+    § 18.2).
+  - Events (§ 18.1): the events after a resumed token come before the
+    stream's first heartbeat, which tells a client it caught up
+    (`L-18.1-10`).
+  - Mirrors (§ 19.2): plain HTTP on loopback too, for testing, as § 2
+    allows.
+  - Releases (§ 3.6): each version of the text released by a tag
+    `spec-v<version>`, its files, a zip, their SHA-256 sums and build
+    provenance attestations, checked with `gh attestation verify`.
+  - Editorial, no change to any schema: Atlas's data a client may read
+    (§ 6.1) no longer names prices; Lantern carries no notion of price or
+    promotion.
+  - Conformance (§ 17): the suite reads every mirror with
+    `--fetch-mirrors`, fills a peer's slots of downloads, and checks what
+    0.6 settles; the road to 1.0 says where each criterion stands, and
+    lists the questions still open (Annex C).

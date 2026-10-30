@@ -96,14 +96,19 @@ homebrew.json of a newer schema is treated as absent: the packages next to
 it are not served, since what it says of them is unknown.
 
 Cheats (SPEC.md § 10): DIR/cheats/[<platform>/]<title id>/<build id>/<source>.txt,
-one set per file (the Switch when no platform is named). With the scope
+one set per file (the Switch when no platform is named); on a 3DS or a Vita,
+whose cheats have no build (Annex A.2, A.3), DIR/cheats/<platform>/<title
+id>/<source>.txt, and a set's document has no build_id. With the scope
 cheats.write, POST /v1/cheats writes a set there (its source the file's
 name, "_" for a space), PUT replaces its text and note, DELETE removes it;
 notes are kept in DIR/cheats/index.json. A set is for a build, 1 MiB at
 most, and on a Switch or a 3DS holds only [names] and words of 8 hex digits.
 
 Requests (SPEC.md § 11): each account's, kept in the state file; an account
-withdraws its own with DELETE.
+withdraws its own with DELETE. A request is done when its title arrives in
+the library; an admin lists every account's (/v1/admin/requests), declines
+one with a reason its requester reads, or marks it done; done and declined
+are final.
 
 Save backups (SPEC.md § 9): kept under --saves (default DIR/.lantern-saves/),
 an index.json and the archives, sent in one request or by resumable upload;
@@ -115,8 +120,11 @@ Events (SPEC.md § 18): /v1/events streams them (Server-Sent Events), and
 whose ids are /v1/changes's tokens: a library changed (at a scan), a request
 made, done (its title arrived in the library) or withdrawn, a pairing
 waiting, a backup kept, a sync collection changed, and shutdown when the
-server stops. Each caller gets only what its token may read; a heartbeat
-every 15 seconds, 2 streams per token.
+server stops. Each caller gets only what its token may read (a request's
+change goes to the scope admin too, with whose it is); a heartbeat every 15
+seconds (--heartbeat, 5 to 60), 2 streams per token. --test-heartbeat, for
+tests only, writes heartbeats more often than the handshake announces, so
+that a test run need not wait for one.
 
 Grants (SPEC.md § 19.3): the server's own Ed25519 key, kept in the state
 file ("grant_seed"), signs them; server/peer.py is a reference peer that
@@ -176,7 +184,8 @@ server runs. `--token-days N` makes new tokens expire after N days.
 Languages (SPEC.md § 2.2): errors' titles and details in the fifteen
 languages of Boréale's sites (server/texts.py), as Accept-Language asks; `--motd FILE` gives the handshake's message,
 {"schema": 1, "motd": {"en": "…", "fr": "…"}} (or one text). JSON is sent
-compressed when the client asks (gzip, and zstd where Python has it); files
+compressed when the client asks: zstd from Python 3.14 (compression.zstd),
+gzip only below it, never br; the suite then warns (SHOULD L-2.1-1). Files
 never are (SPEC.md § 2.1).
 
 TLS: give --tls-cert and --tls-key; /pair then shows the short fingerprint
@@ -199,6 +208,7 @@ import html
 import ipaddress
 import json
 import math
+import os
 import re
 import secrets
 import select
@@ -208,6 +218,7 @@ import sys
 import threading
 import time
 import traceback
+import unicodedata
 import uuid
 import zipfile
 import zlib
@@ -231,7 +242,7 @@ try:                    # Python 3.14 and later: zstd in the standard library (S
 except ImportError:
     zstd = None
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 BASE = "/api/lantern"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
             "signatures", "admin", "events", "peers", "sync", "encrypted_saves")
@@ -272,6 +283,7 @@ DRAIN_LIMIT = 4 << 20   # a body left unread is read and dropped up to this, els
 JOURNAL_LIMIT = 10000   # changes kept for /v1/changes and /v1/titles/changes; older tokens are gone
 CURSOR_LIMIT = 10000    # cursors kept; older ones are gone
 TITLES_AT_ONCE = 100    # SPEC.md § 7.2
+Q_LIMIT = 256           # a listing's q, in bytes (SPEC.md § 6.2)
 CHEAT_LIMIT = 1 << 20   # SPEC.md § 10
 CHEAT_BODY = 3 << 20    # a cheat set's document: its text, escaped in JSON
 CHEAT_SOURCE = re.compile(r"^[^\W_](?:[^\W_]|[ .'()-]){0,63}(?<! )$")   # a source, a file's name: no "_", "/" or "."-first
@@ -305,11 +317,12 @@ PROFILES = {
                "roots": ("/switch/{id}/", "/config/{id}/", "/atmosphere/", "/switch/.overlays/"),
                "areas": ("/switch/", "/config/")},
     "3ds": {"id": re.compile(r"^0004(0000|0002|000E|008C)[0-9A-F]{8}$"), "title": re.compile(r"^0004000[02][0-9A-F]{8}$"),
-            "types": ("base", "update", "dlc"), "formats": ("cia",),
+            "types": ("base", "update", "dlc"), "formats": ("cia",), "build_id": None,
             "homebrew": {"3dsx": "/3ds/{id}/{id}.3dsx", "zip": None, "cia": "system"}, "roots": ("/3ds/{id}/", "/luma/", "/boot.firm", "/boot.3dsx", "/gm9/"),
             "areas": ("/3ds/",)},
     "vita": {"id": re.compile(r"^[A-Z0-9]{9}$|^[A-Z]{2}[0-9]{4}-[A-Z0-9]{9}_[0-9]{2}-[A-Z0-9]{16}$"),
              "title": re.compile(r"^[A-Z0-9]{9}$"), "types": ("base", "update", "dlc"), "formats": ("vpk",),
+             "build_id": None,
              "homebrew": {"vpk": "system"}, "roots": ()},
     "ps4": {"id": re.compile(r"^[A-Z]{4}[0-9]{5}$|^[A-Z]{2}[0-9]{4}-[A-Z]{4}[0-9]{5}_[0-9]{2}-[A-Z0-9]{16}$"),
             "title": re.compile(r"^[A-Z]{4}[0-9]{5}$"), "types": ("base", "update", "dlc"), "formats": ("pkg",),
@@ -322,6 +335,7 @@ PROFILES = {
     "linux": {"id": None, "types": None, "formats": None, "homebrew": {"zip": None}, "roots": ("/",),
               "areas": ("/",), "cheats": False},
 }
+NO_BUILD = tuple(p for p, prof in PROFILES.items() if "build_id" in prof and prof["build_id"] is None)  # cheats per game
 APP_EXT = {f: p for p, prof in PROFILES.items() for f in prof["formats"] or ()}   # nsp -> switch, apk -> android…
 HOMEBREW_EXT = {"nro": "switch", "ovl": "switch", "zip": "switch", "3dsx": "3ds", "cia": "3ds", "vpk": "vita", "pkg": "ps4",
                 "apk": "android"}
@@ -389,6 +403,12 @@ def unb64url(text):
 def clip(text, limit=512):
     """A string cut to `limit` UTF-8 bytes on a character boundary (SPEC.md § 13)."""
     return text.encode()[:limit].decode(errors="ignore")
+
+
+def fold(text):
+    """Text as SPEC.md § 2.3 compares names: Unicode's canonical caseless match (NFD, default case folding,
+    NFD), so that "É" and "é", "ß" and "ss" are the same."""
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", text).casefold())
 
 
 def plain(value, limit=512):
@@ -852,8 +872,12 @@ def homebrew_view(entry, full, prefs):
 
 
 def request_event(r):
-    """A request's event (SPEC.md § 18.2)."""
+    """A request's event (SPEC.md § 18.2): its status; `user` is added for a caller with the scope admin."""
     return {"schema": 1, **{k: r[k] for k in ("id", "platform", "title_id", "status") if k in r}}
+
+
+REQUEST_DECISIONS = {"decline": "declined", "done": "done"}    # an admin's decision, and the status it gives (§ 11)
+REASON_LIMIT = 512      # a request's reason, in bytes (SPEC.md § 13)
 
 
 def mirrors_of(value):
@@ -877,7 +901,7 @@ def mirror_url_ok(url):
         ip = ipaddress.ip_address((u.hostname or "").split("%")[0])
     except ValueError:
         return False
-    return u.scheme == "http" and any(ip in net for net in PRIVATE_NETS)
+    return u.scheme == "http" and (ip.is_loopback or any(ip in net for net in PRIVATE_NETS))    # loopback: § 2
 
 
 def ratings_of(items):
@@ -999,6 +1023,7 @@ class Library:
         self.cursors = OrderedDict()
         self.skipped = set()                # files not served, reported once
         self.scanned = None
+        self.files_seen = None              # fingerprint() at the last scan
         self.state_mtime = None
         self.dirty = False
         self.scan(initial=True)
@@ -1117,6 +1142,7 @@ class Library:
 
     def scan(self, initial=False):
         with self.lock:
+            self.files_seen = self.fingerprint()    # before reading: a change made meanwhile is seen next time
             meta, seen, files = self.metadata(), set(), {}
             self.dirty = False
             apps, entries = {}, {}
@@ -1140,7 +1166,7 @@ class Library:
                 app = {"id": aid, **app, "size": st.st_size, "format": fmt, "sha256": sha,
                        "added": utc(st.st_mtime_ns), "file": f"{BASE}/v1/files/{fid}"}
                 apps[aid] = {"doc": app, "path": path, "keys": {
-                    "name": (app["name"].casefold(), aid),
+                    "name": (fold(app["name"]), aid),
                     "added": (-st.st_mtime_ns, aid),
                     "release": (release is None, -(release.toordinal() if release else 0), aid)},
                     "release": release}
@@ -1223,7 +1249,7 @@ class Library:
         done (SPEC.md § 11), and its event sent (§ 18.2)."""
         for r in self.requests():
             if isinstance(r, dict) and r.get("status") == "open" and f"{r.get('platform')}/{r.get('title_id')}" in arrived:
-                r["status"] = "done"
+                r["status"], r["updated"] = "done", now_utc()
                 self.dirty = True
                 self.emit("request", request_event(r), {"user": r.get("user"), "platform": r.get("platform")})
 
@@ -1534,7 +1560,7 @@ class Library:
         for _, _, f in built:
             files[f["fid"]] = {"path": f["path"], "size": f["size"], "sha256": f["sha256"],
                                "owner": ("homebrew", platform, hid)}
-        return {"doc": doc, "texts": texts, "keys": {"name": (name.casefold(), platform, hid)}}
+        return {"doc": doc, "texts": texts, "keys": {"name": (fold(name), platform, hid)}}
 
     def verified(self, message, signature):
         """Whether an author's signature verifies, remembered (SPEC.md § 8.4)."""
@@ -1557,7 +1583,7 @@ class Library:
                 members = [i for i in z.infolist() if not i.is_dir()]
                 links = [i.filename for i in members if (i.external_attr >> 16) & 0o170000 == 0o120000]
                 bad = next((i.filename for i in members if not device_path_ok("/" + i.filename)), None)
-                lower = [("/" + i.filename).casefold() for i in members]
+                lower = [fold("/" + i.filename) for i in members]
                 if len(members) > MANIFEST_LIMIT:
                     self.skip(rel, f"{len(members)} files, above {MANIFEST_LIMIT}")
                 elif links:
@@ -1606,7 +1632,9 @@ class Library:
             rel = path.relative_to(self.root).as_posix()
             if any(p.startswith(".") for p in parts) or not path.is_file():
                 continue
-            if len(parts) == 4 and PLATFORM.match(parts[0]):
+            if len(parts) == 3 and parts[0] in NO_BUILD:     # one set per game, no build (Annex A.2, A.3)
+                platform, title_id, build_id = parts[0], parts[1], None
+            elif len(parts) == 4 and PLATFORM.match(parts[0]) and parts[0] not in NO_BUILD:
                 platform, title_id, build_id = parts[:3]
             elif len(parts) == 3:
                 platform, (title_id, build_id) = "switch", parts[:2]
@@ -1615,7 +1643,7 @@ class Library:
                 continue
             profile = PROFILES.get(platform)
             pattern = (profile or {}).get("build_id", BUILD_ID)
-            if not title_id_ok(platform, title_id) or not pattern.match(build_id):
+            if not title_id_ok(platform, title_id) or (build_id is not None and not pattern.match(build_id)):
                 self.skip(rel, "not a title id and a build id of its platform")
                 continue
             st = path.stat()
@@ -1624,8 +1652,8 @@ class Library:
                 continue
             cid = "cs_" + b64url(hmac.new(self.secret, b"cheat\0" + rel.encode(), "sha256").digest()[:12])
             out[cid] = {"path": path, "doc": {
-                "id": cid, "platform": platform, "title_id": title_id, "build_id": build_id,
-                "source": clip(path.stem.replace("_", " ")), "updated": utc(st.st_mtime_ns),
+                "id": cid, "platform": platform, "title_id": title_id,
+                **({"build_id": build_id} if build_id is not None else {}), "source": clip(path.stem.replace("_", " ")), "updated": utc(st.st_mtime_ns),
                 "size": st.st_size, "sha256": self.hashed(rel, path, st, seen)}}
             note = plain(notes.get(path.relative_to(root).as_posix()), 120)
             if note:
@@ -1641,8 +1669,8 @@ class Library:
             if index is None:
                 raise Problem(503, "unavailable", "Unavailable", "cheats/index.json is of a newer schema than this "
                               "server: it writes no cheat set.", {"Retry-After": "3600"})
-            rel = "/".join((fields["platform"], fields["title_id"], fields["build_id"],
-                            fields["source"].replace(" ", "_") + ".txt"))
+            rel = "/".join(p for p in (fields["platform"], fields["title_id"], fields.get("build_id"),
+                                       fields["source"].replace(" ", "_") + ".txt") if p is not None)
             target = root / rel
             if replacing is None:
                 twins = [target] + ([root / rel.split("/", 1)[1]] if fields["platform"] == "switch" else [])
@@ -1701,6 +1729,7 @@ class Library:
                 raise slow_down(3600, f"At most {REQUESTS_OPEN} open requests per account.")
             entry = {"id": "r_" + secrets.token_urlsafe(9), "user": user, "platform": platform,
                      "title_id": title_id, "status": "open", "created": now_utc()}
+            entry["updated"] = entry["created"]
             title = next((t for t in self.titles.values() if t.get("platform") == platform
                           and t.get("title_id") == title_id), None)
             if title and title.get("name"):
@@ -1709,6 +1738,24 @@ class Library:
             self.save_state()
             self.emit("request", request_event(entry), {"user": user, "platform": platform})
             return 201, entry
+
+    def decide(self, rid, decision, reason=None):
+        """An admin's decision on the open request `rid` (SPEC.md § 11): (200, the request) once its status
+        changed; 404 for an unknown one, 409 for one no longer open (done and declined are final)."""
+        with self.lock:
+            entry = next((r for r in self.requests() if isinstance(r, dict) and r.get("id") == rid), None)
+            if entry is None:
+                raise not_found("No such request.")
+            if entry.get("status") != "open":
+                raise Problem(409, "conflict", "Conflict", f"This request is {entry.get('status')} already: only an "
+                              "open one changes (SPEC.md § 11).")
+            entry["status"], entry["updated"] = REQUEST_DECISIONS[decision], now_utc()
+            entry.pop("reason", None)
+            if reason:
+                entry["reason"] = reason
+            self.save_state()
+            self.emit("request", request_event(entry), {"user": entry.get("user"), "platform": entry.get("platform")})
+            return entry
 
     def withdraw(self, user, rid):
         """Removes the account's own request `rid` (SPEC.md § 11); False when it has none of that id."""
@@ -1732,7 +1779,28 @@ class Library:
 
     def refresh(self, every):
         if time.monotonic() - self.scanned >= every:
-            self.scan()
+            if self.fingerprint() == self.files_seen:
+                self.scanned = time.monotonic()     # nothing a scan reads changed
+            else:
+                self.scan()
+
+    def fingerprint(self):
+        """What a scan reads, cheaply: each file below the root (dot ones and those in dot folders aside, as the
+        scan skips them), its size and its time of change."""
+        out = []
+        for folder, dirs, names in os.walk(self.root):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for name in names:
+                if name.startswith("."):
+                    continue
+                path = os.path.join(folder, name)
+                try:
+                    st = os.stat(path)
+                except OSError:
+                    continue
+                out.append((path, st.st_size, st.st_mtime_ns))
+        out.sort()
+        return out
 
     # Pages (SPEC.md § 6.2): sorted by key, ties broken by id; a cursor keeps
     # the last key read, so a page after a change neither skips nor repeats.
@@ -2224,7 +2292,8 @@ def sync_time(text, now, skew):
         return None
     if when > now + timedelta(seconds=skew):
         when = now
-    return when.strftime("%Y-%m-%dT%H:%M:%S.") + f"{when.microsecond // 1000:03d}Z"
+    # The year on 4 digits whatever the C library's strftime does with one before 1000 (it writes "26").
+    return f"{when.year:04d}-" + when.strftime("%m-%dT%H:%M:%S.") + f"{when.microsecond // 1000:03d}Z"
 
 
 def canonical(value):
@@ -2685,6 +2754,13 @@ class Handler(BaseHTTPRequestHandler):
     def version_string(self):
         return self.server_version
 
+    def setup(self):
+        super().setup()
+        try:    # a response goes out as soon as it is written, not after the client's delayed ACK (Nagle)
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
+
     def log_message(self, fmt, *args):
         if not self.server.quiet:
             super().log_message(fmt, *args)
@@ -2703,7 +2779,7 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 raise bad_request("Not a request target this server can read.") from None
             path = unquote(url.path)
-            query = {k: v[-1] for k, v in parse_qs(url.query, keep_blank_values=True).items()}
+            query = read_query(url.query)
             self.server.library.refresh(self.server.rescan)
             self.route(method, path, query)
         except Problem as p:
@@ -2815,6 +2891,8 @@ class Handler(BaseHTTPRequestHandler):
         ("admin/pairings/{}", ("POST",), "admin", "admin_pairing"),
         ("admin/invitations", ("GET", "HEAD", "POST"), "admin", "admin_invitations"),
         ("admin/invitations/{}", ("DELETE",), "admin", "admin_invitation"),
+        ("admin/requests", ("GET", "HEAD"), "admin", "admin_requests"),
+        ("admin/requests/{}", ("POST",), "admin", "admin_request"),
     )
 
     def route(self, method, path, query):
@@ -3001,7 +3079,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def apps(self, query):
         platform = self.platform(query)
-        kind, title_id, q = query.get("type"), query.get("title_id"), query.get("q")
+        kind, title_id, q = query.get("type"), query.get("title_id"), search(query)
         if kind is not None and not WORD.match(kind):
             raise bad_request("type is a lower-case word, such as base, update or dlc.")
         if title_id is not None and not CORE_ID.match(title_id):
@@ -3013,7 +3091,7 @@ class Handler(BaseHTTPRequestHandler):
                        if (platform is None or e["doc"]["platform"] == platform)
                        and (kind is None or e["doc"]["type"] == kind)
                        and (title_id is None or e["doc"]["title_id"] == title_id)
-                       and (not q or q.casefold() in e["doc"]["name"].casefold())
+                       and (not q or fold(q) in fold(e["doc"]["name"]))
                        and not self.app_hidden(e["doc"])]
             self.send_doc(200, lib.page(entries, sort, size, cursor, ("apps", platform, kind, title_id, q,
                                                                       json.dumps(self.cap()))))
@@ -3100,10 +3178,15 @@ class Handler(BaseHTTPRequestHandler):
         kind, audience = e["event"], e["audience"]
         if kind == "shutdown":
             return e["data"]
+        platform = self.events_platform
+        if kind == "request" and self.may("admin"):
+            # An admin sees every account's requests change (SPEC.md § 11, § 18.2), with whose they are.
+            if platform is not None and audience.get("platform") not in (None, platform):
+                return None
+            return {**e["data"], "user": audience.get("user")}
         scope = EVENT_SCOPES.get(kind)
         if scope is None or not self.may(scope if scope != "sync.read" else "sync"):
             return None
-        platform = self.events_platform
         if kind == "library":
             families, platforms = set(), set()
             for family, p, how, ref in e["items"]:
@@ -3167,7 +3250,8 @@ class Handler(BaseHTTPRequestHandler):
                     found = self.visible_events(last)
                     newest = lib.events[-1]["seq"] if lib.events else last
                     if not found and not server.stopping.is_set():
-                        lib.changed.wait(max(0.05, min(0.25, server.heartbeat - (time.monotonic() - beat))))
+                        # A tenth of a second at most: a client that closed its stream frees its slot (§ 18.4) at once.
+                        lib.changed.wait(max(0.05, min(0.1, server.beat - (time.monotonic() - beat))))
                         found = self.visible_events(last)
                         newest = lib.events[-1]["seq"] if lib.events else last
                 if server.stopping.is_set():
@@ -3178,7 +3262,7 @@ class Handler(BaseHTTPRequestHandler):
                 for seq, e, data in found:
                     self.write_event(lib.token(seq), e["event"], data)
                     last, beat = seq, time.monotonic()
-                if time.monotonic() - beat >= server.heartbeat:
+                if time.monotonic() - beat >= server.beat:
                     self.wfile.write(b": heartbeat\n\n")
                     self.wfile.flush()
                     beat = time.monotonic()
@@ -3283,7 +3367,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def homebrew_list(self, query):
         platform = self.platform(query)
-        q, kind, genre = query.get("q"), query.get("kind"), query.get("genre")
+        q, kind, genre = search(query), query.get("kind"), query.get("genre")
         if kind is not None and not WORD.match(kind):
             raise bad_request("kind is a lower-case word: " + ", ".join(KINDS) + ".")
         if genre is not None and not WORD.match(genre):
@@ -3294,7 +3378,7 @@ class Handler(BaseHTTPRequestHandler):
             entries = [e for (p, _), e in lib.homebrew.items()
                        if (platform is None or p == platform) and (kind is None or e["doc"]["kind"] == kind)
                        and (genre is None or genre in e["doc"].get("genres", ()))
-                       and (not q or q.casefold() in e["doc"]["name"].casefold())
+                       and (not q or fold(q) in fold(e["doc"]["name"]))
                        and not self.homebrew_hidden(e["doc"])]
             self.send_doc(200, lib.page(entries, "name", size, cursor, ("homebrew", platform, q, kind, genre,
                                                                         json.dumps(self.cap())),
@@ -3476,9 +3560,9 @@ class Handler(BaseHTTPRequestHandler):
             sets = [e["doc"] for e in lib.cheats.values()
                     if (platform is None or e["doc"]["platform"] == platform)
                     and (title_id is None or e["doc"]["title_id"] == title_id)
-                    and (build_id is None or e["doc"]["build_id"] == build_id)
+                    and (build_id is None or e["doc"].get("build_id") == build_id)
                     and not self.app_hidden(e["doc"])]
-        sets.sort(key=lambda d: (d["platform"], d["title_id"], d["build_id"], d["source"].casefold(), d["id"]))
+        sets.sort(key=lambda d: (d["platform"], d["title_id"], d.get("build_id", ""), fold(d["source"]), d["id"]))
         self.send_doc(200, {"schema": 1, "cheats": sets})
 
     def cheat_text(self, query, cid):
@@ -3504,7 +3588,10 @@ class Handler(BaseHTTPRequestHandler):
         if not title_id_ok(platform, title_id):
             raise bad_request(f"title_id is not a title id of {platform}.")
         pattern = (PROFILES.get(platform) or {}).get("build_id", BUILD_ID)
-        if not (isinstance(build_id, str) and pattern.match(build_id)):
+        if platform in NO_BUILD:
+            if build_id is not None:
+                raise bad_request(f"{platform}'s cheats have no build_id (Annex A).")
+        elif not (isinstance(build_id, str) and pattern.match(build_id)):
             raise bad_request(f"build_id is the game's build, in {platform}'s form: this server keeps a set per build.")
         if not (isinstance(source, str) and CHEAT_SOURCE.match(source)):
             raise bad_request("source is 1 to 64 letters, digits, spaces and . ' ( ) -, a letter or a digit first.")
@@ -3520,8 +3607,9 @@ class Handler(BaseHTTPRequestHandler):
             bad = next((n for n, line in enumerate(text.splitlines(), 1) if not CHEAT_LINE.match(line)), None)
             if bad is not None:
                 raise bad_request(f"line {bad} is neither a [name] nor words of 8 hex digits (Annex A).")
-        return {"platform": platform, "title_id": title_id, "build_id": build_id, "source": source,
-                "note": note, "text": text}
+        fields = {"platform": platform, "title_id": title_id, "build_id": build_id, "source": source,
+                  "note": note, "text": text}
+        return {k: v for k, v in fields.items() if v is not None or k == "note"}
 
     def cheat_post(self, query):
         doc = self.server.library.write_cheat(self.cheat_fields(query))
@@ -3542,7 +3630,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # Requests (SPEC.md § 11).
 
-    PUBLIC_REQUEST = ("id", "platform", "title_id", "name", "status", "created")
+    PUBLIC_REQUEST = ("id", "platform", "title_id", "name", "status", "created", "updated", "reason")
 
     def requests_list(self, query):
         platform = self.platform(query)
@@ -3797,6 +3885,33 @@ class Handler(BaseHTTPRequestHandler):
         scopes = None if doc.get("scopes") is None else self.scopes_field(doc["scopes"])
         pairing.approve(entry, name, scopes, self.cap_field(doc.get("rating_cap")))
         self.send_head(204, None, {})
+
+    def admin_requests(self, query):
+        """Every account's requests (SPEC.md § 11, § 5.7), newest first, filtered by status, user and platform."""
+        status, user, platform = query.get("status"), query.get("user"), self.platform(query)
+        if status is not None and status not in ("open", "done", "declined"):
+            raise bad_request("status is open, done or declined.")
+        with self.server.library.lock:
+            docs = [{**{k: r[k] for k in self.PUBLIC_REQUEST if k in r}, "user": r.get("user")}
+                    for r in self.server.library.requests() if isinstance(r, dict)
+                    and (status is None or r.get("status") == status) and (user is None or r.get("user") == user)
+                    and (platform is None or r.get("platform") == platform)]
+        _, size, cursor = self.listing_args(query, ("name",))
+        entries = [{"doc": d, "keys": {"name": (tuple(-ord(c) for c in d.get("created", "")), d["id"])}} for d in docs]
+        self.send_doc(200, self.server.library.page(entries, "name", size, cursor,
+                                                    ("admin-requests", status, user, platform)))
+
+    def admin_request(self, query, rid):
+        doc = self.request_document(self.body())
+        decision, reason = doc.get("decision"), doc.get("reason")
+        if decision not in REQUEST_DECISIONS:
+            raise bad_request("decision is decline or done.")
+        if reason is not None and (decision != "decline" or not isinstance(reason, str) or not reason.strip()
+                                   or len(reason.encode()) > REASON_LIMIT):
+            raise bad_request(f"reason goes with decline only: a text of {REASON_LIMIT} bytes at most.")
+        entry = self.server.library.decide(rid, decision, plain(reason, REASON_LIMIT) if reason else None)
+        self.send_doc(200, {"schema": 1, **{k: entry[k] for k in self.PUBLIC_REQUEST if k in entry},
+                            "user": entry.get("user")})
 
     def invitation_doc(self, iid, inv):
         query = f"invitation={Pairing.shown(inv['code'])}"
@@ -4109,12 +4224,63 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
         if status == 200 and self.method in ("GET", "HEAD"):
             etag = f'"{tag}"'
             headers["ETag"] = etag
-            if etag in [t.strip() for t in (self.headers.get("If-None-Match") or "").split(",")]:
+            wanted = [t.strip().removeprefix("W/") for t in (self.headers.get("If-None-Match") or "").split(",")]
+            if etag in wanted or "*" in wanted:     # weak comparison (RFC 9110 § 13.1.2; SPEC.md § 14)
                 self.send_head(304, 0, {"ETag": etag})
                 return
         self.send_head(status, len(body), headers)
         if not self.head:
             self.wfile.write(body)
+
+
+def read_query(text):
+    """A request's query (SPEC.md § 2.4): {name: value}, a parameter with an empty value left out as absent; 400
+    for one given twice."""
+    try:
+        pairs = parse_qs(text, keep_blank_values=True, strict_parsing=False, max_num_fields=256)
+    except ValueError:
+        raise bad_request("A query of 256 parameters at most.") from None
+    twice = sorted(k for k, v in pairs.items() if len(v) > 1)
+    if twice:
+        raise bad_request(f"{twice[0][:40]!r} is given twice: each parameter once (SPEC.md § 2.4).")
+    return {k: v[0] for k, v in pairs.items() if v[0] != ""}
+
+
+def search(query):
+    """A listing's q (SPEC.md § 6.2, § 8.5): 256 bytes at most, else 400."""
+    q = query.get("q")
+    if q is not None and len(q.encode()) > Q_LIMIT:
+        raise bad_request(f"q is {Q_LIMIT} bytes at most (SPEC.md § 6.2).")
+    return q
+
+
+INT_LIMIT = (1 << 53) - 1       # I-JSON's integers (RFC 7493 § 2.2; SPEC.md § 2.3)
+
+
+def no_duplicates(pairs):
+    names = [k for k, _ in pairs]
+    if len(set(names)) != len(names):
+        raise ValueError("a member name twice")
+    return dict(pairs)
+
+
+def i_json_problem(doc):
+    """Why `doc` is not I-JSON (SPEC.md § 2.3): an integer out of range or an unpaired surrogate; None when it
+    is."""
+    stack = [doc]
+    while stack:
+        x = stack.pop()
+        if isinstance(x, dict):
+            stack += list(x.keys()) + list(x.values())
+        elif isinstance(x, list):
+            stack += x
+        elif isinstance(x, int) and not isinstance(x, bool) and not -INT_LIMIT <= x <= INT_LIMIT:
+            return "an integer beyond 2^53 - 1"
+        elif isinstance(x, float) and not math.isfinite(x):
+            return "a number JSON does not have"
+        elif isinstance(x, str) and any(0xD800 <= ord(c) <= 0xDFFF for c in x):
+            return "an unpaired surrogate"
+    return None
 
 
 def read_document(body, content_type):
@@ -4126,9 +4292,13 @@ def read_document(body, content_type):
     if nesting(body) > DEPTH_LIMIT:
         raise bad_request(f"The body nests deeper than {DEPTH_LIMIT} (SPEC.md § 13).")
     try:
-        doc = json.loads(body.decode("utf-8"))
+        doc = json.loads(body.decode("utf-8"), object_pairs_hook=no_duplicates)
     except (UnicodeDecodeError, ValueError, RecursionError):
-        raise bad_request("The body is not JSON.") from None
+        raise bad_request("The body is not I-JSON: UTF-8 without a byte order mark, each member name once in "
+                          "an object (SPEC.md § 2.3).") from None
+    why = i_json_problem(doc)
+    if why:
+        raise bad_request(f"The body is not I-JSON: {why} (SPEC.md § 2.3).")
     if too_deep(doc):
         raise bad_request(f"The body nests deeper than {DEPTH_LIMIT} (SPEC.md § 13).")
     if not isinstance(doc, dict) or not isinstance(doc.get("schema"), int) or isinstance(doc["schema"], bool) \
@@ -4216,7 +4386,7 @@ class LanternServer(ThreadingHTTPServer):
     def __init__(self, address, library, accounts, name="Lantern reference server", rescan=30.0,
                  quiet=False, handler=Handler, tls=None, spki=None, token_lifetime=None, saves=None,
                  bound_only=False, motd=None, skew=signatures.SKEW, sync=None, heartbeat=HEARTBEAT,
-                 event_streams=EVENT_STREAMS, wait_limit=WAIT_LIMIT, stream_max=STREAM_MAX):
+                 event_streams=EVENT_STREAMS, wait_limit=WAIT_LIMIT, stream_max=STREAM_MAX, beat=None):
         """`tls`: an ssl.SSLContext; without it, only a loopback address (SPEC.md § 2).
         `spki`: the SHA-256 of the certificate's key, for /pair (SPEC.md § 5.3).
         `saves`: a Saves, by default in the library's .lantern-saves/.
@@ -4224,7 +4394,9 @@ class LanternServer(ThreadingHTTPServer):
         `motd`: the handshake's message, a text or one per language (SPEC.md § 4.2, § 2.2).
         `sync`: a Sync, by default in the library's .lantern-sync.json (SPEC.md § 20).
         `heartbeat`, `event_streams`, `wait_limit`: limits.heartbeat, .event_streams and .wait (SPEC.md § 18.4);
-        `stream_max`: the seconds a stream lasts at most."""
+        `stream_max`: the seconds a stream lasts at most. `beat`: for tests only, the seconds between two
+        heartbeats actually written, below `heartbeat` (which the handshake still announces), so that a test
+        need not wait for one."""
         if tls is None and not is_loopback(address[0]):
             raise ValueError(f"plain HTTP only on a loopback address, not {address[0] or 'every address'}: "
                              "give --tls-cert and --tls-key (SPEC.md § 2)")
@@ -4246,6 +4418,7 @@ class LanternServer(ThreadingHTTPServer):
         self.sync = sync if sync is not None else Sync(library.root / ".lantern-sync.json", skew=skew)
         self.heartbeat, self.event_streams, self.wait_limit = heartbeat, event_streams, wait_limit
         self.stream_max = stream_max
+        self.beat = min(beat, heartbeat) if beat else heartbeat
         self.stopping = threading.Event()
         self.streams, self.streams_lock = {}, threading.Lock()
         self.nonces = signatures.Nonces(2 * skew)
@@ -4406,6 +4579,12 @@ def main(argv=None):
     p.add_argument("--discovery-port", type=int, default=DISCOVERY_PORT)
     p.add_argument("--dns-sd", action="store_true", help="advertise _lantern._tcp with multicast DNS (SPEC.md § 4.1)")
     p.add_argument("--dns-sd-port", type=int, default=mdns.PORT, help=argparse.SUPPRESS)
+    p.add_argument("--heartbeat", type=int, default=HEARTBEAT,
+                   help=f"limits.heartbeat: seconds between two heartbeats of an event stream at most, 5 to 60 "
+                        f"(default {HEARTBEAT}; SPEC.md § 18.4)")
+    p.add_argument("--test-heartbeat", type=float, metavar="SECONDS",
+                   help="for tests only: write a stream's heartbeats this often, below --heartbeat, which the "
+                        "handshake still announces, so that a test run need not wait for one")
     p.add_argument("--sync-file", help="where sync data is kept (default <library>/.lantern-sync.json)")
     p.add_argument("--export", metavar="DIR", help="write the library as a static library into DIR (SPEC.md § 21), "
                                                    "then exit")
@@ -4424,6 +4603,10 @@ def main(argv=None):
         return tokens_command(args.state or Path(args.library) / ".lantern-state.json", args.revoke)
     if not args.library or not Path(args.library).is_dir():
         p.error("--library DIR: a folder of packages")
+    if not 5 <= args.heartbeat <= 60:
+        p.error("--heartbeat is 5 to 60 seconds (SPEC.md § 18.4)")
+    if args.test_heartbeat is not None and not 0 < args.test_heartbeat <= args.heartbeat:
+        p.error("--test-heartbeat is above 0 and at most --heartbeat")
     if bool(args.tls_cert) != bool(args.tls_key):
         p.error("--tls-cert and --tls-key go together")
     tls = spki = None
@@ -4457,7 +4640,8 @@ def main(argv=None):
     try:
         server = LanternServer((args.host, args.port), library, Accounts(args.users), args.name, args.rescan,
                                args.quiet, tls=tls, spki=spki, token_lifetime=lifetime, saves=saves,
-                               bound_only=args.bound_only, motd=motd,
+                               bound_only=args.bound_only, motd=motd, heartbeat=args.heartbeat,
+                               beat=args.test_heartbeat,
                                sync=Sync(args.sync_file or Path(args.library) / ".lantern-sync.json"))
     except ValueError as e:
         p.error(str(e))
