@@ -1,0 +1,317 @@
+/* Lantern's site (site/README.md): the night, an aurora once at the
+   top, Boréale's look (branding/README.md); its base taken from Atlas's and
+   boreale.dev's site.css. One dark look: the brand stands on the night. */
+/* The fonts are served with the site rather than by Google Fonts, which would
+   see every visitor (SIL Open Font License, fonts/OFL-*.txt): Sora for the
+   headings, Figtree for the text, JetBrains Mono for addresses and commands,
+   their Latin letters, every weight. */
+@font-face { font-family: "Sora"; src: url("fonts/sora.woff2") format("woff2"); font-weight: 100 800; font-display: swap; }
+@font-face { font-family: "Figtree"; src: url("fonts/figtree.woff2") format("woff2"); font-weight: 300 900; font-display: swap; }
+/* The language menu's flags, the same everywhere (Windows draws none of its
+   own): the 15 cut out of Twemoji's (CC-BY 4.0, fonts/LICENSE-twemoji-flags.txt).
+   The other scripts (Cyrillic, Chinese, Japanese, Korean) fall back to the
+   system's fonts. */
+@font-face { font-family: "Twemoji Flags"; src: url("fonts/twemoji-flags.woff2") format("woff2"); unicode-range: U+1F1E6-1F1FF; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/jetbrains-mono.woff2") format("woff2"); font-weight: 100 800; font-display: swap; }
+
+:root {
+  --abyss: #0b1424;
+  --night: #0e1a33;
+  --night-line: #22324f;
+  --snow: #e8eef7;
+  --mist: #a9b6cc;
+  --dusk: #6f7e9c;
+  --aurora: #00ffcc;
+  --ice: #33bbff;
+  --violet: #8a5cff;
+  --aurora-grad: linear-gradient(100deg, var(--aurora) 0%, var(--ice) 55%, var(--violet) 100%);
+
+  --display: "Sora", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --radius: 16px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--abyss); }
+body {
+  margin: 0; background: var(--abyss); color: var(--snow);
+  font-family: var(--body); font-size: 1.0625rem; line-height: 1.6;
+  -webkit-font-smoothing: antialiased; text-size-adjust: 100%;
+}
+/* A long word (German's, Russian's) hyphenated where the browser can, else
+   broken rather than wider than a phone. */
+h1, h2, h3 { font-family: var(--display); line-height: 1.12; margin: 0; text-wrap: balance; hyphens: auto; overflow-wrap: break-word; }
+p { margin: 0; }
+a { color: var(--ice); text-underline-offset: 3px; }
+a:hover { color: var(--aurora); }
+:focus-visible { outline: 2px solid var(--aurora); outline-offset: 3px; border-radius: 6px; }
+img { max-width: 100%; }
+.skip { position: absolute; left: -9999px; }
+.skip:focus { left: 16px; top: 16px; z-index: 10; background: var(--night); padding: 8px 12px; border-radius: 8px; }
+
+.wrap {
+  max-width: 1160px; margin: 0 auto;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+
+/* The sky: the canvas (site.js) behind the header and the hero; at rest, or
+   without script, the same aurora as a gradient. */
+.sky { position: relative; isolation: isolate; overflow: hidden; }
+.sky::before {
+  content: ""; position: absolute; inset: 0; z-index: -2;
+  background:
+    radial-gradient(120% 60% at 30% -10%, rgba(0, 255, 204, 0.22), transparent 60%),
+    radial-gradient(90% 50% at 75% -5%, rgba(138, 92, 255, 0.22), transparent 60%),
+    radial-gradient(80% 40% at 55% 10%, rgba(51, 187, 255, 0.16), transparent 70%),
+    var(--abyss);
+}
+.sky canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; display: block; }
+.sky::after {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 45%; z-index: -1;
+  background: linear-gradient(to top, var(--abyss), transparent);
+}
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-block: 20px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--snow); text-decoration: none; font-family: var(--display); font-weight: 700; font-size: 1.25rem; letter-spacing: -0.02em; }
+.brand img { width: 34px; height: 34px; }
+.top nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.top nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--mist); text-decoration: none; font-size: 0.9375rem; border-radius: 10px; }
+.top nav a:hover { color: var(--snow); background: rgba(232, 238, 247, 0.06); }
+.top nav { margin-left: auto; }
+
+/* The languages: a button with the page's flag and name, and under it their
+   menu (a popover, as the menu of Boréale's sites, in its look), this page's
+   marked. The same as PlayGuard's, PlayShelf's and Aurore's sites. */
+.settings { display: flex; }
+.lang-button {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px 0 12px;
+  border: 1px solid var(--night-line); border-radius: 12px; background: rgb(14 26 51 / 0.7);
+  color: var(--snow); font: 500 0.9375rem var(--body); cursor: pointer;
+}
+.lang-button:hover { border-color: var(--mist); }
+.lang-button .chevron { width: 14px; height: 14px; flex: none; color: var(--mist); transition: transform 0.2s, color 0.2s; }
+.lang-button:has(+ .langs:popover-open) .chevron { transform: rotate(180deg); color: var(--aurora); }
+.lang-code { display: none; font: 500 0.8125rem var(--mono); }
+/* A language's flag before its name, in the button and in the menu. */
+.flag { flex: none; font: 18px/1 "Twemoji Flags", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+.langs .flag { margin-right: 10px; }
+.langs {
+  position: absolute; inset: auto; top: 72px; right: 16px; margin: 0;
+  width: min(460px, calc(100vw - 24px)); max-height: min(70vh, 520px); overflow: auto; padding: 8px;
+  list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+  border: 1px solid var(--night-line); border-radius: 16px; color: var(--snow);
+  background: radial-gradient(120% 80% at 0% 0%, rgb(0 255 204 / 0.08), transparent 60%),
+              radial-gradient(100% 80% at 100% 100%, rgb(138 92 255 / 0.1), transparent 60%), var(--night);
+  box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.8), 0 0 0 1px rgb(11 20 36 / 0.6);
+}
+.langs:not(:popover-open) { display: none; }
+.langs::backdrop { background: transparent; }
+.langs a { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 12px; color: var(--snow); text-decoration: none; font-size: 0.9375rem; white-space: nowrap; }
+.langs a:hover, .langs a:focus-visible { background: rgb(232 238 247 / 0.06); color: var(--snow); }
+.langs a[aria-current] { background: rgb(0 255 204 / 0.08); box-shadow: inset 2px 0 0 var(--aurora); font-weight: 600; }
+/* On a phone: the button shows the flag and the language's code; the menu
+   in one column where two do not fit. */
+@media (max-width: 640px) {
+  .lang-name { display: none; }
+  .lang-code { display: inline; }
+  /* The header on one row: GitHub is in the hero and the footer. */
+  .top { gap: 8px; }
+  .top nav a { padding: 0 10px; }
+  .top nav li:has(a[href^="https://github.com"]) { display: none; }
+  .lang-button { gap: 6px; padding: 0 8px 0 10px; }
+}
+@media (max-width: 420px) {
+  .lang-button .chevron { display: none; }
+  .langs { grid-template-columns: minmax(0, 1fr); }
+  .langs a { white-space: normal; }
+}
+
+.hero { padding-block: clamp(56px, 11vw, 128px) clamp(40px, 7vw, 80px); display: grid; gap: 22px; }
+.hero h1 { font-weight: 600; font-size: clamp(2.5rem, 7.5vw, 5rem); letter-spacing: -0.035em; max-width: 13ch; }
+.hero h1 em { font-style: normal; background: var(--aurora-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* Chinese, Japanese and Korean: their letters are a square em, not a ch
+   wide. Line breaks as each script wants them (PlayGuard's rules): Japanese
+   between phrases, never inside a word (headings and short lines; the
+   browsers without it break as before), Korean between words as its spaces
+   say, Chinese without a punctuation mark opening a line, its titles kept
+   whole between their spaces, punctuation and <wbr> (the catalogs'), broken
+   elsewhere only when a run is wider than its line. */
+:lang(ja) .hero h1, :lang(ko) .hero h1, :lang(zh) .hero h1 { max-width: 11em; }
+:lang(ja) :is(h1, h2, h3, .eyebrow, .lede, .section-head p, .button, .state, .points li, .way p, .links a) { word-break: auto-phrase; }
+:lang(ko) body { word-break: keep-all; }
+:is(:lang(zh-Hans), :lang(zh-Hant)) body { line-break: strict; }
+:is(:lang(zh-Hans), :lang(zh-Hant)) :is(h1, h2, h3) { word-break: keep-all; overflow-wrap: anywhere; }
+.hero .lede { color: var(--mist); font-size: clamp(1.0625rem, 2.2vw, 1.25rem); max-width: 52ch; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+.button {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 20px;
+  border-radius: 12px; font-weight: 600; text-decoration: none; font-size: 1rem;
+}
+.button.primary { background: var(--snow); color: var(--abyss); }
+.button.primary:hover { background: var(--aurora); color: var(--abyss); }
+.button.ghost { border: 1px solid var(--night-line); color: var(--snow); }
+.button.ghost:hover { border-color: var(--mist); color: var(--snow); }
+
+main section { padding-block: clamp(32px, 5vw, 56px); }
+main section.closing { padding-top: 0; }
+.section-head { display: grid; gap: 10px; margin-bottom: 32px; max-width: 60ch; }
+.eyebrow { font-family: var(--mono); font-size: 0.8125rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--aurora); }
+.section-head h2 { font-size: clamp(1.75rem, 4vw, 2.5rem); font-weight: 600; letter-spacing: -0.025em; }
+.section-head p { color: var(--mist); }
+
+
+.sky::before { opacity: 1; }
+.hero.small { padding-block: clamp(32px, 6vw, 64px) clamp(16px, 3vw, 28px); gap: 14px; }
+.hero.small h1 { font-size: clamp(2rem, 5.5vw, 3.25rem); max-width: 18ch; }
+.top nav a[aria-current] { color: var(--snow); box-shadow: inset 0 -2px 0 var(--aurora); border-radius: 10px 10px 0 0; }
+.note { color: var(--dusk); font-size: 0.9375rem; margin-top: 14px; max-width: 72ch; }
+code, pre { font-family: var(--mono); }
+code { font-size: 0.875em; }
+
+/* Tables: scrolled sideways inside their box on a phone, never the page. */
+.table { overflow-x: auto; border: 1px solid var(--night-line); border-radius: var(--radius); background: rgb(14 26 51 / 0.5); }
+table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--night-line); vertical-align: top; }
+tbody tr:last-child > * { border-bottom: 0; }
+thead th { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mist); font-weight: 500; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+/* The ways in: server, client, schemas. */
+.ways { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.way { display: grid; gap: 10px; align-content: start; padding: 22px; background: var(--night); border: 1px solid var(--night-line); border-radius: 20px; min-width: 0; }
+.way h3 { font-size: 1.125rem; font-weight: 600; }
+.way p { color: var(--mist); font-size: 0.9375rem; }
+pre { margin: 0; padding: 12px 14px; overflow-x: auto; background: var(--abyss); border: 1px solid var(--night-line); border-radius: 12px; font-size: 0.8125rem; line-height: 1.5; color: var(--snow); }
+
+.keys { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border: 1px solid var(--night-line); border-radius: var(--radius); }
+.keys li { display: grid; grid-template-columns: minmax(7rem, 9rem) minmax(0, 1fr); gap: 4px 16px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--night-line); }
+.keys li:last-child { border-bottom: 0; }
+.keys .k a { display: inline-flex; align-items: center; min-height: 32px; font-weight: 600; font-family: var(--mono); font-size: 0.9375rem; }
+.keys span { color: var(--mist); }
+@media (max-width: 520px) { .keys li { grid-template-columns: minmax(0, 1fr); } }
+.cta { display: grid; gap: 12px; justify-items: start; padding: clamp(22px, 4vw, 36px); border: 1px solid var(--night-line); border-radius: 20px;
+  background: radial-gradient(80% 120% at 0% 0%, rgb(0 255 204 / 0.08), transparent 60%), radial-gradient(80% 120% at 100% 100%, rgb(138 92 255 / 0.1), transparent 60%), var(--night); }
+.cta h2 { font-size: clamp(1.5rem, 3.5vw, 2rem); font-weight: 600; letter-spacing: -0.02em; }
+.cta p { color: var(--mist); max-width: 60ch; }
+
+footer.site .by { display: inline-flex; align-items: center; gap: 8px; }
+
+footer.site { position: relative; padding-block: 32px 40px; color: var(--dusk); font-size: 0.875rem; }
+footer.site .links ul { list-style: none; margin: 0 0 20px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 20px; }
+footer.site .links a { display: inline-flex; align-items: center; min-height: 32px; }
+footer.site .row { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+footer.site a { color: var(--mist); }
+
+
+/* Grid items keep to their column: a wide table scrolls in its box. */
+main, .ways > *, .spec-layout > * { min-width: 0; }
+/* Japanese: a long katakana word (プラットフォーム) breaks rather than widen a small phone. */
+:lang(ja) :is(h1, h2, h3, .eyebrow, .lede, .section-head p, .points li) { overflow-wrap: anywhere; }
+.eyebrow { overflow-wrap: anywhere; }
+/* ---- Boréale's site switcher: the name, a button that opens the menu of
+   the four sites (a popover: the browser closes it on Esc or a click
+   elsewhere), the site's own leading home. The same block in boreale.dev's,
+   PlayGuard's, PlayShelf's and Aurore's site.css; boreale's is the
+   reference. The name keeps the site's .brand look; the colours are the
+   brand's. */
+.switcher { display: flex; flex-shrink: 0; align-items: center; }
+.switch {
+  min-height: 44px; margin-left: -8px; padding: 0 8px; border: 0; border-radius: 12px;
+  background: transparent; color: #e8eef7; cursor: pointer; text-align: left;
+}
+.switch .chevron { width: 16px; height: 16px; color: #a9b6cc; transition: transform 0.2s, color 0.2s; }
+.switch:hover { background: rgb(232 238 247 / 0.06); }
+.switch:hover .chevron { color: #e8eef7; }
+.switcher:has(.sites:popover-open) .chevron { transform: rotate(180deg); color: #00ffcc; }
+.sites {
+  position: absolute; inset: auto; top: 72px; left: 16px; margin: 0;
+  width: min(400px, calc(100vw - 24px)); max-height: calc(100vh - 96px); overflow: auto; padding: 8px;
+  border: 1px solid #22324f; border-radius: 16px; color: #e8eef7;
+  background: radial-gradient(120% 80% at 0% 0%, rgb(0 255 204 / 0.08), transparent 60%),
+              radial-gradient(100% 80% at 100% 100%, rgb(138 92 255 / 0.1), transparent 60%), #0e1a33;
+  box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.8), 0 0 0 1px rgb(11 20 36 / 0.6);
+}
+.sites::backdrop { background: transparent; }
+.sites-title { margin: 14px 10px 6px; padding-top: 12px; border-top: 1px solid #22324f; font: 400 12px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: #a9b6cc; }
+.sites ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.sites a {
+  display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  min-height: 56px; padding: 8px 10px; border-radius: 12px; color: #e8eef7; text-decoration: none;
+}
+.sites a:hover, .sites a:focus-visible { color: #e8eef7; background: rgb(232 238 247 / 0.06); }
+.sites a[aria-current] { background: rgb(0 255 204 / 0.08); box-shadow: inset 2px 0 0 #00ffcc; }
+.sites img { display: block; width: 36px; height: 36px; }
+.sites strong { display: block; color: #e8eef7; font: 600 16px/1.3 var(--display); letter-spacing: -0.01em; }
+.sites-version { margin-left: 6px; font: 400 12px var(--mono); letter-spacing: 0; color: #00ffcc; }
+.sites small { display: block; color: #a9b6cc; font: 400 14px/1.35 var(--body); }
+.sites .soon {
+  font: 500 11px/1.6 var(--mono); font-style: normal; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap;
+  color: #ffb86b; border: 1px solid rgb(255 184 107 / 0.45); border-radius: 999px; padding: 1px 8px;
+}
+@media (prefers-reduced-motion: reduce) { .switch .chevron, .lang-button .chevron { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .switch .chevron, .lang-button .chevron { transition: none; } }
+.switch img { width: 34px; height: 34px; }
+@media (max-width: 640px) { .switch { font-size: 1.125rem; gap: 8px; } }
+
+.state { font-family: var(--mono); font-size: 0.75rem; border-radius: 99px; padding: 3px 10px; border: 1px solid var(--night-line); color: var(--mist); white-space: nowrap; }
+
+/* The status, under the hero. */
+main section.status-card {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 16px; margin-top: 8px; padding: 16px 20px;
+  border: 1px solid var(--night-line); border-radius: var(--radius); background: rgb(14 26 51 / 0.6);
+}
+.status-card .state { color: var(--aurora); border-color: rgb(0 255 204 / 0.4); }
+.status-card p { color: var(--mist); flex: 1 1 30ch; }
+
+/* What it keeps, what it adds: a list of short points. */
+.points { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.points li { position: relative; padding: 16px 18px 16px 44px; background: var(--night); border: 1px solid var(--night-line); border-radius: var(--radius); color: var(--snow); min-width: 0; }
+.points li::before { content: ""; position: absolute; left: 18px; top: 24px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--mist); }
+.points.new li::before { border: 0; background: var(--aurora-grad); }
+.points code, .prose code, .way code { color: var(--snow); }
+.way .more { font-family: var(--mono); font-size: 0.875rem; }
+.way .more a { display: inline-flex; align-items: center; min-height: 32px; }
+.note a { display: inline-flex; align-items: center; min-height: 24px; }
+
+/* Running text: the specification, the error types, the privacy notice. */
+.prose { max-width: 76ch; }
+.prose > * + * { margin-top: 14px; }
+.prose.narrow p { color: var(--mist); }
+.prose h2 { margin-top: 48px; font-size: clamp(1.5rem, 3.5vw, 2rem); font-weight: 600; letter-spacing: -0.02em; scroll-margin-top: 16px; }
+.prose h3 { margin-top: 32px; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; scroll-margin-top: 16px; }
+.prose h2.spec-name { margin-top: 0; font-size: clamp(1.25rem, 3vw, 1.5rem); color: var(--mist); }
+.prose .anchor { color: inherit; text-decoration: none; }
+.prose .anchor:hover { color: var(--aurora); }
+.prose ul, .prose ol { padding-left: 1.4em; display: grid; gap: 8px; }
+.prose li { min-width: 0; }
+.prose li > * + * { margin-top: 10px; }
+.prose pre { font-size: 0.8125rem; }
+.prose .table { margin-top: 18px; }
+.prose .source { margin-top: 40px; }
+.prose a { overflow-wrap: anywhere; }
+.note-en { font-family: var(--mono); font-size: 0.875rem; color: var(--aurora); }
+
+/* The specification: its contents beside it on a large screen, above it on a phone. */
+.spec-layout { display: grid; gap: 32px; padding-block: 8px 48px; grid-template-columns: minmax(0, 1fr); }
+.toc { padding: 18px 20px; border: 1px solid var(--night-line); border-radius: var(--radius); background: rgb(14 26 51 / 0.6); font-size: 0.9375rem; }
+.toc-title { font: 500 0.8125rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--aurora); margin-bottom: 8px; }
+.toc ol { list-style: none; margin: 0; padding: 0; }
+.toc ol ol { padding-left: 14px; font-size: 0.875rem; }
+.toc a { display: flex; align-items: center; min-height: 32px; color: var(--mist); text-decoration: none; }
+.toc a:hover { color: var(--snow); }
+@media (min-width: 1024px) {
+  .spec-layout { grid-template-columns: 260px minmax(0, 1fr); align-items: start; }
+  .toc { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+}
+
+/* An error type's facts. */
+.facts { margin: 0; display: grid; gap: 10px; }
+.facts div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.facts dt { font: 500 0.8125rem var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--mist); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.errors main > section { padding-top: 0; }
+.errors td a { display: inline-flex; align-items: center; min-height: 32px; }
+/* A long inline address or path breaks rather than widen a phone (a code block scrolls in its box). */
+:is(.prose, .lede) :not(pre) > code { overflow-wrap: anywhere; }
