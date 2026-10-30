@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "items": [
+    {
+      "id": "a_7Hn3Wc",
+      "title_id": "0100ABCD00010000",
+      "app_id": "0100ABCD00010000",
+      "type": "base",
+      "version": 0,
+      "display_version": "1.0.0",
+      "name": "Frostline Tales",
+      "size": 5368709120,
+      "format": "xci",
+      "added": "2026-10-28T19:02:11Z",
+      "file": "/api/lantern/v1/files/f_Pq02Rt"
+    },
+    {
+      "id": "a_9Qx2Lm",
+      "title_id": "0100ABCD00010000",
+      "app_id": "0100ABCD00010800",
+      "type": "update",
+      "version": 196608,
+      "display_version": "1.3.0",
+      "name": "Frostline Tales",
+      "size": 734003200,
+      "format": "nsz",
+      "sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+      "added": "2026-10-28T19:02:11Z",
+      "file": "/api/lantern/v1/files/f_Zk81Qp"
+    }
+  ],
+  "total": 4123,
+  "next": "c_Kp9w"
+}

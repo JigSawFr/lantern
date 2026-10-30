@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lantern.boreale.dev/schemas/v1/pairing-request.json",
   "title": "Pairing request",
-  "description": "POST <base>/v1/pairing (SPEC.md § 5.2).",
+  "description": "POST <base>/v1/pairing, without a token (SPEC.md § 5.2).",
   "type": "object",
   "properties": {
     "schema": {
