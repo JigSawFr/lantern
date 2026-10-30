@@ -4,7 +4,7 @@ Seul le texte anglais fait foi. Pour la mettre à jour : traduire ce qui a
 changé dans SPEC.md depuis `commit`, puis donner ici le nouveau commit et la
 somme SHA-256 de SPEC.md à ce commit (sha256sum SPEC.md).
 language: fr
-commit: aaa15bbae9d9a0ad37ef89ad5d03e1e986024382
+commit: 9871962a35d336b3fb0906cd4e049858817962cb
 sha256: 391ace6ec9d340061853e0c53c1557bfe5df6b6d26ee409fe3b1dadf99b3b9f4
 banner: Traduction informative ; seul le texte anglais fait foi.
 english: Lire le texte anglais, qui fait référence
