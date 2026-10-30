@@ -114,7 +114,8 @@
           ]
         },
         "sha256": {
-          "$ref": "#/$defs/sha256"
+          "$ref": "#/$defs/sha256",
+          "description": "Of the file as served (SPEC.md § 6.1). Required: a server hashes a file before it lists it."
         },
         "added": {
           "$ref": "#/$defs/time"
@@ -131,6 +132,7 @@
         "version",
         "size",
         "format",
+        "sha256",
         "file"
       ]
     },

@@ -1,13 +1,14 @@
 # Lantern — an open protocol for game library servers
 
-Draft 0.1, 2026-10-30. Status: **draft**, open to change until 1.0.
+Draft 0.2, 2026-10-30. Status: **draft**, open to change until 1.0.
 This text is licensed under [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
 Lantern lets a client on a console (a homebrew) browse a library server the
 user runs for their own games, download from it with integrity checks, and
 keep save backups and cheats there. It is a small REST/JSON contract,
 versioned so that a client and a server of different ages keep working
-together.
+together. It is a protocol of its own: it owes nothing to the protocols in
+use before it and keeps nothing for their sake.
 
 The key words MUST, SHOULD and MAY are used as in RFC 2119.
 
@@ -20,28 +21,32 @@ The key words MUST, SHOULD and MAY are used as in RFC 2119.
    (§ 3).
 3. **Declared, never guessed.** The server says what it offers (`features`);
    the client says who it is (`User-Agent`). No header sniffing.
-4. **Structured identity, verifiable content.** Every package has its title
-   id, app id, type, integer version, size, format and SHA-256. File names
-   carry no meaning.
-5. **Plain HTTP.** Real status codes, `application/problem+json` errors,
+4. **Structured identity, verified content.** Every package has its title
+   id, app id, type, integer version, size, format and SHA-256, and every
+   download is checked against it. File names carry no meaning.
+5. **Secure by default.** HTTPS everywhere, a key pinned at pairing on the
+   LAN, a revocable token per device. No password ever goes through the
+   console.
+6. **HTTP as it is.** Real status codes, `application/problem+json` errors,
    ranges, `ETag`, `Repr-Digest`.
-6. **Nothing hidden, nothing intrusive.** No hardware identifier, no
+7. **Nothing hidden, nothing intrusive.** No hardware identifier, no
    proprietary encryption, no server-driven change to the client's settings.
 
 ## 2. Transport
 
 - HTTPS. A client MUST verify the certificate against its CA store, or
-  against a key it pinned on first use for a LAN server the user trusted
-  (§ 5.3). Plain HTTP MAY be accepted by a client only for a LAN address the
-  user typed, and never for credentials.
+  against the key it pinned at pairing (§ 5.3).
+- Plain HTTP is allowed only on loopback addresses (`127.0.0.0/8`, `::1`),
+  for testing. A client MUST NOT speak plain HTTP to any other address, and
+  a server MUST NOT serve Lantern in plain HTTP on one.
 - All routes live under a base path the server chooses (default
-  `/api/lantern`), announced by discovery (§ 4). Below, paths are relative to
-  `<base>`.
+  `/api/lantern`), announced by discovery (§ 4.1) and the handshake (§ 4.2).
+  Below, paths are relative to `<base>`.
 - JSON bodies are UTF-8, `Content-Type: application/json`.
 - The client MUST send `User-Agent: <Name>/<version>` and SHOULD send
   `Accept-Language`.
-- Credentials (§ 5) are sent only to the server's origin (scheme, host,
-  port), never to another host a document points at.
+- Tokens (§ 5) are sent only to the server's origin (scheme, host, port),
+  never to another host a document points at.
 
 ## 3. Versions
 
@@ -80,29 +85,36 @@ know them.
 
 ### 4.1 On the LAN
 
-Lantern reuses Ownfoil's discovery, which three clients already speak:
+Lantern has its own discovery, on UDP port **47115**:
 
-- The client broadcasts the ASCII datagram `OWNFOIL_DISCOVER` to UDP port
-  8465 (directed broadcast: the Switch drops 255.255.255.255).
-- A server answers with a JSON object:
+- The client sends the datagram `{"schema":1,"lantern":"discover"}` to port
+  47115 as a directed broadcast (the subnet's broadcast address, such as
+  `192.168.1.255`: the Switch drops `255.255.255.255`).
+- A server answers unicast, to the datagram's source, with:
 
   ```json
-  {"magic": "OWNFOIL", "uid": "6f1c2a8e-…", "name": "Living room shelf",
-   "version": "2.7.0", "port": 8465, "public": false,
-   "remote": "https://shelf.example.org",
-   "lantern": {"schema": 1, "base": "/api/lantern", "versions": [1]}}
+  {"schema": 1, "lantern": "server", "uid": "6f1c2a8e-…",
+   "name": "Living room shelf", "port": 443, "base": "/api/lantern",
+   "versions": [1]}
   ```
 
-- The server's address is the datagram's source address. `lantern` is
-  present only on servers that speak Lantern; a client that does not know
-  it ignores it.
-- The reply keeps Ownfoil's shape, which has no `schema`; Lantern's own
-  part, `lantern`, carries one.
+- The server's address is the reply's source address; `port` is its HTTPS
+  port, `base` and `versions` as in the handshake (§ 4.2).
+- Each datagram is UTF-8 JSON of at most 1200 bytes. A server answers only a
+  request it can read (§ 3.2) and stays silent otherwise. It SHOULD answer
+  only addresses of its own networks, and only a few times a second to the
+  same address.
+- A server SHOULD also advertise itself with DNS-SD (RFC 6763) as
+  `_lantern._tcp`, with the TXT keys `uid=<uid>`, `path=<base>` and `v=1`
+  (the versions, comma-separated).
+- Discovery is a hint: it finds an address and a name, nothing more. A
+  reply proves nothing, and a client trusts a server only through TLS and
+  pairing (§ 5).
 
 ### 4.2 Handshake
 
 `GET /.well-known/lantern` (at the origin's root) and `GET <base>/v1/` return
-the same document, with or without credentials:
+the same document, with or without a token:
 
 ```json
 {"schema": 1,
@@ -119,51 +131,92 @@ the same document, with or without credentials:
 ```
 
 - `uid`: a UUID that never changes for this server. A client uses it to
-  recognise the same server on the LAN and on the WAN.
-- `account.state`: `anonymous` (no credentials, public server), `active`,
-  or `frozen` (the account exists but may do nothing; `motd` says why).
-- `account.scopes`: what this account may do: `library`, `saves`,
+  recognise the same server on the LAN and on the WAN, and to find the key
+  it pinned (§ 5.3).
+- `account.state`: `anonymous` (no token), `active`, or `frozen` (the
+  account exists but may do nothing; `motd` says why).
+- `account.scopes`: what this caller may do: `library`, `saves`,
   `cheats`, `cheats.write`, `requests`, `admin`.
 - `features.<family>`: the `schema` the server writes for that family, or
-  `0` when it does not offer it **to this caller**.
-- An unauthenticated call to a private server returns the document with
-  `account.state` `anonymous` and every feature at 0, so a client can show
-  the server's name before asking for credentials. Wrong credentials give
-  `401` here as elsewhere (§ 5.1): only their absence gives that document.
+  `0` when it does not offer it **to this caller**. `pairing` is the same
+  for every caller, anonymous included: whoever can reach the server can ask
+  to pair.
+- A call without a token to a private server returns the document with
+  `account.state` `anonymous` and every feature at 0 but `pairing`, so a
+  client can show the server's name and pair. A wrong token gives `401` here
+  as elsewhere (§ 5.1): only its absence gives that document.
 - A route of a family at 0 answers `404` (the server does not offer it) or
   `401`/`403` (not to this caller), never `2xx`.
 
 ## 5. Authentication
 
-### 5.1 HTTP Basic
+### 5.1 Tokens
 
-Every server MUST accept HTTP Basic over TLS. A missing or wrong password,
-or an unknown token (§ 5.2), gives `401` with
-`WWW-Authenticate: Basic realm="…"`; a right password without the scope
-gives `403`.
+- Every authenticated call sends `Authorization: Bearer <token>` (RFC 6750).
+  There is no other scheme: no password and no HTTP Basic, on any route.
+- A token is opaque to the client and has at least 128 bits of entropy. The
+  server keeps only a hash of it, gives one per device, with the scopes the
+  user approved (§ 5.2), and lets the user list and revoke them. A token MAY
+  expire.
+- A missing token where one is needed, or an unknown, revoked or expired
+  one, gives `401` with `WWW-Authenticate: Bearer` (and
+  `error="invalid_token"` when a token was sent). So does an `Authorization`
+  of another scheme. A valid token without the scope gives `403`
+  `forbidden`; one of a frozen account, `403` `account_frozen`.
+- A public server answers calls without a token, as the account
+  `anonymous` (§ 4.2), for the scopes it gives everyone.
 
 ### 5.2 Pairing (feature `pairing`)
 
-So that a console keeps a revocable token instead of a password. Modelled
-on the OAuth device flow (RFC 8628), without OAuth's other parts:
+How a console gets its token, modelled on the OAuth device flow (RFC 8628)
+without OAuth's other parts. A private server MUST offer it; a public one
+MAY, for what it gives beyond anonymous calls.
 
 1. `POST <base>/v1/pairing` `{"schema":1, "device":"Lea's Switch",
-   "scopes":["library","saves"]}` → `{"schema":1, "code":"KQ4M-7TXD",
-   "verify":"https://shelf.example.org/pair", "poll":"<base>/v1/pairing/p_…",
-   "interval":5, "expires":600}`.
-2. The console shows the code; the user enters it on the server's web page
-   while signed in, and approves the scopes.
+   "scopes":["library","saves"]}`, without a token → `200` `{"schema":1,
+   "code":"KQ4M-7TXD", "verify":"https://shelf.example.org/pair",
+   "poll":"<base>/v1/pairing/p_…", "interval":5, "expires":600}`.
+2. The console shows the code, the address `verify`, and the short
+   fingerprint of the server's key (§ 5.3). The user opens `verify` on
+   another device, signs in there by the server's own means, enters the
+   code, compares the fingerprint, and approves the device and its scopes.
+   Approval happens only on the server's side (its web page, or any admin
+   means it has), never on the console: no password goes through the
+   console, and the protocol has no route to approve.
 3. The console polls `GET poll` every `interval` seconds: `202` while
    waiting, then `200` `{"schema":1, "token":"et_…", "scopes":[…]}`, or
-   `410` when refused or expired.
-4. Later calls send `Authorization: Bearer et_…`. The server lists tokens
-   by device name and lets the user revoke them.
+   `410` when refused, expired, already collected or unknown. The scopes
+   are those approved, at most those asked for and those of the account.
+   `expires`, when present, is the token's lifetime in seconds.
+4. Later calls send `Authorization: Bearer et_…` (§ 5.1).
 
-### 5.3 Pinning on the LAN
+- The code uses the alphabet `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no `0`,
+  `O`, `1` or `I`), has 8 to 32 symbols (at least 40 bits), and is shown in
+  groups of 4 joined by `-`. The server ignores case, spaces and dashes
+  when the user types it.
+- A code expires within 10 minutes (`expires`, in seconds, at most 600).
+  The poll address is unguessable (at least 128 bits) and gives the token
+  once.
+- The server limits pairing requests per address, attempts at a code, and
+  polls more often than `interval`: beyond them it answers `429`
+  `slow_down` with `Retry-After`.
 
-A LAN server often has a self-signed certificate. A client MAY show the
-SHA-256 of its public key (SPKI) and, once the user compared and accepted
-it, pin it for that `uid`. A key that changes afterwards MUST fail.
+### 5.3 Pinning, at pairing
+
+A server whose certificate the client's CA store accepts needs nothing
+more. Otherwise (a LAN server with a self-signed certificate):
+
+- The fingerprint is the SHA-256 of the server's public key, its DER
+  `SubjectPublicKeyInfo` (SPKI). Its short form, for people, is its first 16
+  hex digits, upper-case, in groups of 4: `3F9A 1C07 B2E4 55D0`.
+- During pairing, the console shows the short form of the key it sees,
+  next to the code; the server's approval page shows the short form of its
+  own. The user approves only when they match.
+- Once paired, the client pins the whole SHA-256 for that server's `uid`. It
+  polls and calls only over connections with that key: a changed key MUST
+  fail, whatever certificate carries it, until the user pairs again.
+- Before pairing, a client may read the handshake and ask for a code over a
+  certificate it has not verified: it sends nothing secret then.
 
 ## 6. Library (feature `library`)
 
@@ -193,8 +246,8 @@ An app is one installable package: a base game, an update or an add-on.
 - `version`: an integer; clients compare integers, never text.
 - `size`: bytes, a 64-bit integer.
 - `format`: `nsp`, `nsz`, `xci` or `xcz`.
-- `sha256`: of the file as served, lower-case hex. A server that has not
-  hashed a file yet omits it; a client MAY then refuse or warn.
+- `sha256`: of the file as served, lower-case hex. Required: a server hashes
+  a file before it lists it.
 
 ### 6.2 Listing
 
@@ -260,20 +313,23 @@ client MAY show them next to its own.
 - `language` says which language was served for `Accept-Language`.
 - A media URL on the server's origin SHOULD be content-addressed and served
   with a long cache lifetime. A media object with `"external": true` points
-  elsewhere: the client MUST NOT send it credentials.
+  elsewhere: the client MUST NOT send it a token.
 
 ### 6.7 Files
 
 `GET <file>`:
 
 - MUST support `Range` (`206`; `416` with `Content-Range: bytes */<size>`)
-  and send `Content-Length`,
-  `Accept-Ranges: bytes`, a strong `ETag` and `Repr-Digest:
-  sha-256=:<base64>:` (RFC 9530) when the hash is known.
+  and send `Content-Length`, `Accept-Ranges: bytes` and a strong `ETag`.
+- MUST send `Repr-Digest: sha-256=:<base64>:` (RFC 9530) on every response,
+  whole (`200`) or ranged (`206`), and on `HEAD`: the digest of the whole
+  file, the same as the app's `sha256`.
 - The id in the path is opaque and not enumerable. It MAY expire: the
   client then reads the app again.
 - A server MAY offer a decompressed form of a compressed file under its own
   app entry (its own `format`, `size` and `sha256`), never silently.
+- A client MUST check the SHA-256 of what it downloaded against the app's
+  `sha256` before installing it, and refuse it when they differ.
 
 ## 7. Save backups (feature `saves`, scope `saves`)
 
@@ -319,7 +375,7 @@ code, never `200`:
 | Status | `code` | When |
 |---|---|---|
 | 400 | `bad_request` | A malformed query or body; a cursor or `since` token the server never gave |
-| 401 | `unauthorized` | No or wrong credentials (with `WWW-Authenticate`) |
+| 401 | `unauthorized` | No token where one is needed, or an unknown, revoked or expired one (with `WWW-Authenticate: Bearer`) |
 | 403 | `forbidden`, `account_frozen` | A scope missing; a frozen account |
 | 404 | `not_found` | |
 | 405 | `bad_request` | A method the route does not take (with `Allow`) |
@@ -328,7 +384,7 @@ code, never `200`:
 | 413 | `too_large` | A save above the server's limit |
 | 416 | `bad_request` | A range outside the file (with `Content-Range: bytes */<size>`) |
 | 422 | `unsupported_schema` | A request document of a schema the server cannot read |
-| 429 | `slow_down` | With `Retry-After` |
+| 429 | `slow_down` | Too many requests, pairing attempts or polls (with `Retry-After`) |
 | 500 | `internal` | A failure of the server itself; the client may try again later |
 | 503 | `unavailable` | Scanning, maintenance (with `Retry-After`) |
 
@@ -348,6 +404,7 @@ A client MUST bound what it reads and a server MUST stay within:
 | A string field | 4 KiB (`name` 512 bytes, `note` 120 bytes) |
 | A page | 1000 items |
 | A cheat file | 1 MiB |
+| A discovery datagram | 1200 bytes |
 
 ## 12. Caching
 
@@ -359,20 +416,24 @@ Every `GET` returning JSON SHOULD carry an `ETag` and honour
 
 - No hardware identifier, no tracking header. A server knows a device only
   by the name its user gave it during pairing.
-- No proprietary encryption of documents: TLS protects them.
+- No password goes through the console: it holds a token per server, which
+  the user can revoke from the server (§ 5).
+- No proprietary encryption of documents: TLS protects them, with a key
+  pinned at pairing when no CA vouches for it (§ 5.3).
+- Discovery is a hint, never a proof (§ 4.1).
 - A server cannot change a client's settings or add headers to its later
   requests.
-- A client MUST check `sha256` after a download before installing, when the
-  server gave one.
+- A client MUST check a download's SHA-256 before installing it (§ 6.7).
 - Servers are for the user's own games.
 
 ## 14. Conformance
 
-A conformance suite (`conformance/`) runs against a server's URL and
-credentials and checks every MUST of this text it can see from outside:
-shapes and `schema`, ranges, digests, error format, limits, the refusal of
-an unknown request `schema`. A reference server (`server/`) serves a folder
-of packages and passes the suite.
+A conformance suite (`conformance/`) runs against a server's URL, with a
+token or without, and checks every MUST of this text it can see from
+outside: shapes and `schema`, the token challenge, pairing's shapes,
+ranges, digests, error format, limits, the refusal of an unknown request
+`schema`. A reference server (`server/`) serves a folder of packages and
+passes the suite.
 
 ## Changes
 
@@ -384,3 +445,20 @@ of packages and passes the suite.
 - 0.1 (2026-10-30): an expired cursor or `since` token gives 410, one
   the server never gave 400 (or 410 if it cannot tell); a 416 carries `Content-Range: bytes */<size>`; a
   failure of the server answers 500 with the code `internal`.
+- 0.2 (2026-10-30): a protocol of its own, with nothing kept for the
+  protocols in use before it; still `/v1/` and `schema` 1, as a draft.
+  - Discovery (§ 4.1): Lantern's own datagrams on UDP 47115, a DNS-SD
+    `_lantern._tcp` advertisement, and discovery as a hint only. Ownfoil's
+    datagram and port are gone.
+  - Authentication (§ 5): bearer tokens only, per device, hashed by the
+    server, revocable, possibly expiring; HTTP Basic is gone. Pairing is
+    required of a private server, approved on the server's side only, with
+    codes of an unambiguous alphabet (40 bits at least) that expire within
+    10 minutes and are rate-limited (429 `slow_down`). `pairing` is offered
+    to every caller, anonymous included.
+  - Transport (§ 2, § 5.3): HTTPS everywhere, plain HTTP on loopback only;
+    a self-signed key is pinned at pairing, after the user compared its
+    SPKI fingerprint on the console and on the server.
+  - Integrity (§ 6.1, § 6.7): `sha256` is required on every app,
+    `Repr-Digest` on every file response, and a client always checks a
+    download before installing it.

@@ -2,10 +2,12 @@
 # of schemas/v1/, referred to here; SPEC.md is the reference where the two
 # would differ. Paths are relative to the base the server announces
 # (default /api/lantern), but /.well-known/lantern, at the origin's root.
+# Authentication is a bearer token from pairing (SPEC.md § 5), nothing else;
+# discovery (UDP 47115, SPEC.md § 4.1) is not HTTP and is not described here.
 openapi: 3.1.0
 info:
   title: Lantern protocol
-  version: 0.1.0
+  version: 0.2.0
   summary: An open protocol between console homebrews and self-hosted game library servers.
   license:
     name: MIT
@@ -14,16 +16,14 @@ servers:
   - url: https://shelf.example.org/api/lantern
     description: An example server, its base as announced
 security:
-  - basic: []
   - bearer: []
   - {}
 components:
   securitySchemes:
-    basic: { type: http, scheme: basic }
-    bearer: { type: http, scheme: bearer, description: "A token from pairing (SPEC.md § 5.2)." }
+    bearer: { type: http, scheme: bearer, description: "A token per device, from pairing (SPEC.md § 5.1, 5.2). A missing, unknown, revoked or expired one gives 401 with WWW-Authenticate: Bearer." }
   responses:
     Problem:
-      description: "An error (SPEC.md § 10): any route may also answer 401, 405 (with Allow), 429, 500 or 503."
+      description: "An error (SPEC.md § 10): any route may also answer 401 (with WWW-Authenticate: Bearer), 403, 405 (with Allow), 429, 500 or 503."
       content:
         application/problem+json:
           schema: { $ref: "schemas/v1/problem.json" }
@@ -32,6 +32,18 @@ components:
       content:
         application/json:
           schema: { $ref: "schemas/v1/apps.json" }
+  headers:
+    ReprDigest:
+      description: "sha-256=:<base64>: (RFC 9530), the whole file's digest, on every file response, 200 or 206 (SPEC.md § 6.7)."
+      required: true
+      schema: { type: string, pattern: "^sha-256=:[A-Za-z0-9+/]{43}=:$" }
+    ETag:
+      description: A strong ETag.
+      required: true
+      schema: { type: string }
+    AcceptRanges:
+      required: true
+      schema: { const: bytes }
   parameters:
     TitleId:
       name: title_id
@@ -50,24 +62,26 @@ paths:
   /.well-known/lantern:
     get:
       summary: The handshake, at the origin's root (§ 4.2)
-      security: [ {}, { basic: [] }, { bearer: [] } ]
+      security: [ {}, { bearer: [] } ]
       responses:
         "200": { description: "The server and what it offers this caller.", content: { application/json: { schema: { $ref: "schemas/v1/handshake.json" } } } }
         default: { $ref: "#/components/responses/Problem" }
   /v1/:
     get:
       summary: The handshake (§ 4.2)
-      security: [ {}, { basic: [] }, { bearer: [] } ]
+      security: [ {}, { bearer: [] } ]
       responses:
         "200": { description: "The server and what it offers this caller.", content: { application/json: { schema: { $ref: "schemas/v1/handshake.json" } } } }
         default: { $ref: "#/components/responses/Problem" }
   /v1/pairing:
     post:
       summary: Ask to pair a console (§ 5.2)
+      description: "Without a token. The user approves the code on the server's side (its verify page), never on the console."
       security: [ {} ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/pairing-request.json" } } } }
       responses:
         "200": { description: "The code to show and where to poll.", content: { application/json: { schema: { $ref: "schemas/v1/pairing-code.json" } } } }
+        "429": { $ref: "#/components/responses/Problem" }
         default: { $ref: "#/components/responses/Problem" }
   /v1/pairing/{id}:
     get:
@@ -78,6 +92,7 @@ paths:
         "200": { description: "Approved.", content: { application/json: { schema: { $ref: "schemas/v1/pairing-token.json" } } } }
         "202": { description: "Still waiting for the user." }
         "410": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
         default: { $ref: "#/components/responses/Problem" }
   /v1/apps:
     get:
@@ -127,8 +142,8 @@ paths:
       summary: A package, with ranges (§ 6.7)
       parameters: [ { name: id, in: path, required: true, schema: { type: string } }, { name: Range, in: header, schema: { type: string } } ]
       responses:
-        "200": { description: "The whole file (Repr-Digest, ETag, Accept-Ranges).", content: { application/octet-stream: {} } }
-        "206": { description: "A range of it.", content: { application/octet-stream: {} } }
+        "200": { description: "The whole file.", headers: { Repr-Digest: { $ref: "#/components/headers/ReprDigest" }, ETag: { $ref: "#/components/headers/ETag" }, Accept-Ranges: { $ref: "#/components/headers/AcceptRanges" } }, content: { application/octet-stream: {} } }
+        "206": { description: "A range of it.", headers: { Repr-Digest: { $ref: "#/components/headers/ReprDigest" }, ETag: { $ref: "#/components/headers/ETag" }, Accept-Ranges: { $ref: "#/components/headers/AcceptRanges" } }, content: { application/octet-stream: {} } }
         "410": { $ref: "#/components/responses/Problem" }
         "416": { $ref: "#/components/responses/Problem" }
         default: { $ref: "#/components/responses/Problem" }

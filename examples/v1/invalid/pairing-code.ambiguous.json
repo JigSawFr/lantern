@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "code": "KQ0M-1TXO",
+  "verify": "https://shelf.example.org/pair",
+  "poll": "/api/lantern/v1/pairing/p_4Fh2",
+  "interval": 5,
+  "expires": 600
+}
