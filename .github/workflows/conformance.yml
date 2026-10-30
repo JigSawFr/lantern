@@ -1,14 +1,16 @@
 # The reference server (server/) against the conformance suite
 # (conformance/): the unit tests, then the suite run as a server author
-# would, against the server started on a tiny fictional library.
+# would, against the server started on a tiny fictional library: once
+# anonymously on a public server, once with a token holding every scope on a
+# private one, paired through its /pair page as a user would.
 name: conformance
 
 on:
   push:
     branches: [ main ]
-    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", ".github/workflows/conformance.yml" ]
+    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", "tools/pair_for_ci.py", ".github/workflows/conformance.yml" ]
   pull_request:
-    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", ".github/workflows/conformance.yml" ]
+    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", "tools/pair_for_ci.py", ".github/workflows/conformance.yml" ]
 
 permissions:
   contents: read
@@ -25,7 +27,7 @@ jobs:
           "$RUNNER_TEMP/venv/bin/pip" install --quiet -r tools/requirements.txt
       - name: Unit tests (server and suite)
         run: '"$RUNNER_TEMP/venv/bin/python" -m unittest discover -s tests -v'
-      - name: The suite against the reference server
+      - name: The suite against the reference server, anonymously
         run: |
           python3 tests/library.py "$RUNNER_TEMP/library"
           # The server needs only the standard library: the system Python runs it.
@@ -36,3 +38,12 @@ jobs:
           done
           # Discovery on its own port, UDP 47115 (SPEC.md § 4.1).
           "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8080/ --discover 127.0.0.1
+      - name: The suite against a private reference server, with a token holding every scope
+        run: |
+          # A fictional account, paired through /pair; the server keeps running in the background.
+          token=$(python3 tools/pair_for_ci.py --library "$RUNNER_TEMP/library" --workdir "$RUNNER_TEMP/private" --port 8081)
+          echo "::add-mask::$token"
+          "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8081/ --token "$token"
+      - name: The private server's log
+        if: failure()
+        run: cat "$RUNNER_TEMP/private/server.log" || true
