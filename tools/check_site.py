@@ -25,11 +25,22 @@
 - every requirement id of SPEC.md (tools/requirements.py) is an anchor of the
   specification's page and has its entry on the traceability page
   (requirements/), and site/registry.json is of schema 1, each entry with
-  its name, kind, url, draft and levels; the badges of every level are there.
+  its name, kind, url, draft and levels; the badges of every level are there;
+- the drafts (spec/<draft>/) say noindex and stay out of the sitemap, which
+  lists the current specification and spec/changes/;
+- the demo library (demo/) is a static library whose files carry no tracking
+  (no Umami, no UTM tag: only the pages count visits), and its trapped
+  variant (demo/trapped/) stays out of the sitemap and of search engines;
+- each translation of the specification (site/translations/) names the
+  English commit it translates: when SPEC.md has changed since, a warning
+  (never a failure), and while it has not, the translation carries every
+  requirement id of the English text, each an anchor of its page.
 """
+import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
@@ -105,6 +116,96 @@ class Page(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "script":
             self.in_data = False
+
+
+def warn(message: str, file: str = "") -> None:
+    if os.environ.get("GITHUB_ACTIONS"):
+        print(f"::warning{' file=' + file if file else ''}::{message}")
+    print(f"check_site: warning: {message}")
+
+
+def git(*args: str) -> str | None:
+    try:
+        return subprocess.run(["git", "-C", str(ROOT), *args], check=True, capture_output=True,
+                              encoding="utf-8").stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def check_translations(site: Path, ids: list) -> list:
+    """Each translation's header against SPEC.md: stale is a warning; fresh, its ids and anchors must be all
+    there."""
+    errors = []
+    english = (ROOT / "SPEC.md").read_bytes()
+    for path in sorted((ROOT / "site" / "translations").glob("SPEC.*.md")):
+        name = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        m = re.match(r"<!--\n(.*?)\n-->\n", text, re.DOTALL)
+        fields = dict(re.findall(r"^([a-z0-9-]+): (.+)$", m.group(1), re.MULTILINE)) if m else {}
+        if not {"language", "commit", "sha256"} <= set(fields):
+            errors.append(f"{name}: no header with its language, commit and sha256")
+            continue
+        then = git("show", f"{fields['commit']}:SPEC.md")
+        if then is not None and hashlib.sha256(then.encode()).hexdigest() != fields["sha256"]:
+            errors.append(f"{name}: its sha256 is not SPEC.md's at {fields['commit'][:7]}")
+        if hashlib.sha256(english).hexdigest() != fields["sha256"]:
+            since = git("log", "--format=%h %s", f"{fields['commit']}..HEAD", "--", "SPEC.md")
+            what = f": {len(since.splitlines())} commit(s) since, " + "; ".join(since.splitlines()[:3]) if since else ""
+            warn(f"{name} translates SPEC.md at {fields['commit'][:7]}, and SPEC.md has changed since{what}. "
+                 "Update the translation, then its header's commit and sha256.", name)
+            continue
+        found = re.findall(r"\[(L-(?:\d+(?:\.\d+)?|[A-Z](?:\.\d+)?)-\d+)\]", text)
+        missing = [i for i in ids if i not in found]
+        extra = sorted(set(found) - set(ids))
+        if missing or extra:
+            errors.append(f"{name}: requirement ids missing ({', '.join(missing[:5]) or 'none'}) or not English's "
+                          f"({', '.join(extra[:5]) or 'none'})")
+        folder = fields["language"].lower()
+        page = site / folder / "spec" / "index.html"
+        html = page.read_text(encoding="utf-8") if page.exists() else ""
+        lacking = [i for i in ids if f'id="{i}"' not in html]
+        if lacking:
+            errors.append(f"{folder}/spec/index.html: no anchor for {len(lacking)} requirement(s), {', '.join(lacking[:5])}")
+    return errors
+
+
+def check_drafts_and_demo(site: Path) -> list:
+    errors = []
+    try:
+        listed = [e.text or "" for e in ElementTree.parse(site / "sitemap.xml").getroot().iter()
+                  if e.tag.endswith("loc")]
+    except (OSError, ElementTree.ParseError):
+        listed = []
+    paths = [urlparse(u).path for u in listed]
+    for p in paths:
+        if re.match(r"^/spec/\d", p) or p.startswith("/demo/trapped/"):
+            errors.append(f"sitemap.xml: lists {p}, which search engines are not to show")
+    for p in ("/spec/", "/spec/changes/", "/demo/"):
+        if p not in paths:
+            errors.append(f"sitemap.xml: does not list {p}")
+    drafts = sorted(site.glob("spec/[0-9]*/index.html"))
+    if not drafts:
+        errors.append("spec/: no draft (spec/<draft>/)")
+    for page in [*drafts, site / "demo" / "trapped" / "index.html"]:
+        text = page.read_text(encoding="utf-8") if page.exists() else ""
+        if '<meta name="robots" content="noindex">' not in text:
+            errors.append(f"{page.relative_to(site)}: not noindex")
+    robots = (site / "robots.txt").read_text(encoding="utf-8") if (site / "robots.txt").exists() else ""
+    if "Disallow: /demo/trapped/" not in robots:
+        errors.append("robots.txt: does not keep crawlers out of /demo/trapped/")
+    demo = site / "demo"
+    try:
+        hello = json.loads((demo / "lantern.json").read_text(encoding="utf-8"))
+        if not isinstance(hello.get("static"), dict):
+            errors.append("demo/lantern.json: not a static library's handshake")
+    except (OSError, ValueError) as error:
+        errors.append(f"demo/lantern.json: {error}")
+    for path in sorted(demo.rglob("*")):
+        if path.is_file() and path.suffix != ".html" and path.stat().st_size < (1 << 20):
+            data = path.read_bytes()
+            if b"umami" in data.lower() or b"utm_" in data:
+                errors.append(f"{path.relative_to(site)}: tracking (Umami or a UTM tag) in a file of the demo library")
+    return errors
 
 
 def main() -> None:
@@ -196,6 +297,8 @@ def main() -> None:
             errors.append(f"site/registry.json: {entry.get('name', '?')} lacks {', '.join(lacking)}")
         if "core" not in entry.get("levels", []):
             errors.append(f"site/registry.json: {entry.get('name', '?')} without Lantern Core, which every level needs")
+    errors += check_translations(site, ids)
+    errors += check_drafts_and_demo(site)
     for level in ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
                   "encrypted_saves", "static"):
         if not list((site / "assets" / "badges").glob(f"lantern-*-{level}.svg")):

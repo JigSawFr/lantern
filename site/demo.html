@@ -1,0 +1,39 @@
+  <section id="what">
+    <div class="section-head">
+      <h2>{{demo_what_title}}</h2>
+    </div>
+    <div class="prose narrow">
+      <p>{{demo_what}}</p>
+      <p>{{demo_files}}</p>
+    </div>
+  </section>
+
+  <section id="point">
+    <div class="section-head">
+      <h2>{{demo_point_title}}</h2>
+      <p>{{demo_point}}</p>
+    </div>
+    <pre tabindex="0"><code>{{demo_url}}</code></pre>
+    <p class="note files"><a href="{{root}}demo/lantern.json">lantern.json</a> · <a href="{{root}}demo/v1/apps/switch/pages/1.json">v1/apps/switch/pages/1.json</a> · <a href="{{root}}demo/v1/titles/switch/0100ABCD00010000.json">v1/titles/switch/0100ABCD00010000.json</a></p>
+    <p class="note">{{demo_suite}}</p>
+    <pre tabindex="0"><code>python3 conformance/run.py --static {{demo_url}}
+…
+Levels reached (SPEC.md § 17, draft {{draft}}): Lantern Static</code></pre>
+  </section>
+
+  <section id="browser">
+    <div class="section-head">
+      <h2>{{demo_browser_title}}</h2>
+      <p>{{demo_cors}}</p>
+    </div>
+    <pre tabindex="0"><code>const hello = await (await fetch("{{demo_url}}lantern.json")).json();</code></pre>
+    <p class="note">{{demo_tracking}} <a href="{{root}}{{home}}#privacy">{{privacy_title}}</a></p>
+  </section>
+
+  <section id="trapped">
+    <div class="cta">
+      <h2>{{demo_trapped_title}}</h2>
+      <p>{{demo_trapped}}</p>
+      <div class="actions"><a class="button ghost" href="{{root}}demo/trapped/">{{demo_trapped_link}}</a></div>
+    </div>
+  </section>

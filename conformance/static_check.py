@@ -3,6 +3,9 @@
 HTTPS, or plain HTTP on loopback) or a folder; the suite reads lantern.json,
 then every page of every platform, each title, homebrew entry and cheat set,
 and the files they point at within --max-download, by the layout of § 21.1.
+Every document is held to § 13's limits (a file above 32 MiB is not read),
+every homebrew manifest to § 8.2 and the profile's roots, and every
+signature must verify (§ 8.4), as from a server.
 """
 import hashlib
 import json
@@ -11,6 +14,8 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 Fail = Skip = Blind = Warn = Client = None     # run.py's (bind())
+limit_problems = client = None                  # run.py's too
+JSON_LIMIT = 32 << 20                           # SPEC.md § 13: a JSON document
 RELATIVE = re.compile(r"^(?![a-zA-Z][a-zA-Z0-9+.-]*:)(?!/)(?!.*(?:^|/)\.\.(?:/|$))[^\\?#]+$")
 NOT_STATIC = ("changes", "sections", "saves", "encrypted_saves", "requests", "pairing", "signatures", "admin",
               "events", "peers", "sync")
@@ -40,16 +45,23 @@ class StaticChecks:
             self.static_http = Client(u, None, ctx, self.args.timeout)
             self.http = self.static_http      # every response read, for the checks over all of them
         self.static_docs = {}
+        self.static_full = []       # every homebrew entry's own file, as read
 
-    def read(self, rel, limit=32 << 20):
-        """A file of the library, its bytes; None when it is not there."""
+    def read(self, rel, limit=JSON_LIMIT):
+        """A file of the library, its bytes; None when it is not there. One above `limit` is not read
+        (SPEC.md § 13: a client bounds what it reads): Fail."""
         if self.static_http is None:
             path = self.static_root / rel
-            return path.read_bytes() if path.is_file() else None
+            if not path.is_file():
+                return None
+            size = path.stat().st_size
+            expect(size <= limit, f"{rel}: {size} bytes, above the {limit} a reader takes (SPEC.md § 13)")
+            return path.read_bytes()
         r = self.static_http.request("GET", self.static_root + quote(rel), auth="none", raw=True, limit=limit)
         if r.status == 404:
             return None
         expect(r.status == 200, f"{r}, expected 200 or 404")
+        expect(not r.truncated, f"{rel}: above the {limit} bytes a reader takes (SPEC.md § 13)")
         return r.body
 
     def doc(self, rel, schema):
@@ -86,6 +98,12 @@ class StaticChecks:
                    self.s_paths)
         self.check("static.files", "21.1", "Every file at v1/blobs/sha256/<hex>, of its size and SHA-256",
                    self.s_files)
+        self.check("static.manifests", "8.2", "Every manifest: its paths, its digest, within the profile's roots",
+                   self.s_manifests)
+        self.check("static.signatures", "8.4", "Every homebrew signature verifies over the defined bytes",
+                   self.s_signatures)
+        self.check("static.limits", "13", "Every document within § 13's limits: depth, strings, items",
+                   self.s_limits)
         return self.summary_static()
 
     def summary_static(self):
@@ -179,7 +197,7 @@ class StaticChecks:
                 if "packages" in strip:
                     strip["packages"] = [{k: v for k, v in x.items() if k != "manifest"} for x in strip["packages"]]
                 expect(strip == e, f"v1/homebrew/{p}/{e['id']}.json differs from its listing, but its manifests")
-                self.static_docs.setdefault("homebrew-full", []).append(full)
+                self.static_full.append(full)
                 done += 1
         if not done:
             raise Skip("no homebrew")
@@ -213,7 +231,7 @@ class StaticChecks:
         for (family, p), items in getattr(self, "static_items", {}).items():
             if family == "apps":
                 out += [(a["file"], a["size"], a["sha256"], f"app {a['id']}") for a in items]
-        for full in self.static_docs.get("homebrew-full", []):
+        for full in self.static_full:
             for x in [full["package"], *full.get("packages", [])]:
                 out.append((x["file"], x["size"], x["sha256"], f"homebrew {full['platform']}/{full['id']}"))
         return out
@@ -244,3 +262,42 @@ class StaticChecks:
             budget -= size
             read += 1
         return f"{read} of {len(files)} file(s) read and checked"
+
+    def s_manifests(self):
+        """SPEC.md § 8.2, as for a server's entries (run.py's manifest_problems): each path of the profile's
+        form, the manifest's digest, and every path within the platform's roots (Annex A)."""
+        if not self.static_full:
+            raise Skip("no homebrew entry could be read (static.homebrew)")
+        problems, plans, unchecked = [], {"free": 0, "consent": 0}, set()
+        for entry in self.static_full:
+            for package in [entry["package"], *(entry.get("packages") or [])]:
+                problems += self.manifest_problems(entry["platform"], entry["id"], {**entry, "package": package},
+                                                   plans, unchecked)
+        expect(not problems, "\n".join(problems[:8]))
+        note = f"; roots not checked for {', '.join(sorted(unchecked))} (a draft or no profile)" if unchecked else ""
+        return f"{plans['free']} path(s) free to write, {plans['consent']} needing consent{note}"
+
+    def s_signatures(self):
+        """SPEC.md § 8.4: a signature that does not verify, a key or an R of small order, a package signed by
+        another key: a client refuses them, and a library serves none."""
+        signed = [e for e in self.static_full if "signature" in e]
+        if not signed:
+            raise Skip("no signed homebrew")
+        bad = []
+        for d in signed:
+            if not client.verify_signature(d):
+                bad.append(f"{d['platform']}/{d['id']}")
+            for extra in d.get("packages") or []:
+                sig = extra.get("signature")
+                if not sig or sig.get("public_key") != d["signature"]["public_key"] \
+                        or not client.verify_signature({**d, "package": extra, "signature": sig}):
+                    bad.append(f"{d['platform']}/{d['id']} ({', '.join(extra.get('arch') or ['?'])})")
+        expect(not bad, "signatures that do not verify, or by another key (a client refuses them): "
+               + ", ".join(bad[:5]))
+        return f"{len(signed)} signature(s)"
+
+    def s_limits(self):
+        """SPEC.md § 13 over every document read: nesting, strings, items on a page, files in a manifest."""
+        bad = [f"{rel}: {p}" for rel, doc in self.static_docs.items() for p in limit_problems(doc)]
+        expect(not bad, "\n".join(bad[:8]))
+        return f"{len(self.static_docs)} document(s)"
