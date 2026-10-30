@@ -29,11 +29,10 @@ jobs:
         run: |
           python3 tests/library.py "$RUNNER_TEMP/library"
           # The server needs only the standard library: the system Python runs it.
-          python3 -m server --library "$RUNNER_TEMP/library" --port 8080 --quiet \
-            --discovery --discovery-port 18465 &
+          python3 -m server --library "$RUNNER_TEMP/library" --port 8080 --quiet --discovery &
           for _ in $(seq 50); do
             curl -fsS http://127.0.0.1:8080/.well-known/lantern >/dev/null && break
             sleep 0.2
           done
-          "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8080/ \
-            --discover 127.0.0.1 --discover-port 18465
+          # Discovery on its own port, UDP 47115 (SPEC.md § 4.1).
+          "$RUNNER_TEMP/venv/bin/python" conformance/run.py http://127.0.0.1:8080/ --discover 127.0.0.1
