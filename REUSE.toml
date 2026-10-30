@@ -1,0 +1,15 @@
+# The licences of this repository (https://reuse.software/spec-3.3/): the
+# specification's text under CC BY 4.0, everything else under MIT.
+version = 1
+
+[[annotations]]
+path = ["**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 JigSawFr"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = ["SPEC.md"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 JigSawFr"
+SPDX-License-Identifier = "CC-BY-4.0"
