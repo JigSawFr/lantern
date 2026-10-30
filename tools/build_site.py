@@ -103,7 +103,7 @@ DRAFTS = [
     ("0.3", "836e13115663bc671d0727b221eaf2b42d3dfe83", 9),
     ("0.4", "442cc07ac7f86a37b5145e2940a0962bd6b8fe2a", 10),
     ("0.5", "ca10e3146a6300cc99814e2290de5da97c735965", 11),
-    ("0.6", None, None),    # not merged yet: SPEC.md as it is (see above)
+    ("0.6", "9871962a35d336b3fb0906cd4e049858817962cb", 13),
 ]
 # The specification's informative translations (site/translations/), by
 # the catalogs whose spec/ page shows them; each says the English commit it
