@@ -25,6 +25,7 @@ client installs nothing of a platform it has no profile for (§ 6.1).
 import base64
 import hashlib
 import json
+import re
 
 # Annex A: the roots a homebrew may write to, "{id}" its id, and the areas a
 # port's data_root may lie in (the user approves that folder once).
@@ -32,10 +33,13 @@ ROOTS = {
     "switch": {"free": ("/switch/{id}/", "/config/{id}/"), "consent": ("/atmosphere/", "/switch/.overlays/"),
                "areas": ("/switch/", "/config/")},
 }
-# A package's arch: a list of these; a profile may allow fewer (Annex A).
-ARCH_NAMES = ("aarch64", "armhf", "x86_64", "x86")
-ARCHES = {"switch": ("aarch64",)}
+# A package's arch: a list of these names, or later ones of the same form;
+# a profile of one architecture has none (Annex A).
+ARCH_NAMES = ("aarch64", "armhf", "x86", "x86_64")
+ARCH = re.compile(r"^[a-z0-9_]{1,32}$")
+ONE_ARCH = ("switch", "3ds")
 ASSETS = ("included", "demo_included", "free_external", "user_owned")
+DATA_LIMIT, ACCEPT_LIMIT, PACKAGES_LIMIT = 256, 32, 16     # SPEC.md § 13
 HASH_FORMS = {"sha256": 64, "sha1": 40, "md5": 32}
 KINDS = ("app", "game", "port", "emulator", "tool", "overlay", "sysmodule", "theme")
 MANIFEST_LIMIT = 4096
@@ -239,17 +243,31 @@ def kind_of(entry):
 
 
 def arch_ok(package, platform, mine=None):
-    """Whether a package may run here: no arch, or a list that holds `mine`
-    (the device's), or, without `mine`, a list of known arches the profile
-    allows. A client skips the others."""
+    """Whether a package may run here: without `mine`, whether its arch is
+    well formed for the platform (none on a platform of one architecture, a
+    list otherwise); with `mine` (the device's), whether the list holds it,
+    or there is none. A client skips the packages that do not fit."""
     arch = package.get("arch")
     if arch is None:
         return True
-    if not (isinstance(arch, list) and arch and all(a in ARCH_NAMES for a in arch)):
+    if platform in ONE_ARCH or not (isinstance(arch, list) and arch and all(
+            isinstance(a, str) and ARCH.match(a) for a in arch)):
         return False
-    if mine is not None:
-        return mine in arch
-    return all(a in ARCHES.get(platform, ARCH_NAMES) for a in arch)
+    return mine is None or mine in arch
+
+
+def pick_package(entry, mine):
+    """The package a device of arch `mine` installs (SPEC.md § 8.2): one whose
+    arch lists it, or else one without arch; None when none fits."""
+    packages = [entry.get("package") or {}] + list(entry.get("packages") or [])
+    return next((p for p in packages if mine in (p.get("arch") or ())), None) or \
+        next((p for p in packages if "arch" not in p), None)
+
+
+def assets_of(entry):
+    """A port's assets, as a client reads them: an unknown value is user_owned (SPEC.md § 8.6)."""
+    assets = (entry.get("port") or {}).get("assets")
+    return assets if assets in ASSETS else "user_owned"
 
 
 def data_files(items):
@@ -280,8 +298,8 @@ def port_problems(entry):
         out.append("original.stores is not a list")
     if not (isinstance(engine, dict) and isinstance(engine.get("name"), str) and engine["name"]):
         out.append("engine has no name")
-    if port.get("assets") not in ASSETS:
-        out.append(f"assets {port.get('assets')!r} is not one of {', '.join(ASSETS)}")
+    if not isinstance(port.get("assets"), str):
+        out.append("no assets")
     root = port.get("data_root")
     if not (isinstance(root, str) and root.endswith("/") and path_problem(root[:-1]) is None):
         return out + [f"data_root {root!r} is not a folder's path"]
@@ -296,6 +314,8 @@ def port_problems(entry):
             options = d["one_of"]
             if not (isinstance(options, list) and len(options) >= 2 and all(isinstance(o, list) and o for o in options)):
                 out.append("one_of has fewer than two alternatives, or an empty one")
+    if len(list(data_files(items))) > DATA_LIMIT:
+        out.append(f"more than {DATA_LIMIT} data files")
     def paths(files):
         return [f.get("path") for f in files if isinstance(f, dict)]
     single = paths([d for d in items if not (isinstance(d, dict) and "one_of" in d)])
@@ -322,13 +342,15 @@ def port_problems(entry):
             continue
         if root + path in shipped:
             out.append(f"data {root + path!r} is in the package: Lantern never serves a port's data")
+        if not isinstance(f.get("hint"), str) or not f["hint"]:
+            out.append(f"data {path!r}: no hint saying where the user finds it")
         if "optional" in f and not isinstance(f["optional"], bool):
             out.append(f"data {path!r}: optional is not true or false")
         if "size" in f and not (isinstance(f["size"], int) and not isinstance(f["size"], bool) and f["size"] >= 0):
             out.append(f"data {path!r}: size is not an integer")
         accept = f.get("accept", [])
-        if not isinstance(accept, list):
-            out.append(f"data {path!r}: accept is not a list")
+        if not isinstance(accept, list) or len(accept) > ACCEPT_LIMIT:
+            out.append(f"data {path!r}: accept is not a list of {ACCEPT_LIMIT} versions at most")
             continue
         for a in accept:
             forms = [k for k in HASH_FORMS if isinstance(a, dict) and k in a]
@@ -376,6 +398,9 @@ def launch_check(entry, present):
                 check(option, result)
                 tries.append(result)
             if not any(not t["missing"] and not t["wrong"] for t in tries):
+                if d.get("optional") and not any(t["wrong"] for t in tries):
+                    out["absent_optional"] += [f["path"] for f in d["one_of"][0]]
+                    continue
                 out["missing"] += tries[0]["missing"] or [f["path"] for f in d["one_of"][0]]
                 out["wrong"] += [w for t in tries for w in t["wrong"]]
                 out["choices"].append([[f["path"] for f in o] for o in d["one_of"]])

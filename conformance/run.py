@@ -1064,47 +1064,64 @@ class Suite:
     def c_homebrew_manifests(self):
         problems, plans = [], {"free": 0, "consent": 0}
         unchecked = set()
-        for (platform, hid), doc in self.read_entries().items():
-            package = doc["package"]
-            manifest = client.manifest_of(package)
-            bad = client.manifest_problems(manifest)
-            if bad:
-                problems.append(f"{platform}/{hid}: " + "; ".join(bad[:3]))
-                continue
-            if client.manifest_sha256(manifest) != package["manifest_sha256"]:
-                problems.append(f"{platform}/{hid}: manifest_sha256 is not the digest of its manifest")
-            if "path" in package and "manifest" in package:
-                problems.append(f"{platform}/{hid}: both a path and a manifest")
-            if platform not in client.ROOTS:
-                unchecked.add(platform)
-                continue
-            try:
-                plan = client.install_plan(doc)
-            except client.Refused as e:
-                problems.append(f"{platform}/{hid}: {e}")
-                continue
-            plans["free"] += len(plan["free"])
-            plans["consent"] += len(plan["consent"])
+        for (platform, hid), entry in self.read_entries().items():
+            for package in [entry["package"]] + list(entry.get("packages") or []):
+                problems += self.manifest_problems(platform, hid, {**entry, "package": package}, plans, unchecked)
         expect(not problems, "\n".join(problems[:8]))
         note = f"; roots not checked for {', '.join(sorted(unchecked))} (a draft or no profile)" if unchecked else ""
         return f"{plans['free']} path(s) free to write, {plans['consent']} needing consent{note}"
 
+    def manifest_problems(self, platform, hid, doc, plans, unchecked):
+        package = doc["package"]
+        manifest = client.manifest_of(package)
+        bad = client.manifest_problems(manifest)
+        if bad:
+            return [f"{platform}/{hid}: " + "; ".join(bad[:3])]
+        out = []
+        if client.manifest_sha256(manifest) != package["manifest_sha256"]:
+            out.append(f"{platform}/{hid}: manifest_sha256 is not the digest of its manifest")
+        single = [{"path": package.get("path"), "size": package.get("size"), "sha256": package.get("sha256")}]
+        if "path" in package and package.get("manifest", single) != single:
+            out.append(f"{platform}/{hid}: a path, and a manifest that is not that one file")
+        if platform not in client.ROOTS:
+            unchecked.add(platform)
+            return out
+        try:
+            plan = client.install_plan(doc)
+        except client.Refused as e:
+            return [*out, f"{platform}/{hid}: {e}"]
+        plans["free"] += len(plan["free"])
+        plans["consent"] += len(plan["consent"])
+        return out
+
     def c_homebrew_kinds(self):
-        problems, kinds, systems = [], {}, {}
+        problems, kinds, systems, unknown = [], {}, {}, set()
         for e in self.all_homebrew():
             kind = e.get("kind")
             if kind is not None and kind not in client.KINDS:
                 problems.append(f"{e['platform']}/{e['id']}: kind {kind!r} is not one of {', '.join(client.KINDS)}")
             kinds[client.kind_of(e)] = kinds.get(client.kind_of(e), 0) + 1
-            arch = e["package"].get("arch")
-            if arch is not None and not client.arch_ok(e["package"], e["platform"]):
-                problems.append(f"{e['platform']}/{e['id']}: arch {arch!r}: not a list of "
-                                f"{', '.join(client.ARCHES.get(e['platform'], client.ARCH_NAMES))}")
+            packages = [e["package"]] + list(e.get("packages") or [])
+            if e.get("packages") and (e["platform"] in client.ONE_ARCH or len(e["packages"]) > client.PACKAGES_LIMIT):
+                problems.append(f"{e['platform']}/{e['id']}: packages on a platform of one architecture, or above "
+                                f"{client.PACKAGES_LIMIT}")
+            for p in packages:
+                arch = p.get("arch")
+                if arch is not None and not client.arch_ok(p, e["platform"]):
+                    problems.append(f"{e['platform']}/{e['id']}: arch {arch!r}: "
+                                    + ("none on a platform of one architecture" if e["platform"] in client.ONE_ARCH
+                                       else "not a list of architectures"))
+                elif arch is not None:
+                    unknown.update(a for a in arch if a not in client.ARCH_NAMES)
+            if any("arch" not in p for p in packages[1:]):
+                problems.append(f"{e['platform']}/{e['id']}: a package of packages without its arch")
             if e.get("system_id") is not None:
                 other = systems.setdefault((e["platform"], e["system_id"]), e["id"])
                 if other != e["id"]:
                     problems.append(f"{e['platform']}: {e['id']} and {other} have the same system_id")
         expect(not problems, "\n".join(problems[:8]))
+        if unknown:
+            raise Warn(f"arches this suite does not know (a later version's?): {', '.join(sorted(unknown))}")
         return ", ".join(f"{k}: {n}" for k, n in sorted(kinds.items())) or "no homebrew"
 
     def c_homebrew_ports(self):
@@ -1140,8 +1157,17 @@ class Suite:
         signed = {k: d for k, d in self.read_entries().items() if "signature" in d}
         if not signed:
             raise Skip("no signed homebrew on this server")
-        bad = [f"{p}/{i}" for (p, i), d in signed.items() if not client.verify_signature(d)]
-        expect(not bad, "signatures that do not verify (a client refuses them): " + ", ".join(bad[:5]))
+        bad = []
+        for (p, i), d in signed.items():
+            if not client.verify_signature(d):
+                bad.append(f"{p}/{i}")
+            for extra in d.get("packages") or []:
+                sig = extra.get("signature")
+                if not sig or sig.get("public_key") != d["signature"]["public_key"] \
+                        or not client.verify_signature({**d, "package": extra, "signature": sig}):
+                    bad.append(f"{p}/{i} ({', '.join(extra.get('arch') or ['?'])})")
+        expect(not bad, "signatures that do not verify, or by another key (a client refuses them): "
+               + ", ".join(bad[:5]))
         return f"{len(signed)} signature(s), keys " + ", ".join(
             sorted({client.key_fingerprint(d["signature"]["public_key"]) for d in signed.values()})[:3])
 
@@ -1281,7 +1307,7 @@ class Suite:
         platform, tid = self.save_title()
         body = {"schema": 1, "size": len(data) if size is None else size,
                 "sha256": sha256 or hashlib.sha256(data).hexdigest(), "kind": "account", "game_version_code": 0,
-                "profile": "Lea", "slot": "Lantern conformance", "note": "Lantern conformance"}
+                "profile": "Lea", "slot": "lantern-conformance", "note": "Lantern conformance"}
         return self.http.request("POST", self.api(f"/v1/saves/{quote(tid, safe='')}/uploads"), body=body,
                                  platform=platform)
 

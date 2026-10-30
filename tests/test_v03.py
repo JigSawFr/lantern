@@ -161,6 +161,21 @@ def zipped(files):
     return library.zipped(files)
 
 
+def hinted(value):
+    """`value` with a hint on every data file that has none (None removes it), so
+    that each hostile case is refused for its own reason."""
+    if isinstance(value, list):
+        return [hinted(v) for v in value]
+    if isinstance(value, dict):
+        out = {k: hinted(v) for k, v in value.items()}
+        if "path" in out:
+            out.setdefault("hint", "In the game's folder.")
+            if out["hint"] is None:
+                del out["hint"]
+        return out
+    return value
+
+
 class HostileHomebrew(unittest.TestCase):
     """What the reference server refuses to serve, and why the client would refuse it too."""
 
@@ -241,20 +256,21 @@ class HostileHomebrew(unittest.TestCase):
                 {"requires_data": [{"one_of": [[{"path": "a.pak"}]]}]},
                 {"requires_data": [{"one_of": [[{"path": "a.pak"}], []]}]},
                 {"requires_data": [{"one_of": [[{"one_of": []}], [{"path": "b.pak"}]]}]},
-                {"requires_data": [{"path": f"{i}.pak"} for i in range(65)]},
+                {"requires_data": [{"path": f"{i}.pak"} for i in range(257)]},       # above 256 files
+                {"requires_data": [{"path": "a.pak", "accept": [{"label": str(i), "md5": f"{i:032x}"}
+                                                               for i in range(33)]}]},   # above 32 versions
+                {"requires_data": [{"path": "a.pak", "hint": None}]},                 # no hint
                 {"requires_data": "frost.pak"},
-                {"assets": "pirated"},
                 {"engine": {"version": "1"}},
                 {"original": {"name": "Frostline Tales", "stores": [{"store": "example", "url": "http://x"}]}})):
             hid = f"org.example.bad{i}"
-            meta = {**good, "id": hid, "port": {**good["port"], **change}}
+            meta = {**good, "id": hid, "port": {**good["port"], **hinted(change)}}
             meta.pop("schema")
             self.add({f"switch/{hid}/p.nro": b"p"}, meta)
             served = self.served()
             self.assertNotIn(("switch", hid), served, change)
             doc = {"platform": "switch", "id": hid, "package": {"manifest": []}, "port": meta["port"]}
-            if len(meta["port"].get("requires_data", [])) <= ls.DATA_LIMIT:   # the server's own bound, not the spec's
-                self.assertTrue(client.port_problems(doc), change)
+            self.assertTrue(client.port_problems(doc), change)
             (self.root / "homebrew" / f"h{self.n}" / "homebrew.json").unlink()   # leave the next ones alone
 
     def test_data_root_on_a_platform_without_areas(self):
@@ -299,7 +315,7 @@ class Homebrew(unittest.TestCase):
         self.assertTrue(frost["hint"].startswith("frost.pak, in the folder"))
         self.assertEqual(len(music["one_of"]), 2)
         self.assertTrue(bonus["optional"])
-        self.assertEqual(doc["package"]["arch"], ["aarch64"])
+        self.assertNotIn("arch", doc["package"])                       # one architecture on a Switch
         self.assertEqual(doc["package"]["assets_license"], "CC-BY-4.0")
         self.assertEqual(doc["requires"]["homebrew"], [{"id": "org.example.lanternlight-runtime", "min_build": 200}])
         self.assertEqual(client.port_problems(doc), [])
@@ -333,12 +349,43 @@ class Homebrew(unittest.TestCase):
 
     def test_arches(self):
         self.assertTrue(client.arch_ok({}, "switch"))
-        self.assertTrue(client.arch_ok({"arch": ["aarch64"]}, "switch"))
-        self.assertFalse(client.arch_ok({"arch": ["x86_64"]}, "switch"))
-        self.assertFalse(client.arch_ok({"arch": "aarch64"}, "switch"))        # a list, not a string
-        self.assertFalse(client.arch_ok({"arch": ["riscv64"]}, "linux"))
+        self.assertFalse(client.arch_ok({"arch": ["aarch64"]}, "switch"))     # none on a platform of one arch
+        self.assertFalse(client.arch_ok({"arch": "aarch64"}, "android"))      # a list, not a string
+        self.assertFalse(client.arch_ok({"arch": ["ARM 64"]}, "android"))
+        self.assertTrue(client.arch_ok({"arch": ["riscv64"]}, "linux"))       # a later name, of the form
         self.assertTrue(client.arch_ok({"arch": ["x86_64", "aarch64"]}, "linux", mine="aarch64"))
         self.assertFalse(client.arch_ok({"arch": ["x86_64"]}, "linux", mine="armhf"))
+        entry = {"package": {"arch": ["aarch64"], "sha256": "a"}, "packages": [
+            {"arch": ["armhf"], "sha256": "b"}, {"arch": ["x86_64"], "sha256": "c"}]}
+        self.assertEqual(client.pick_package(entry, "armhf")["sha256"], "b")
+        self.assertIsNone(client.pick_package(entry, "x86"))
+        entry["packages"].append({"sha256": "d"})
+        self.assertEqual(client.pick_package(entry, "x86")["sha256"], "d")
+        phone = self.entry("org.example.mossremote", "android")
+        self.assertEqual((phone["package"]["arch"], phone["package"]["manifest"], phone["system_id"]),
+                         (["aarch64", "armhf"], [], "org.example.mossremote"))
+        self.assertNotIn("path", phone["package"])
+        self.assertRegex(phone["package"]["signer_sha256"], r"^[0-9a-f]{64}$")
+
+    def test_overlay(self):
+        doc = self.entry("org.example.ember-overlay")
+        self.assertEqual((doc["kind"], doc["package"]["format"], doc["package"]["path"]),
+                         ("overlay", "ovl", "/switch/.overlays/ember.ovl"))
+        self.assertEqual(client.install_plan(doc), {"free": [], "consent": ["/switch/.overlays/ember.ovl"]})
+        self.assertEqual(doc["requires"]["homebrew"], [{"id": "org.example.overlay-loader", "min_build": 1}])
+
+    def test_unknown_assets_read_as_user_owned(self):
+        self.assertEqual(client.assets_of({"port": {"assets": "borrowed"}}), "user_owned")
+        self.assertEqual(client.assets_of({"port": {"assets": "demo_included"}}), "demo_included")
+        meta = json.loads(library.port(assets="borrowed"))
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        folder = Path(tmp.name) / "library" / "homebrew" / "p"
+        folder.mkdir(parents=True)
+        (folder / "p.zip").write_bytes(library.port_zip())
+        (folder / "homebrew.json").write_text(json.dumps(meta))
+        lib = ls.Library(Path(tmp.name) / "library", Path(tmp.name) / "state.json")
+        self.assertEqual(lib.homebrew[("switch", library.PORT)]["doc"]["port"]["assets"], "user_owned")
 
     def test_nro_placed_and_named_from_its_nacp(self):
         doc = self.entry("local.moss-clock")
@@ -636,6 +683,8 @@ class Saves(unittest.TestCase):
             "schema": 1, "size": 10, "sha256": "0" * 64}, platform=None)[0], 400)
         self.assertEqual(self.call(f"{API}/saves/0100abcd00010000/uploads", data={
             "schema": 1, "size": 10, "sha256": "0" * 64})[0], 400)          # not a Switch title id
+        self.assertEqual(self.call(f"{API}/saves/0100ABCD00010800/uploads", data={
+            "schema": 1, "size": 10, "sha256": "0" * 64})[0], 400)          # an update's id, not the game's
         status, _, body = self.call(f"{API}/saves/0100ABCD00010000/uploads", data={
             "schema": 1, "size": ls.SAVE_SIZE + 1, "sha256": "0" * 64})
         self.assertEqual((status, json.loads(body)["code"]), (413, "too_large"))

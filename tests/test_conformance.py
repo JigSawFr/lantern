@@ -284,7 +284,7 @@ class SuiteCatchesFaults(unittest.TestCase):
         def escape(doc):
             if doc["id"] == library.PORT:
                 doc["port"] = {**doc["port"], "requires_data": [{"path": "../../atmosphere/x"}]}
-        self.fails(self.edit_entry(escape), "homebrew.ports")
+        self.fails(self.edit_entry(escape), "homebrew.pages")     # the schema refuses it first
 
     def test_unknown_kind_served(self):
         def widget(doc):

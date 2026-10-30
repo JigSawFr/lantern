@@ -29,27 +29,28 @@ ratings, languages, summary, description, icon, banner, screenshots, video)
 make its title's sheet (feature `titles`, SPEC.md § 7); summary and
 description may be one text or one per language.
 
-Homebrew (SPEC.md § 8): every .nro, .3dsx, .zip, .apk, .vpk, .pkg and .cia
+Homebrew (SPEC.md § 8): every .nro, .ovl, .3dsx, .zip, .apk, .vpk, .pkg and .cia
 below DIR/homebrew/. An .nro's name, author and version come from its NACP
 (server/nro.py); a homebrew.json next to a package gives the rest:
 
     {"schema": 1, "id": "org.example.frostline", "build": 10400, "kind": "tool",
      "license": "MIT", "source": "https://code.example.org/noor/frostline",
      "category": "tool", "summary": "…", "requires": {"text": "…", "min": {"atmosphere": "1.7.0"}},
-     "arch": ["aarch64"], "system_id": "…",
+     "system_id": "…", "arch": ["aarch64", "armhf"], "signer_sha256": "…",
      "signature": {"alg": "ed25519", "public_key": "…", "value": "…"}}
 
 `kind` is app, game, port, emulator, tool, overlay, sysmodule or theme (an
-unknown one is read as app). `arch` is a list (aarch64, armhf, x86_64, x86;
-aarch64 alone on a Switch), `assets_license` an SPDX expression, `system_id`
-the platform's own id of the homebrew where it has one, and
+unknown one is read as app). `arch` is a list (aarch64, armhf, x86, x86_64;
+none on a Switch or a 3DS, which have one architecture), `signer_sha256` the
+platform's own signing certificate's SHA-256 (Android), `assets_license` an
+SPDX expression, `system_id` the platform's own id of the homebrew where it
+has one, and
 `requires.homebrew` the homebrew it needs: [{"id", "min_build"}]. The NACP
 has no integer version: `build` comes from homebrew.json (without one, this
 server derives its own from the version, 1.4.2 giving 1004002). A port
 groups the rest under `port`:
 
     {"schema": 1, "id": "org.example.frostline-port", "kind": "port", "build": 300,
-     "arch": ["aarch64"],
      "port": {
        "original": {"name": "Frostline Tales", "year": 2004, "developer": "Fjord Works",
                     "stores": [{"store": "example", "id": "frostline", "url": "https://store.example.org/frostline"}]},
@@ -60,11 +61,13 @@ groups the rest under `port`:
          {"path": "frost.pak", "size": 896,
           "accept": [{"label": "1.0", "sha256": "<hex>"}, {"label": "1.1", "md5": "<hex>"}],
           "hint": {"en": "frost.pak, in the folder the game is installed in."}},
-         {"one_of": [[{"path": "music.pak"}], [{"path": "music-demo.pak"}]]}]}}
+         {"one_of": [[{"path": "music.pak", "hint": "…"}], [{"path": "music-demo.pak", "hint": "…"}]],
+          "optional": true}]}}
 
 `data_root` is the folder the port expects its data in, under the profile's
 areas (/switch/ or /config/ on a Switch); each requires_data path is
-relative to it, exact, case included. The server never serves those files: a
+relative to it, exact, case included, with its `hint` (required); an
+unknown `assets` is served as user_owned. The server never serves those files: a
 package that holds one of them, by path or by sha256, is not served.
 
 A .zip's manifest is its files, each at "/" + its name in the archive; one
@@ -182,12 +185,12 @@ VERSION_IN_NAME = re.compile(r"\[v(\d+)\]")
 # platform's installer installs), the roots a manifest may write to, and the
 # areas a port's data_root may lie in (which the user approves once).
 PROFILES = {
-    "switch": {"id": ID16, "types": ("base", "update", "dlc"), "formats": ("nsp", "nsz", "xci", "xcz"),
-               "build_id": re.compile(r"^[0-9A-F]{1,64}$"), "homebrew": {"nro": "/switch/{id}/{id}.nro", "zip": None},
+    "switch": {"id": ID16, "title": re.compile(r"^[0-9A-F]{12}[02468ACE]000$"), "types": ("base", "update", "dlc"), "formats": ("nsp", "nsz", "xci", "xcz"),
+               "build_id": re.compile(r"^[0-9A-F]{1,64}$"), "homebrew": {"nro": "/switch/{id}/{id}.nro", "ovl": "/switch/.overlays/{file}", "zip": None},
                "roots": ("/switch/{id}/", "/config/{id}/", "/atmosphere/", "/switch/.overlays/"),
                "areas": ("/switch/", "/config/")},
     "3ds": {"id": ID16, "types": ("base", "update", "dlc"), "formats": ("cia",),
-            "homebrew": {"3dsx": "/3ds/{id}/{id}.3dsx", "zip": None, "cia": "system"}, "roots": ("/3ds/{id}/", "/luma/"),
+            "homebrew": {"3dsx": "/3ds/{id}/{id}.3dsx", "zip": None, "cia": "system"}, "roots": ("/3ds/{id}/", "/luma/", "/boot.firm", "/boot.3dsx", "/gm9/"),
             "areas": ("/3ds/",)},
     "vita": {"id": re.compile(r"^[A-Z]{4}[0-9]{5}$"), "types": ("base", "update", "dlc"), "formats": ("vpk",),
              "homebrew": {"vpk": "system"}, "roots": ()},
@@ -197,17 +200,18 @@ PROFILES = {
                 "formats": ("apk",), "replaces": True, "homebrew": {"apk": "system"}, "roots": ()},
 }
 APP_EXT = {f: p for p, prof in PROFILES.items() for f in prof["formats"]}   # nsp -> switch, apk -> android…
-HOMEBREW_EXT = {"nro": "switch", "zip": "switch", "3dsx": "3ds", "cia": "3ds", "vpk": "vita", "pkg": "ps4",
+HOMEBREW_EXT = {"nro": "switch", "ovl": "switch", "zip": "switch", "3dsx": "3ds", "cia": "3ds", "vpk": "vita", "pkg": "ps4",
                 "apk": "android"}
 GENRES = ("action", "adventure", "rpg", "strategy", "simulation", "sports", "racing", "puzzle", "platformer",
           "shooter", "fighting", "music", "party", "education", "other")
 CATEGORIES = ("game", "emulator", "tool", "media", "system", "other")
 KINDS = ("app", "game", "port", "emulator", "tool", "overlay", "sysmodule", "theme")   # unknown: app
-ARCHES = ("aarch64", "armhf", "x86_64", "x86")    # a package's arch, a list of these
-PROFILE_ARCH = {"switch": ("aarch64",)}           # where a profile allows one only
-ASSETS = ("included", "demo_included", "free_external", "user_owned")    # a port's game data
-DATA_LIMIT = 64         # files a port's requires_data names, alternatives included
-ACCEPT_LIMIT = 16       # accepted versions of one data file
+ARCH = re.compile(r"^[a-z0-9_]{1,32}$")     # aarch64, armhf, x86, x86_64, or a later one (SPEC.md § 8.2)
+ONE_ARCH = ("switch", "3ds")                # profiles of one architecture: no arch (Annex A)
+ASSETS = ("included", "demo_included", "free_external", "user_owned")    # unknown: user_owned (§ 8.6)
+DATA_LIMIT = 256        # files a port's requires_data names, alternatives included (SPEC.md § 13)
+ACCEPT_LIMIT = 32       # accepted versions of one data file (SPEC.md § 13)
+SLOT = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 HASH_FORMS = {"sha256": 64, "sha1": 40, "md5": 32}  # an accepted version's hashes, lower-case hex
 SPDX = re.compile(r"^[A-Za-z0-9.+:() -]{1,256}$")
 SAVE_KINDS = ("account", "device", "bcat", "cache", "other")
@@ -351,10 +355,11 @@ def derive(app_id):
 
 
 def title_id_ok(platform, title_id):
-    """A title or app id of the core's form (SPEC.md § 6.1) and of its profile's, when there is one."""
+    """A title id of the core's form (SPEC.md § 6.1) and of its profile's, when there is one
+    (on a Switch, a base game's id: Annex A.1)."""
     profile = PROFILES.get(platform)
     return isinstance(title_id, str) and bool(CORE_ID.match(title_id)) and (
-        profile is None or bool(profile["id"].match(title_id)))
+        profile is None or bool(profile.get("title", profile["id"]).match(title_id)))
 
 
 def device_path_ok(path):
@@ -405,8 +410,8 @@ def data_file_problem(d, root):
         return f"{path[:80]!r}: size is an integer"
     if "optional" in d and not isinstance(d["optional"], bool):
         return f"{path[:80]!r}: optional is true or false"
-    if "hint" in d and localizable(d["hint"]) is None:
-        return f"{path[:80]!r}: hint is a text, or one per language"
+    if localizable(d.get("hint")) is None:
+        return f"{path[:80]!r}: hint, where the user finds it, is a text, or one per language"
     return None
 
 
@@ -443,7 +448,7 @@ def port_problem(port, areas):
         return "original.year is a year"
     stores = original.get("stores", [])
     if not (isinstance(stores, list) and len(stores) <= 32 and all(
-            isinstance(x, dict) and isinstance(x.get("store"), str) and WORD.match(x["store"])
+            isinstance(x, dict) and isinstance(x.get("store"), str) and PLATFORM.match(x["store"])
             and https_url(x.get("url")) and ("id" not in x or plain(x["id"], 128)) for x in stores)):
         return "original.stores is a list of {store, id?, url}, an HTTPS url each"
     title = original.get("title")
@@ -456,8 +461,6 @@ def port_problem(port, areas):
         return "engine.source is an HTTPS url"
     if "license" in engine and not (isinstance(engine["license"], str) and SPDX.match(engine["license"])):
         return "engine.license is an SPDX expression"
-    if port.get("assets") not in ASSETS:
-        return "assets is " + ", ".join(ASSETS)
     root = port.get("data_root")
     if not (isinstance(root, str) and root.endswith("/") and device_path_ok(root[:-1])):
         return f"data_root {str(root)[:80]!r} is not a folder's path (SPEC.md § 8.2)"
@@ -470,9 +473,11 @@ def port_problem(port, areas):
     for d in items:
         if isinstance(d, dict) and "one_of" in d:
             options = d["one_of"]
-            if not (isinstance(options, list) and len(options) >= 2
-                    and all(isinstance(o, list) and o for o in options)):
-                return "one_of is a list of two alternatives or more, each a list of files"
+            if not (isinstance(options, list) and 2 <= len(options) <= 16
+                    and all(isinstance(o, list) and 1 <= len(o) <= 64 for o in options)):
+                return "one_of is a list of 2 to 16 alternatives, each a list of 1 to 64 files"
+            if "optional" in d and not isinstance(d["optional"], bool):
+                return "a group's optional is true or false"
             files = [f for o in options for f in o]
             if any(isinstance(f, dict) and "one_of" in f for f in files):
                 return "one_of does not nest"
@@ -933,14 +938,14 @@ class Library:
         package = {"format": ext, "file": f"{BASE}/v1/files/{fid}", "size": st.st_size, "sha256": sha}
         place = profile["homebrew"][ext]
         if place == "system":
-            manifest = []
+            manifest = package["manifest"] = []     # the platform's installer installs it (SPEC.md § 8.2)
         elif place is None:
             manifest = self.zip_manifest(path, rel, st)
             if manifest is None:
                 return None
             package["manifest"] = manifest
         else:
-            target = meta.get("path") if device_path_ok(meta.get("path")) else place.format(id=hid)
+            target = meta.get("path") if device_path_ok(meta.get("path")) else place.format(id=hid, file=path.name)
             if not device_path_ok(target):
                 self.skip(rel, f"no place for it on the device ({target})")
                 return None
@@ -978,11 +983,19 @@ class Library:
         doc["kind"] = kind if kind in KINDS else "app"     # SPEC.md § 8.1: an unknown kind is an app
         arch = meta.get("arch")
         if arch is not None:
-            allowed = PROFILE_ARCH.get(platform, ARCHES)
-            if not (isinstance(arch, list) and arch and all(a in allowed for a in arch) and len(set(arch)) == len(arch)):
-                self.skip(rel, f"arch is a list of {', '.join(allowed)} ({str(arch)[:40]})")
+            if platform in ONE_ARCH:
+                self.skip(rel, f"{platform} has one architecture: no arch (Annex A)")
+                return None
+            if not (isinstance(arch, list) and 1 <= len(arch) <= 8 and len(set(arch)) == len(arch)
+                    and all(isinstance(a, str) and ARCH.match(a) for a in arch)):
+                self.skip(rel, f"arch is a list of architectures, such as aarch64 ({str(arch)[:40]})")
                 return None
             package["arch"] = arch
+        if meta.get("signer_sha256") is not None:
+            if not (isinstance(meta["signer_sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", meta["signer_sha256"])):
+                self.skip(rel, "signer_sha256 is a lower-case hex SHA-256")
+                return None
+            package["signer_sha256"] = meta["signer_sha256"]
         if meta.get("assets_license") is not None:
             if not (isinstance(meta["assets_license"], str) and SPDX.match(meta["assets_license"])):
                 self.skip(rel, "assets_license is an SPDX expression")
@@ -1006,6 +1019,8 @@ class Library:
                     self.skip(rel, "it holds a file the user brings from their own copy (requires_data)")
                     return None
             doc["port"] = clean(port)       # a copy; its hints are localized when served
+            if doc["port"]["assets"] not in ASSETS:
+                doc["port"]["assets"] = "user_owned"    # SPEC.md § 8.6: an unknown one reads so
         mtimes = [st.st_mtime_ns]
         try:
             mtimes.append((path.parent / "homebrew.json").stat().st_mtime_ns)
@@ -2007,7 +2022,9 @@ class Handler(BaseHTTPRequestHandler):
             raise bad_request("kind is " + ", ".join(SAVE_KINDS) + ".")
         if version is not None and not is_int(version):
             raise bad_request("game_version_code is an integer.")
-        for value, limit, what in ((profile, 64, "profile"), (note, 120, "note"), (slot, 64, "slot")):
+        if slot is not None and not (isinstance(slot, str) and SLOT.match(slot)):
+            raise bad_request("slot is 1 to 64 letters, digits, '.', '_' and '-'.")
+        for value, limit, what in ((profile, 64, "profile"), (note, 120, "note")):
             if value is not None and (not isinstance(value, str) or len(value.encode()) > limit
                                       or any(ord(c) < 32 or ord(c) == 127 for c in value)):
                 raise bad_request(f"{what}: {limit} bytes at most, without control characters.")
