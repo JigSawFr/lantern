@@ -5,7 +5,6 @@
   "kind": "app",
   "name": "Frostline",
   "author": "Noor",
-  "category": "tool",
   "version": "1.4.0",
   "build": 10400,
   "license": "MIT",

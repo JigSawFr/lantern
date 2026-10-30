@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "items": [
+    {
+      "id": "a_7Hn3Wc",
+      "platform": "ps4",
+      "title_id": "CUSA00001",
+      "app_id": "CUSA00001",
+      "type": "dlc",
+      "version_code": 0,
+      "version_name": "1.0.0",
+      "name": "Frostline Tales",
+      "size": 5368709120,
+      "format": "pkg",
+      "sha256": "3a7bd3e2b4c1f0a9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a392817",
+      "added": "2026-10-28T19:02:11Z",
+      "file": "/api/lantern/v1/files/f_Pq02Rt"
+    }
+  ],
+  "next": null
+}

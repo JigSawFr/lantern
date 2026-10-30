@@ -7,7 +7,10 @@
       "kind": "app",
       "name": "Frostline",
       "author": "Noor",
-      "category": "tool",
+      "tags": [
+        "journal",
+        "night mode"
+      ],
       "version": "1.4.0",
       "build": 10400,
       "license": "MIT",
@@ -48,7 +51,13 @@
       "kind": "game",
       "name": "Paper Lamp",
       "author": "Ines",
-      "category": "game",
+      "genres": [
+        "puzzle"
+      ],
+      "tags": [
+        "origami",
+        "short"
+      ],
       "version": "0.9.2",
       "build": 902,
       "license": "GPL-3.0-or-later",
@@ -71,7 +80,10 @@
       "kind": "port",
       "name": "Harbor Lights",
       "author": "Lea",
-      "category": "game",
+      "genres": [
+        "adventure",
+        "simulation"
+      ],
       "version": "2.1.0",
       "build": 20100,
       "license": "GPL-2.0-or-later",
@@ -150,7 +162,6 @@
       "kind": "overlay",
       "name": "Lamp Meter",
       "author": "Ines",
-      "category": "tool",
       "version": "0.3.0",
       "build": 300,
       "license": "MIT",
@@ -186,7 +197,6 @@
       "kind": "app",
       "name": "Frostline",
       "author": "Noor",
-      "category": "tool",
       "version": "1.4.0",
       "build": 10400,
       "license": "MIT",
@@ -236,8 +246,121 @@
           "signer_sha256": "15167ef57f1836d8c6d550f5b1871c4f21a36278fe9a9d2608f90fa9728f016a"
         }
       ]
+    },
+    {
+      "id": "org.example.harborlights",
+      "platform": "linux",
+      "kind": "port",
+      "name": "Harbor Lights",
+      "author": "Lea",
+      "genres": [
+        "adventure",
+        "simulation"
+      ],
+      "tags": [
+        "lighthouse",
+        "classic"
+      ],
+      "version": "2.1.0",
+      "build": 20100,
+      "license": "GPL-2.0-or-later",
+      "source": "https://code.example.org/lea/lighthouse",
+      "language": "en",
+      "summary": "The lighthouse-keeping classic, on Linux handhelds and computers. Needs your own copy of the game.",
+      "requires": {
+        "text": "glibc 2.30, OpenGL ES 2 or Vulkan, 512 MiB of memory, a 640×480 screen",
+        "min": {
+          "glibc": "2.30",
+          "ram_mb": 512,
+          "screen": "640x480"
+        },
+        "gpu": [
+          "gles2",
+          "vulkan"
+        ]
+      },
+      "updated": "2026-10-30T08:00:00Z",
+      "package": {
+        "format": "zip",
+        "file": "/api/lantern/v1/files/f_Hl9Lx1",
+        "size": 2411520,
+        "sha256": "e9ac1547c20456f60a6ade0d7810f327cb30be285c9280a92dbcc76490d712bc",
+        "manifest_sha256": "1890eb7e22cf06125a031e3deeec62a8301ba4314fe0af7521a64605a784452d",
+        "arch": [
+          "aarch64",
+          "armhf"
+        ]
+      },
+      "packages": [
+        {
+          "format": "zip",
+          "file": "/api/lantern/v1/files/f_Hl9Lx2",
+          "size": 1388544,
+          "sha256": "222ebbe1c9255ec536ea7f904ef60bb679e298d88fd8b152b87f3a6e645902a1",
+          "manifest_sha256": "6a86db3793d25b97546d949955a323d540b90ff9ae0f2419f09311a6c6034165",
+          "arch": [
+            "x86_64"
+          ]
+        }
+      ],
+      "port": {
+        "original": {
+          "name": "Harbor Lights",
+          "year": 1998,
+          "developer": "Fjord Works",
+          "stores": [
+            {
+              "store": "gog",
+              "id": "1207658000",
+              "url": "https://store.example.org/harbor-lights"
+            }
+          ]
+        },
+        "engine": {
+          "name": "Lighthouse",
+          "version": "2.1.0",
+          "source": "https://code.example.org/lea/lighthouse"
+        },
+        "data_root": "/org.example.harborlights/data/",
+        "assets": "user_owned",
+        "requires_data": [
+          {
+            "path": "data/HARBOR.PAK",
+            "size": 214748364,
+            "accept": [
+              {
+                "sha256": "9fed1136876db26e1ad23fc7f670877229ef6175a0ebb578156745f8e775f95e",
+                "label": "1.0"
+              },
+              {
+                "sha256": "e24786a703c9df277e543a705319fb02c4b85484dcecf396a1a8ea49f889e44e",
+                "md5": "cbfe50c4d03988e3b154e7fb5c56644f",
+                "label": "1.1"
+              }
+            ],
+            "hint": "In the folder where the game is installed on your computer."
+          },
+          {
+            "one_of": [
+              [
+                {
+                  "path": "music/THEME.OGG",
+                  "hint": "From the soundtrack edition."
+                }
+              ],
+              [
+                {
+                  "path": "data/MUSIC.PAK",
+                  "hint": "Next to HARBOR.PAK, in the editions that have it."
+                }
+              ]
+            ],
+            "optional": true
+          }
+        ]
+      }
     }
   ],
-  "total": 5,
+  "total": 6,
   "next": null
 }

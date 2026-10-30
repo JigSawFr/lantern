@@ -230,7 +230,8 @@ paths:
         - { $ref: "#/components/parameters/Platform" }
         - { $ref: "#/components/parameters/PlatformQuery" }
         - { name: q, in: query, schema: { type: string } }
-        - { name: category, in: query, schema: { enum: [game, emulator, tool, media, system, other] } }
+        - { name: kind, in: query, description: "Only this kind (app, game, port, emulator, tool, overlay, sysmodule, theme; § 8.1). Not a lower-case word: 400; unknown: an empty page.", schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,31}$" } }
+        - { name: genre, in: query, description: "Only the entries whose genres hold it (the titles' list, § 7.1). Not a lower-case word: 400; unknown: an empty page.", schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,31}$" } }
         - { $ref: "#/components/parameters/PageSize" }
         - { $ref: "#/components/parameters/Cursor" }
       responses:
@@ -341,6 +342,7 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/cheat-write.json" } } } }
       responses:
         "201": { description: "Added: the new set.", content: { application/json: { schema: { $ref: "schemas/v1/cheat.json" } } } }
+        "409": { $ref: "#/components/responses/Problem" }
         default: { $ref: "#/components/responses/Problem" }
   /v1/cheats/{id}:
     parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]

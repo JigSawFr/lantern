@@ -248,6 +248,9 @@
               }
             ]
           }
+        },
+        {
+          "$ref": "common.json#/$defs/profile_ids"
         }
       ]
     },
@@ -482,6 +485,9 @@
               }
             }
           }
+        },
+        {
+          "$ref": "common.json#/$defs/profile_ids"
         }
       ]
     },
@@ -522,7 +528,7 @@
       "pattern": "^[A-Za-z0-9+/]*={0,2}$"
     },
     "arch": {
-      "description": "A package's architecture (SPEC.md § 8.2): aarch64, armhf, x86, x86_64, or a later one of the same form.",
+      "description": "A package's architecture (SPEC.md § 8.2): aarch64, armhf, x86, x86_64, riscv64, or a later one of the same form, which a reader that does not know it treats as not its own.",
       "type": "string",
       "pattern": "^[a-z0-9_]{1,32}$"
     },
@@ -684,15 +690,28 @@
         "author": {
           "$ref": "common.json#/$defs/name"
         },
+        "genres": {
+          "description": "Genres, from the titles' fixed list (SPEC.md § 7.1, § 8.1): meant for a game or a port.",
+          "type": "array",
+          "maxItems": 15,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.json#/$defs/genre"
+          }
+        },
+        "tags": {
+          "description": "Free words (SPEC.md § 8.1, § 13).",
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
         "category": {
-          "enum": [
-            "game",
-            "emulator",
-            "tool",
-            "media",
-            "system",
-            "other"
-          ]
+          "description": "Gone in draft 0.3: shelves come from kind and genres (SPEC.md § 8.1). A server does not write it.",
+          "not": {}
         },
         "version": {
           "$ref": "common.json#/$defs/name"
@@ -733,41 +752,7 @@
           }
         },
         "requires": {
-          "type": "object",
-          "properties": {
-            "text": {
-              "$ref": "common.json#/$defs/text"
-            },
-            "min": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string",
-                "pattern": "^[0-9]+(\\.[0-9]+){0,3}$"
-              }
-            },
-            "homebrew": {
-              "type": "array",
-              "maxItems": 32,
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "$ref": "common.json#/$defs/homebrew_id"
-                  },
-                  "min_build": {
-                    "$ref": "common.json#/$defs/uint64"
-                  }
-                },
-                "required": [
-                  "id",
-                  "min_build"
-                ]
-              }
-            }
-          },
-          "required": [
-            "text"
-          ]
+          "$ref": "common.json#/$defs/requires"
         },
         "updated": {
           "$ref": "common.json#/$defs/time"
@@ -855,6 +840,44 @@
               "port"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "linux"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
+          "then": {
+            "properties": {
+              "package": {
+                "properties": {
+                  "format": {
+                    "const": "zip"
+                  }
+                },
+                "not": {
+                  "required": [
+                    "path"
+                  ]
+                }
+              },
+              "packages": {
+                "items": {
+                  "properties": {
+                    "format": {
+                      "const": "zip"
+                    }
+                  }
+                }
+              },
+              "system_id": false
+            }
+          }
         }
       ]
     },
@@ -935,6 +958,9 @@
               }
             }
           }
+        },
+        {
+          "$ref": "common.json#/$defs/profile_ids"
         }
       ]
     },
@@ -1006,6 +1032,9 @@
               "build_id"
             ]
           }
+        },
+        {
+          "$ref": "common.json#/$defs/profile_ids"
         }
       ]
     },
@@ -1042,6 +1071,11 @@
         "title_id",
         "status",
         "created"
+      ],
+      "allOf": [
+        {
+          "$ref": "common.json#/$defs/profile_ids"
+        }
       ]
     },
     "slot": {
@@ -1223,6 +1257,425 @@
         "data_root",
         "assets",
         "requires_data"
+      ]
+    },
+    "3ds_title_id": {
+      "description": "A 3DS game's title id (SPEC.md Annex A.2): 16 upper-case hex digits, 00040000 (a game) or 00040002 (a demo) first.",
+      "type": "string",
+      "pattern": "^0004000[02][0-9A-F]{8}$"
+    },
+    "3ds_app_id": {
+      "description": "A 3DS package's id (SPEC.md Annex A.2): its game's, an update's (0004000E) or an add-on's (0004008C).",
+      "type": "string",
+      "pattern": "^0004(0000|0002|000E|008C)[0-9A-F]{8}$"
+    },
+    "vita_title_id": {
+      "description": "A Vita title id (SPEC.md Annex A.3): nine upper-case letters and digits.",
+      "type": "string",
+      "pattern": "^[A-Z0-9]{9}$"
+    },
+    "vita_content_id": {
+      "description": "A Vita add-on's content id (SPEC.md Annex A.3).",
+      "type": "string",
+      "pattern": "^[A-Z]{2}[0-9]{4}-[A-Z0-9]{9}_[0-9]{2}-[A-Z0-9]{16}$"
+    },
+    "ps4_title_id": {
+      "description": "A PS4 title id (SPEC.md Annex A.4): four upper-case letters and five digits.",
+      "type": "string",
+      "pattern": "^[A-Z]{4}[0-9]{5}$"
+    },
+    "ps4_content_id": {
+      "description": "A PS4 add-on's content id (SPEC.md Annex A.4).",
+      "type": "string",
+      "pattern": "^[A-Z]{2}[0-9]{4}-[A-Z]{4}[0-9]{5}_[0-9]{2}-[A-Z0-9]{16}$"
+    },
+    "android_package": {
+      "description": "An Android package name (SPEC.md Annex A.5).",
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$"
+    },
+    "profile_ids": {
+      "description": "The forms of title_id and app_id on the draft profiles (SPEC.md Annex A.2 to A.5), for any document that carries platform and those ids. The Switch's are given where its documents are.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "3ds"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
+          "then": {
+            "properties": {
+              "title_id": {
+                "$ref": "common.json#/$defs/3ds_title_id"
+              },
+              "app_id": {
+                "$ref": "common.json#/$defs/3ds_app_id"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "base"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "app_id": {
+                      "$ref": "common.json#/$defs/3ds_title_id"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "update"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "app_id": {
+                      "pattern": "^0004000E"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "dlc"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "app_id": {
+                      "pattern": "^0004008C"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "vita"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
+          "then": {
+            "properties": {
+              "title_id": {
+                "$ref": "common.json#/$defs/vita_title_id"
+              },
+              "app_id": {
+                "anyOf": [
+                  {
+                    "$ref": "common.json#/$defs/vita_title_id"
+                  },
+                  {
+                    "$ref": "common.json#/$defs/vita_content_id"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "base"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "app_id": {
+                      "$ref": "common.json#/$defs/vita_title_id"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "update"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "app_id": {
+                      "$ref": "common.json#/$defs/vita_title_id"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "dlc"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "app_id": {
+                      "$ref": "common.json#/$defs/vita_content_id"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "ps4"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
+          "then": {
+            "properties": {
+              "title_id": {
+                "$ref": "common.json#/$defs/ps4_title_id"
+              },
+              "app_id": {
+                "anyOf": [
+                  {
+                    "$ref": "common.json#/$defs/ps4_title_id"
+                  },
+                  {
+                    "$ref": "common.json#/$defs/ps4_content_id"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "base"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "app_id": {
+                      "$ref": "common.json#/$defs/ps4_title_id"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "update"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "app_id": {
+                      "$ref": "common.json#/$defs/ps4_title_id"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "dlc"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "app_id": {
+                      "$ref": "common.json#/$defs/ps4_content_id"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "android"
+              }
+            },
+            "required": [
+              "platform"
+            ]
+          },
+          "then": {
+            "properties": {
+              "title_id": {
+                "$ref": "common.json#/$defs/android_package"
+              },
+              "app_id": {
+                "$ref": "common.json#/$defs/android_package"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "dotted": {
+      "description": "A dotted version, compared part by part as numbers (SPEC.md § 8.7).",
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+){0,3}$"
+    },
+    "requires": {
+      "description": "What the device needs (SPEC.md § 8.7). min and gpu are conditions a client checks before it offers a package; a key it cannot read gives a warning, not a refusal. A server keeps the keys it does not know.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "$ref": "common.json#/$defs/text"
+        },
+        "min": {
+          "description": "The lowest the device may have: the profile's keys (Annex A) as dotted versions, and glibc, ram_mb and screen, which any profile may use.",
+          "type": "object",
+          "properties": {
+            "glibc": {
+              "$ref": "common.json#/$defs/dotted"
+            },
+            "ram_mb": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16777216
+            },
+            "screen": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,5}x[1-9][0-9]{0,5}$"
+            },
+            "firmware": {
+              "$ref": "common.json#/$defs/dotted"
+            },
+            "atmosphere": {
+              "$ref": "common.json#/$defs/dotted"
+            },
+            "luma": {
+              "$ref": "common.json#/$defs/dotted"
+            },
+            "goldhen": {
+              "$ref": "common.json#/$defs/dotted"
+            },
+            "sdk": {
+              "$ref": "common.json#/$defs/dotted"
+            }
+          },
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              {
+                "type": "integer",
+                "minimum": 0
+              }
+            ]
+          }
+        },
+        "gpu": {
+          "description": "Graphics interfaces, at least one of which the device must offer. A later version may add names; the schema lists today's.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "gles2",
+              "gles3",
+              "gl",
+              "vulkan"
+            ]
+          }
+        },
+        "homebrew": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "common.json#/$defs/homebrew_id"
+              },
+              "min_build": {
+                "$ref": "common.json#/$defs/uint64"
+              }
+            },
+            "required": [
+              "id",
+              "min_build"
+            ]
+          }
+        }
+      },
+      "required": [
+        "text"
       ]
     }
   }

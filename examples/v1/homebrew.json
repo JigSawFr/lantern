@@ -5,7 +5,10 @@
   "kind": "app",
   "name": "Frostline",
   "author": "Noor",
-  "category": "tool",
+  "tags": [
+    "journal",
+    "night mode"
+  ],
   "version": "1.4.0",
   "build": 10400,
   "license": "MIT",
