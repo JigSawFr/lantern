@@ -6,20 +6,25 @@ with integrity checks, keep save backups and cheats.
 
 Website: <https://lantern.boreale.dev/?utm_source=github&utm_medium=readme>.
 
-**Status: draft 0.1.** The text may still change before 1.0; comments and
+**Status: draft 0.2.** The text may still change before 1.0; comments and
 issues are welcome, from client and server authors especially.
 
 - **[The specification](SPEC.md)**: REST and JSON, versioned by path (`/v1/`)
   and by a `schema` in every document, so a client and a server of
   different ages keep working together.
-- **What it keeps from the protocols in use today** (Tinfoil's index,
-  Ownfoil, AeroFoil): their discovery on the local network, opaque download
-  links, range requests, server-side filtering of what a console is missing.
-- **What it adds**: a SHA-256 for every file, cursor pages, a declared list
-  of features instead of guessed ones, pairing a console with a revocable
-  token, errors with real status codes, and nothing hidden: no hardware
-  identifier, no proprietary encryption, no server-driven change to the
-  client.
+- **A protocol of its own**, compatible with no earlier one by design:
+  nothing in it is kept for the sake of the protocols in use before it.
+- **What makes it solid**: versioned twice (path and `schema`); a token per
+  device, approved on the server, revocable, and no password ever on the
+  console; HTTPS everywhere, with the key of a server at home pinned at
+  pairing; a SHA-256 for every file, sent with every download and checked
+  before installing; features declared instead of guessed; and a
+  conformance suite.
+- **And also**: discovery on the local network, opaque download links,
+  range requests, server-side filtering of what a console is missing,
+  cursor pages, errors with real status codes, and nothing hidden: no
+  hardware identifier, no proprietary encryption, no server-driven change
+  to the client.
 
 - **[JSON Schemas](schemas/v1/)** for every document, with
   [examples](examples/v1/), and an **[OpenAPI description](openapi.yaml)**;
@@ -32,31 +37,47 @@ first client.
 
 The **[conformance suite](conformance/run.py)** checks a server from
 outside, against every MUST it can see: handshake and declared features,
-documents against the schemas, cursor pages, what a console is missing,
-ranges, digests, errors, limits. Each check says PASS, FAIL, WARN (a SHOULD)
-or SKIP, with its SPEC.md section; the exit code is 1 when one fails. It
-changes nothing on the server, but on a server that offers pairing it asks
-for one real pairing code, which the server may show to its users until it
-expires on its own.
+documents against the schemas, the bearer token's challenge (and no Basic
+one), pairing's codes, cursor pages, what a console is missing, every app's
+SHA-256, ranges and `Repr-Digest` on every file response, errors, limits,
+and LAN discovery. Each check says PASS, FAIL, WARN (a SHOULD) or SKIP, with
+its SPEC.md section; the exit code is 1 when one fails. It changes nothing
+on the server and approves nothing, but on a server that offers pairing it
+asks for a few real pairing codes, which the server may show to its users
+until they expire on their own.
 
 ```sh
 pip install -r tools/requirements.txt   # jsonschema, for the schema checks
-python3 conformance/run.py https://shelf.example.org/ --user lea --password …
+python3 conformance/run.py https://shelf.example.org/ [--token et_…] [--discover 192.168.1.255]
 ```
+
+The token is one a device got by pairing; without it, the suite calls
+anonymously. A server at home with a self-signed certificate: `--cafile`
+its certificate.
 
 The **[reference server](server/lantern_server.py)** serves a folder of
 packages (`.nsp`, `.nsz`, `.xci`, `.xcz`), identified by a `library.json` or
 by the `[title id][vN]` in their names, with the families `library`,
-`changes` and `media` (names only); the others stay at 0. Standard library
-only; a reference, not a product:
+`changes` and `media` (names only), and `pairing` when it has accounts; the
+others stay at 0. Standard library only; a reference, not a product:
 
 ```sh
-python3 -m server --library ~/games --port 8080 [--users users.json]
+python3 -m server --library ~/games [--users users.json] \
+    [--host 0.0.0.0 --tls-cert cert.pem --tls-key key.pem] [--discovery]
 ```
 
-Without `--tls-cert` and `--tls-key` it speaks plain HTTP, for local
-testing only. `python3 -m unittest discover -s tests` runs the suite against
-it on a tiny fictional library, as the `conformance` workflow does.
+- With `--users`, a console pairs: it asks for a code, and the user approves
+  it on the server's page, `/pair`, signed in with their name and password,
+  after comparing the key's fingerprint the console shows. Tokens are kept
+  hashed in the state file; `--tokens` lists them, `--revoke ID` revokes
+  one.
+- Without `--tls-cert` and `--tls-key` it speaks plain HTTP, and only on a
+  loopback address, for testing.
+- `--discovery` answers Lantern's discovery datagram on UDP 47115.
+
+`python3 -m unittest discover -s tests` runs the suite against it on a tiny
+fictional library, over plain HTTP on loopback and over TLS, as the
+`conformance` workflow does.
 
 ## Licences
 

@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """Lantern conformance suite: checks a server against SPEC.md, from outside.
 
-    python3 conformance/run.py https://shelf.example.org/ [--user U --password P]
+    python3 conformance/run.py https://shelf.example.org/ [--token TOKEN]
 
 It reads the handshake at the URL's origin, then checks every MUST it can
 see from a client's side: documents and their `schema` against schemas/v1/,
-the features a server declares against the routes it answers, cursor pages,
-what a console is missing, ranges, digests, errors, limits. Each check
-prints PASS, FAIL, WARN (a SHOULD not met) or SKIP, with the SPEC.md section
-it comes from; the exit code is 1 when one fails.
+the features a server declares against the routes it answers, the bearer
+token's challenge (and that no Basic one is ever sent), pairing's shapes,
+cursor pages, what a console is missing, every app's sha256, ranges and
+Repr-Digest on every file response, errors, limits, and LAN discovery when
+asked for (--discover). Each check prints PASS, FAIL, WARN (a SHOULD not
+met) or SKIP, with the SPEC.md section it comes from; the exit code is 1
+when one fails.
 
-It changes nothing on the server, but for a pairing code it may ask for
-(feature `pairing`): a real code, which the server may show to its users
-until it expires on its own. Rules that only a client can
-keep (ignoring unknown fields, pinning, checking a download) are listed as
-skipped.
+The token is one a device got by pairing (SPEC.md § 5.2); without it, the
+suite calls as an anonymous client. It changes nothing on the server and
+approves nothing, but it asks for a few pairing codes (feature `pairing`),
+which the server may show to its users until they expire on their own.
+Rules that only a client can keep (ignoring unknown fields, pinning,
+checking a download) are listed as skipped.
 
 Standard library only, but for the schema checks: those need jsonschema and
 referencing (tools/requirements.txt); --no-schemas runs without them.
@@ -23,9 +27,11 @@ import argparse
 import base64
 import hashlib
 import http.client
+import ipaddress
 import itertools
 import json
 import math
+import re
 import secrets
 import socket
 import ssl
@@ -34,9 +40,13 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 FAMILIES = ("library", "media", "changes", "sections", "saves", "cheats", "requests", "pairing")
 JSON_LIMIT = 32 << 20
+DISCOVERY_PORT = 47115
+DATAGRAM_LIMIT = 1200
+CODE = re.compile(r"[2-9A-HJ-NP-Z]{4}(-[2-9A-HJ-NP-Z]{4}){1,7}")  # SPEC.md § 5.2
+PAIRING = {"schema": 1, "device": "Lantern conformance", "scopes": ["library"]}
 # SPEC.md § 10: the codes each status may carry.
 CODES = {400: {"bad_request"}, 401: {"unauthorized"}, 403: {"forbidden", "account_frozen"},
          404: {"not_found"}, 405: {"bad_request"}, 409: {"conflict"}, 410: {"gone"},
@@ -51,8 +61,7 @@ PROBES = {
     "saves": ("GET", "/v1/saves", None, "saves"),
     "cheats": ("GET", "/v1/cheats", None, "cheats"),
     "requests": ("GET", "/v1/requests", None, "requests"),
-    "pairing": ("POST", "/v1/pairing", {"schema": 1, "device": "Lantern conformance", "scopes": ["library"]},
-                "pairing-code"),
+    "pairing": ("POST", "/v1/pairing", PAIRING, "pairing-code"),
 }
 # Routes that take a JSON document, by family, with a document of schema 2 (SPEC.md § 3.2, § 10).
 BODIES = {
@@ -63,10 +72,12 @@ BODIES = {
 CLIENT_RULES = [
     ("3.2", "A reader ignores the fields it does not know"),
     ("3.2", "A reader treats a newer schema as absent and never writes it back"),
-    ("2", "Certificates are verified; credentials never go over plain HTTP"),
-    ("5.3", "A pinned key that changes fails"),
-    ("6.6", "No credentials sent to an external media URL"),
-    ("13", "A download's sha256 is checked before installing"),
+    ("2", "Certificates are verified; plain HTTP only to a loopback address"),
+    ("4.1", "Discovery is a hint: nothing is trusted because of a reply"),
+    ("5.2", "No password is ever asked for on the console"),
+    ("5.3", "The key compared at pairing is pinned; a changed key fails"),
+    ("6.6", "No token sent to an external media URL"),
+    ("6.7", "A download's SHA-256 is checked before installing"),
 ]
 
 
@@ -120,21 +131,20 @@ class Response:
 class Client:
     """One HTTP request per connection, with the caller chosen per request."""
 
-    def __init__(self, origin, user, password, context, timeout):
-        self.origin, self.user, self.password = origin, user, password
+    def __init__(self, origin, token, context, timeout):
+        self.origin, self.token = origin, token
         self.context, self.timeout, self.log = context, timeout, []
 
     def authorization(self, auth):
-        if auth == "user" and self.user is not None:
-            return "Basic " + base64.b64encode(f"{self.user}:{self.password}".encode()).decode()
-        if auth == "wrong":
-            return "Basic " + base64.b64encode(
-                f"{self.user or 'lantern-conformance'}:wrong-{secrets.token_hex(8)}".encode()).decode()
-        if auth == "bearer":
-            return "Bearer et_lantern-conformance-" + secrets.token_hex(8)
+        if auth == "token" and self.token is not None:
+            return "Bearer " + self.token
+        if auth == "unknown":
+            return "Bearer et_lantern-conformance-" + secrets.token_hex(16)
+        if auth == "basic":     # what a server MUST refuse (SPEC.md § 5.1)
+            return "Basic " + base64.b64encode(f"lantern-conformance:{secrets.token_hex(8)}".encode()).decode()
         return None
 
-    def request(self, method, path, auth="user", headers=None, body=None, limit=JSON_LIMIT):
+    def request(self, method, path, auth="token", headers=None, body=None, limit=JSON_LIMIT):
         u = self.origin
         cls = http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection
         kw = {"context": self.context} if u.scheme == "https" else {}
@@ -149,7 +159,8 @@ class Client:
             conn.request(method, path, body=body, headers=hdrs)
             r = conn.getresponse()
             data = b"" if method == "HEAD" else r.read(limit + 1)
-            res = Response(method, path, "anonymous" if auth == "none" else auth, r.status, r.headers,
+            res = Response(method, path, "anonymous" if auth == "none" or (auth == "token" and self.token is None)
+                           else auth, r.status, r.headers,
                            data[:limit], len(data) > limit)
         finally:
             conn.close()
@@ -168,7 +179,7 @@ class Suite:
                 ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
         else:
             ctx = None
-        self.http = Client(u, args.user, args.password, ctx, args.timeout)
+        self.http = Client(u, args.token, ctx, args.timeout)
         self.results = []
         self.validators = None if args.no_schemas else load_validators(Path(args.schemas))
         self.base = args.base
@@ -176,6 +187,7 @@ class Suite:
         self.sample = None    # an app from the first page
         self.apps = None      # the whole library, when it could be read
         self.bytes = {}       # app id -> the file, read whole
+        self.pair = None      # a pairing code the suite asked for
         self.out = sys.stdout
 
     # Reporting.
@@ -209,7 +221,7 @@ class Suite:
     def api(self, path):
         return self.base.rstrip("/") + path
 
-    def get_json(self, path, schema, auth="user", status=200):
+    def get_json(self, path, schema, auth="token", status=200):
         r = self.http.request("GET", path, auth=auth)
         expect(r.status == status, f"{r}, expected {status}" + problem_detail(r))
         doc = r.json()
@@ -229,8 +241,8 @@ class Suite:
 
     def run(self):
         print(f"Lantern conformance {VERSION}: {self.origin.scheme}://{self.origin.netloc}/"
-              + (f" as {self.args.user}" if self.args.user else " anonymously"), file=self.out)
-        self.check("transport.https", "2", "The server speaks HTTPS", self.c_https, level="should")
+              + (" with a token" if self.args.token else " anonymously"), file=self.out)
+        self.check("transport.https", "2", "HTTPS, or plain HTTP on loopback only", self.c_https)
         if not self.check("handshake.well-known", "4.2", "GET /.well-known/lantern is a valid handshake",
                           self.c_well_known):
             print("No handshake: nothing else can be checked.", file=self.out)
@@ -238,27 +250,41 @@ class Suite:
         self.check("handshake.v1", "4.2", "GET <base>/v1/ is the same handshake", self.c_v1)
         self.check("handshake.versions", "3.1", "The server serves version 1", self.c_versions)
         self.check("handshake.anonymous", "4.2", "Without credentials: account anonymous", self.c_anonymous)
-        self.check("handshake.account", "4.2", "With credentials: the account and its state", self.c_account)
-        self.check("auth.wrong-password", "5.1", "A wrong password gives 401 with WWW-Authenticate", self.c_wrong)
-        self.check("auth.wrong-handshake", "4.2", "A wrong password gives 401 on the handshake too",
-                   self.c_wrong_handshake)
-        self.check("auth.unknown-token", "5.2", "An unknown bearer token gives 401", self.c_bearer)
-        self.check("auth.missing", "5.1", "A private server answers 401 without credentials", self.c_missing)
-        self.check("auth.frozen", "4.2", "A frozen account: every feature at 0, 403 account_frozen",
+        self.check("handshake.account", "4.2", "With a token: the account and its state", self.c_account)
+        self.check("auth.unknown-token", "5.1", "An unknown token gives 401 with WWW-Authenticate: Bearer",
+                   self.c_unknown_token)
+        self.check("auth.unknown-handshake", "4.2", "An unknown token gives 401 on the handshake too",
+                   self.c_unknown_handshake)
+        self.check("auth.basic-refused", "5.1", "HTTP Basic is refused: 401 with a Bearer challenge",
+                   self.c_basic)
+        self.check("auth.missing", "5.1", "A private server answers 401 without a token", self.c_missing)
+        self.check("auth.frozen", "4.2", "A frozen account: every feature but pairing at 0, 403 account_frozen",
                    self.c_frozen)
         mine = self.features(self.hello)
+        self.check("pairing.offered", "5.2", "A private server offers pairing, to every caller alike",
+                   self.c_pairing_offered)
+        if self.features(self.hello_anon)["pairing"]:
+            self.check("pairing.code", "5.2", "A pairing code: its alphabet, length, interval and expiry",
+                       self.c_pairing_code)
+            self.check("pairing.waiting", "5.2", "Polling an unapproved pairing gives 202", self.c_pairing_waiting)
+            self.check("pairing.slow-down", "5.2", "Polling faster than interval gives 429 slow_down",
+                       self.c_pairing_slow, level="should")
+            self.check("pairing.unknown", "5.2", "An unknown poll address gives 410", self.c_pairing_unknown)
+            self.check("pairing.rate-limit", "5.2", "Pairing requests are rate-limited", lambda: _skip(
+                "not checked: it would take many requests; the reference server's tests check it"))
         if mine["library"]:
             self.check("apps.first-page", "6.2", "GET <base>/v1/apps is a valid page", self.c_first_page)
         for family in FAMILIES:
             self.check(f"features.{family}", "4.2", f"Feature {family} ({mine[family]}) is honoured",
-                       lambda f=family: self.c_feature(f, "user", mine[f]))
-        if self.args.user is not None:
+                       lambda f=family: self.c_feature(f, "token", mine[f]))
+        if self.args.token is not None:
             self.check("features.anonymous", "4.2", "Without credentials, features are honoured too",
                        self.c_features_anonymous)
         if mine["library"]:
             for sort in ("name", "added", "release"):
                 self.check(f"apps.pages.{sort}", "6.2", f"Pages by {sort}: stable, no repeat, no skip",
                            lambda s=sort: self.c_walk(s))
+            self.check("apps.sha256", "6.1", "Every app has its sha256", self.c_sha256)
             self.check("apps.page-size", "6.2", "A larger page_size is lowered to limits.page_size; 0 gives 400",
                        self.c_page_size)
             self.check("apps.bad-cursor", "6.2", "An unknown cursor gives 400 or 410", self.c_bad_cursor)
@@ -270,8 +296,10 @@ class Suite:
             self.check("missing.up-to-date", "6.3", "Missing: nothing for an up-to-date game", self.c_missing_current)
             self.check("missing.base", "6.3", "Missing: with base, the games not installed", self.c_missing_base)
             self.check("missing.malformed", "10", "A malformed body gives 400 bad_request", self.c_malformed)
-            self.check("files.whole", "6.7", "Whole files: length, ETag, sha256 and Repr-Digest", self.c_files)
-            self.check("files.ranges", "6.7", "Ranges: 206 with the right slice", self.c_ranges)
+            self.check("files.whole", "6.7", "Whole files and HEAD: length, ETag, sha256 and Repr-Digest",
+                       self.c_files)
+            self.check("files.ranges", "6.7", "Ranges: 206 with the right slice and the whole file's Repr-Digest",
+                       self.c_ranges)
             self.check("files.unsatisfiable", "6.7", "A range outside the file gives 416 with Content-Range", self.c_416)
             self.check("files.unknown", "6.7", "An unknown file id gives 404 or 410", self.c_unknown_file)
         if mine["changes"]:
@@ -291,7 +319,8 @@ class Suite:
         # Over every response the run saw.
         self.check("errors.problem", "10", "Every error is a valid application/problem+json", self.g_problems)
         self.check("errors.never-200", "10", "No error is sent with a 2xx status", self.g_never_200)
-        self.check("errors.www-authenticate", "5.1", "Every 401 has WWW-Authenticate: Basic", self.g_401)
+        self.check("errors.www-authenticate", "5.1", "Every 401 has WWW-Authenticate: Bearer", self.g_401)
+        self.check("auth.no-basic", "5.1", "No response asks for HTTP Basic", self.g_no_basic)
         self.check("documents.schema", "3.2", "Every document has an integer schema", self.g_schema)
         self.check("documents.type", "2", "Every document is application/json", self.g_ctype)
         self.check("documents.limits", "11", "Documents stay within the limits", self.g_limits)
@@ -308,9 +337,11 @@ class Suite:
     # Transport and handshake (SPEC.md § 2, 4).
 
     def c_https(self):
-        if self.origin.scheme != "https":
-            raise Warn("plain HTTP: acceptable for local testing only"
-                       + ("; the credentials went in clear" if self.args.user else ""))
+        if self.origin.scheme == "https":
+            return
+        if not loopback(self.origin.hostname or ""):
+            raise Fail(f"plain HTTP to {self.origin.hostname}, not a loopback address")
+        raise Warn("plain HTTP on loopback: for testing only")
 
     def c_well_known(self):
         _, doc = self.get_json("/.well-known/lantern", "handshake")
@@ -335,38 +366,94 @@ class Suite:
         expect(doc["uid"] == self.hello["uid"], "uid differs from the one with credentials")
 
     def c_account(self):
-        if self.args.user is None:
-            raise Skip("no credentials given")
+        if self.args.token is None:
+            raise Skip("no token given")
         state = self.hello["account"]["state"]
-        expect(state in ("active", "frozen"), f"account.state {state!r} although the credentials were accepted")
+        expect(state in ("active", "frozen"), f"account.state {state!r} although the token was accepted")
         return f"{state}, scopes {', '.join(self.hello['account']['scopes']) or 'none'}"
 
-    def c_wrong(self):
-        r = self.http.request("GET", self.api("/v1/apps?page_size=1"), auth="wrong")
+    def expect_bearer(self, r):
         self.expect_problem(r, [401], {"unauthorized"})
-        expect("basic" in (r.header("WWW-Authenticate") or "").lower(), f"{r}: no WWW-Authenticate: Basic")
+        challenge = r.header("WWW-Authenticate") or ""
+        expect(challenge.lower().startswith("bearer"), f"{r}: WWW-Authenticate {challenge or 'none'}, expected Bearer")
 
-    def c_wrong_handshake(self):
-        self.expect_problem(self.http.request("GET", self.api("/v1/"), auth="wrong"), [401], {"unauthorized"})
+    def c_unknown_token(self):
+        self.expect_bearer(self.http.request("GET", self.api("/v1/apps?page_size=1"), auth="unknown"))
 
-    def c_bearer(self):
-        self.expect_problem(self.http.request("GET", self.api("/v1/apps?page_size=1"), auth="bearer"),
-                            [401], {"unauthorized"})
+    def c_unknown_handshake(self):
+        self.expect_bearer(self.http.request("GET", self.api("/v1/"), auth="unknown"))
+
+    def c_basic(self):
+        for path in (self.api("/v1/"), self.api("/v1/apps?page_size=1")):
+            r = self.http.request("GET", path, auth="basic")
+            self.expect_bearer(r)
+            expect("basic" not in (r.header("WWW-Authenticate") or "").lower(), f"{r}: a Basic challenge")
 
     def c_missing(self):
         anon = self.features(self.hello_anon)
-        if self.args.user is None or anon["library"] or not self.features(self.hello)["library"]:
-            raise Skip("not a private server, or no credentials given")
-        r = self.http.request("GET", self.api("/v1/apps?page_size=1"), auth="none")
-        self.expect_problem(r, [401], {"unauthorized"})
+        if self.args.token is None or anon["library"] or not self.features(self.hello)["library"]:
+            raise Skip("not a private server, or no token given")
+        self.expect_bearer(self.http.request("GET", self.api("/v1/apps?page_size=1"), auth="none"))
 
     def c_frozen(self):
         if self.hello["account"]["state"] != "frozen":
             raise Skip("the account is not frozen")
-        on = [f for f, v in self.features(self.hello).items() if v]
+        on = [f for f, v in self.features(self.hello).items() if v and f != "pairing"]
         expect(not on, f"features still offered: {', '.join(on)}")
         r = self.http.request("GET", self.api("/v1/apps?page_size=1"))
         self.expect_problem(r, [403], {"account_frozen"})
+
+    # Pairing (SPEC.md § 5.2): its shapes, without approving anything.
+
+    def c_pairing_offered(self):
+        anon, mine = self.features(self.hello_anon), self.features(self.hello)
+        expect(anon["pairing"] == mine["pairing"],
+               f"pairing is {anon['pairing']} without a token, {mine['pairing']} with one")
+        if anon["library"]:
+            return "a public server" + (", which pairs" if anon["pairing"] else ", which does not pair")
+        expect(anon["pairing"] > 0, "a private server without pairing: no console can get a token")
+
+    def c_pairing_code(self):
+        r = self.http.request("POST", self.api("/v1/pairing"), auth="none", body=PAIRING)
+        expect(r.status == 200, f"{r}, expected 200" + problem_detail(r))
+        doc = r.json()
+        self.validate(doc, "pairing-code", str(r))
+        code = doc["code"]
+        expect(CODE.fullmatch(code), f"code {code!r}: not 8 to 32 symbols of 23456789ABCDEFGHJKLMNPQRSTUVWXYZ "
+                                     "in groups of 4 joined by -")
+        expect(isinstance(doc["interval"], int) and doc["interval"] >= 1, f"interval {doc['interval']!r}")
+        expect(isinstance(doc["expires"], int) and 1 <= doc["expires"] <= 600,
+               f"expires {doc['expires']!r}: a code lives 10 minutes at most")
+        verify = urlsplit(doc["verify"])
+        expect(verify.scheme == "https" or (verify.scheme == "http" and loopback(verify.hostname or "")),
+               f"verify {doc['verify']}: not an HTTPS address")
+        poll = urlsplit(doc["poll"])
+        expect(not poll.netloc or poll.netloc == self.origin.netloc, f"poll {doc['poll']} is not on the origin")
+        self.pair = doc
+        return f"{len(code.replace('-', ''))} symbols, every {doc['interval']} s, for {doc['expires']} s"
+
+    def poll_path(self):
+        if not self.pair:
+            raise Skip("no pairing code (pairing.code)")
+        poll = urlsplit(self.pair["poll"])
+        return poll.path + (f"?{poll.query}" if poll.query else "")
+
+    def c_pairing_waiting(self):
+        r = self.http.request("GET", self.poll_path(), auth="none")
+        expect(r.status == 202, f"{r}, expected 202 while the user has not approved" + problem_detail(r))
+
+    def c_pairing_slow(self):
+        r = self.http.request("GET", self.poll_path(), auth="none")
+        if r.status != 429:
+            raise Warn(f"{r} right after another poll, expected 429 slow_down")
+        self.expect_problem(r, [429], {"slow_down"})
+        if not r.header("Retry-After"):
+            raise Warn(f"{r}: no Retry-After")
+
+    def c_pairing_unknown(self):
+        r = self.http.request("GET", self.api("/v1/pairing/p_lantern-conformance-" + secrets.token_hex(16)),
+                              auth="none")
+        self.expect_problem(r, [404, 410], {"gone", "not_found"})
 
     # Features (SPEC.md § 4.2): a family at 0 is refused, one above 0 answers.
 
@@ -451,6 +538,14 @@ class Suite:
             expect([a["id"] for a in default] == ids, "without sort, not the order of sort=name")
             self.apps = items
         return f"{len(ids)} apps in {pages} page(s) of {small}"
+
+    def c_sha256(self):
+        apps = self.apps or ([self.sample] if self.sample else [])
+        if not apps:
+            raise Skip("no app in the library")
+        bad = [a.get("id", "?") for a in apps if not re.fullmatch(r"[0-9a-f]{64}", str(a.get("sha256", "")))]
+        expect(not bad, f"{len(bad)} app(s) without a lower-case hex sha256: {', '.join(bad[:5])}")
+        return f"{len(apps)} app(s)"
 
     def c_page_size(self):
         limit = self.limit()
@@ -567,10 +662,11 @@ class Suite:
             budget -= a["size"]
         return picked
 
+    def file_path(self, app):
+        return app["file"] if app["file"].startswith("/") else urlsplit(app["file"]).path
+
     def download(self, app):
-        r = self.http.request("GET", app["file"] if app["file"].startswith("/") else urlsplit(app["file"]).path,
-                              limit=app["size"])
-        return r
+        return self.http.request("GET", self.file_path(app), limit=app["size"])
 
     def c_files(self):
         picked = self.chosen()
@@ -585,9 +681,11 @@ class Suite:
             etag = r.header("ETag") or ""
             expect(etag.startswith('"'), f"{r}: no strong ETag ({etag or 'none'})")
             digest = hashlib.sha256(r.body).hexdigest()
-            if "sha256" in app:
-                expect(digest == app["sha256"], f"{r}: sha256 {digest}, the app says {app['sha256']}")
-            check_repr_digest(r, digest, required="sha256" in app)
+            expect(digest == app.get("sha256"), f"{r}: sha256 {digest}, the app says {app.get('sha256')}")
+            check_repr_digest(r, digest)
+            head = self.http.request("HEAD", self.file_path(app))
+            expect(head.status == 200, f"{head}, expected 200")
+            check_repr_digest(head, digest)
             self.bytes[app["id"]] = r.body
         return f"{len(picked)} file(s), {sum(a['size'] for a in picked)} bytes"
 
@@ -614,7 +712,7 @@ class Suite:
                    f"{r} for {header}: Content-Range {r.header('Content-Range')}, expected bytes {start}-{end}/{size}")
             expect(r.header("Content-Length") == str(end - start + 1), f"{r} for {header}: Content-Length")
             expect(r.body == whole[start:end + 1], f"{r} for {header}: not the bytes of the whole file")
-            check_repr_digest(r, hashlib.sha256(whole).hexdigest(), required=False)
+            check_repr_digest(r, hashlib.sha256(whole).hexdigest())
         return f"{len(cases)} ranges of {app['name']} ({size} bytes)"
 
     def c_416(self):
@@ -678,21 +776,26 @@ class Suite:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(3)
         try:
-            sock.sendto(b"OWNFOIL_DISCOVER", (self.args.discover, self.args.discover_port))
+            sock.sendto(json.dumps({"schema": 1, "lantern": "discover"}).encode(),
+                        (self.args.discover, self.args.discover_port))
             data, peer = sock.recvfrom(65536)
         except TimeoutError:
             raise Fail(f"no reply from {self.args.discover}:{self.args.discover_port} in 3 s") from None
         finally:
             sock.close()
+        expect(len(data) <= DATAGRAM_LIMIT, f"a reply of {len(data)} bytes, above {DATAGRAM_LIMIT}")
         try:
             doc = json.loads(data.decode("utf-8"))
         except (UnicodeDecodeError, ValueError) as e:
             raise Fail(f"the reply is not JSON: {e}") from None
+        expect(isinstance(doc, dict) and doc.get("schema") == 1 and doc.get("lantern") == "server",
+               f"not a Lantern reply: {data[:200]!r}")
         self.validate(doc, "discovery", f"reply from {peer[0]}")
         expect(doc["uid"] == self.hello["uid"], "uid differs from the handshake's")
-        lantern = doc.get("lantern")
-        expect(lantern is not None, "no lantern part: the server does not say it speaks Lantern")
-        expect(lantern["base"] == self.base and 1 in lantern["versions"], f"lantern {lantern}")
+        expect(doc["base"] == self.base, f"base {doc['base']}, the handshake says {self.base}")
+        expect(1 in doc["versions"], f"versions {doc['versions']}")
+        port = self.origin.port or (443 if self.origin.scheme == "https" else 80)
+        expect(doc["port"] == port, f"port {doc['port']}, the server answers on {port}")
         return f"{doc['name']} from {peer[0]}, port {doc['port']}"
 
     # Over every response.
@@ -722,7 +825,11 @@ class Suite:
 
     def g_401(self):
         bad = [str(r) for r in self.http.log
-               if r.status == 401 and "basic" not in (r.header("WWW-Authenticate") or "").lower()]
+               if r.status == 401 and not (r.header("WWW-Authenticate") or "").lower().startswith("bearer")]
+        expect(not bad, "\n".join(bad[:8]))
+
+    def g_no_basic(self):
+        bad = [str(r) for r in self.http.log if "basic" in (r.header("WWW-Authenticate") or "").lower()]
         expect(not bad, "\n".join(bad[:8]))
 
     def json_documents(self):
@@ -740,8 +847,8 @@ class Suite:
 
     def g_ctype(self):
         bad = [f"{r}: {r.ctype}" for r in self.http.log
-               if 200 <= r.status < 300 and r.method != "HEAD" and not r.path.startswith(self.api("/v1/files/"))
-               and r.ctype != "application/json"]
+               if 200 <= r.status < 300 and r.method != "HEAD" and r.body
+               and not r.path.startswith(self.api("/v1/files/")) and r.ctype != "application/json"]
         expect(not bad, "\n".join(bad[:8]))
 
     def g_limits(self):
@@ -755,20 +862,34 @@ class Suite:
     def g_private(self):
         bad = []
         for r in self.http.log:
-            if r.auth == "user" and self.args.user is not None and 200 <= r.status < 300:
+            if r.auth == "token" and 200 <= r.status < 300:
                 cc, vary = (r.header("Cache-Control") or "").lower(), (r.header("Vary") or "").lower()
                 if "private" not in cc and "no-store" not in cc:
                     bad.append(f"{r}: Cache-Control {cc or 'none'}")
                 elif "authorization" not in vary and "*" not in vary:
                     bad.append(f"{r}: Vary {vary or 'none'}")
-        if self.args.user is None:
-            raise Skip("no credentials given")
+        if self.args.token is None:
+            raise Skip("no token given")
         if bad:
             raise Warn("\n".join(bad[:8]))
 
 
 def client_rule():
     raise Skip("a client rule, not visible from outside")
+
+
+def _skip(why):
+    raise Skip(why)
+
+
+def loopback(host):
+    """127.0.0.0/8, ::1 or localhost (SPEC.md § 2)."""
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return False
 
 
 def problem_detail(r):
@@ -781,11 +902,10 @@ def problem_detail(r):
     return ""
 
 
-def check_repr_digest(r, digest, required):
+def check_repr_digest(r, digest):
+    """Repr-Digest, a MUST on every file response (SPEC.md § 6.7): the whole file's SHA-256."""
     header = r.header("Repr-Digest")
-    if not header:
-        expect(not required, f"{r}: no Repr-Digest although the hash is known")
-        return
+    expect(header, f"{r}: no Repr-Digest")
     values = dict(part.strip().split("=", 1) for part in header.split(",") if "=" in part)
     value = values.get("sha-256", "").strip()
     expect(value.startswith(":") and value.endswith(":"), f"{r}: Repr-Digest {header!r} has no sha-256")
@@ -840,8 +960,7 @@ def load_validators(folder):
 def main(argv=None, out=None):
     p = argparse.ArgumentParser(prog="conformance/run.py", description="Checks a Lantern server against SPEC.md.")
     p.add_argument("url", help="the server, e.g. https://shelf.example.org/")
-    p.add_argument("--user", help="an account's name (HTTP Basic)")
-    p.add_argument("--password", help="its password")
+    p.add_argument("--token", help="a device's token, from pairing (Authorization: Bearer)")
     p.add_argument("--base", help="the base path, when the handshake should not decide it")
     p.add_argument("--cafile", help="CA certificates to trust (PEM)")
     p.add_argument("--insecure", action="store_true", help="do not verify the certificate (a LAN server)")
@@ -850,12 +969,10 @@ def main(argv=None, out=None):
     p.add_argument("--max-download", type=int, default=64 << 20, help="bytes downloaded at most (default 64 MiB)")
     p.add_argument("--max-files", type=int, default=3, help="files downloaded whole at most")
     p.add_argument("--discover", metavar="ADDRESS", help="also send LAN discovery to this address")
-    p.add_argument("--discover-port", type=int, default=8465)
+    p.add_argument("--discover-port", type=int, default=DISCOVERY_PORT)
     p.add_argument("--schemas", default=str(Path(__file__).resolve().parent.parent / "schemas" / "v1"))
     p.add_argument("--no-schemas", action="store_true", help="skip the JSON Schema checks")
     args = p.parse_args(argv)
-    if (args.user is None) != (args.password is None):
-        p.error("--user and --password go together")
     suite = Suite(args)
     if out is not None:
         suite.out = out
