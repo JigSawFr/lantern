@@ -75,9 +75,17 @@ def dumps(doc):
 
 
 def placeholder(label, size):
-    """`size` bytes of text that say what they are: no game, no software."""
+    """`size` bytes of text that say what they are: no game, no software. One large enough for a chunk index
+    (SPEC.md § 22, 128 KiB or more for the reference server) numbers its lines, so that its content-defined
+    chunks end where its bytes say rather than at the chunker's largest size, as in a repeated line: each line its number and a digest of it."""
     line = f"Lantern demo library placeholder: {label}. Not a game, not software, not installable.\n".encode()
-    return (line * (size // len(line) + 1))[:size]
+    if size < 128 * 1024:
+        return (line * (size // len(line) + 1))[:size]
+    out, n = bytearray(), 0
+    while len(out) < size:
+        n += 1
+        out += f"{n:06d} {hashlib.sha256(f'{label} {n}'.encode()).hexdigest()} ".encode() + line
+    return bytes(out[:size])
 
 
 def zipped(files):

@@ -8,8 +8,8 @@
       "url": "https://github.com/JigSawFr/lantern/tree/main/server",
       "licence": "MIT",
       "language": "Python (standard library)",
-      "draft": "0.6",
-      "levels": ["core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync", "encrypted_saves", "static"],
+      "draft": "0.7",
+      "levels": ["core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync", "encrypted_saves", "deltas", "static"],
       "checked": "2026-10-30",
       "note": "The text's own reference: a folder of packages and homebrew, served by the protocol, and exported as a static library (--export). A reference, not a product."
     }

@@ -4,19 +4,19 @@ Seul le texte anglais fait foi. Pour la mettre à jour : traduire ce qui a
 changé dans SPEC.md depuis `commit`, puis donner ici le nouveau commit et la
 somme SHA-256 de SPEC.md à ce commit (sha256sum SPEC.md).
 language: fr
-commit: 9871962a35d336b3fb0906cd4e049858817962cb
-sha256: 391ace6ec9d340061853e0c53c1557bfe5df6b6d26ee409fe3b1dadf99b3b9f4
+commit: d662f23accea15f1f504255d3a6df4a8da16fc3d
+sha256: 195d664fb42b01867370350c620ebf0ee16056257a349a89a44a71027a2fc2eb
 banner: Traduction informative ; seul le texte anglais fait foi.
 english: Lire le texte anglais, qui fait référence
 source: SPEC.fr.md sur GitHub
 -->
 # Lantern — un protocole ouvert pour les serveurs de bibliothèques de jeux
 
-Brouillon 0.6, 2026-10-30. Statut : **brouillon**, susceptible de changer jusqu'à la 1.0 : le
-brouillon qui prépare le texte pour elle (annexe C).
+Brouillon 0.7, 2026-10-30. Statut : **brouillon**, susceptible de changer jusqu'à la 1.0
+(l'annexe C dit ce qu'elle attend).
 Ce texte est publié sous licence [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
-**Traduction informative.** Ce texte traduit en français le brouillon 0.6
+**Traduction informative.** Ce texte traduit en français le brouillon 0.7
 de la spécification. Seul le texte anglais fait foi : en cas de doute ou
 d'écart, c'est lui qui s'applique. Les identifiants d'exigence
 (`[L-5.2-3]`), le code, les noms de champs, les documents JSON et les mots
@@ -103,9 +103,12 @@ L'annexe B donne des conseils aux auteurs de clients, sans exigences.
 - Les corps JSON MUST être en UTF-8, envoyés avec
   `Content-Type: application/json` (erreurs : `application/problem+json`,
   § 12). [L-2-4]
-- Le client MUST envoyer `User-Agent: <Name>/<version>`. [L-2-5] Il SHOULD
-  envoyer `Accept-Language` (§ 2.2). [L-2-6] Il SHOULD envoyer
-  `Lantern-Platform` (§ 4.3). [L-2-7]
+- Le client MUST envoyer `User-Agent: <Name>/<version>`, sauf un client
+  dans un navigateur, dont le navigateur l'écrit (annexe A.7). [L-2-5] Il
+  SHOULD envoyer `Accept-Language` (§ 2.2). [L-2-6] Il SHOULD envoyer
+  `Lantern-Platform` (§ 4.3), sauf un client dans un navigateur, qui nomme
+  à la place dans la requête la plateforme qu'il affiche (annexe A.7).
+  [L-2-7]
 - Un client MUST n'envoyer son jeton (§ 5) et ses signatures qu'à l'origine
   du serveur (schéma, hôte, port), jamais à un autre hôte vers lequel pointe
   un document. [L-2-8]
@@ -182,6 +185,21 @@ deux lecteurs ne lisent jamais une même valeur de deux façons :
   plateforme (annexe A) ont leurs propres formes.
 - **Base64** est celui de la RFC 4648 § 4, avec son remplissage ;
   **base64url**, celui de son § 5, sans. Chaque champ dit lequel.
+- **JSON canonique**, là où ce texte compare ou hache une valeur par ses
+  octets (la valeur d'un élément de synchronisation, § 20.4 ; un index de
+  morceaux, § 22.1) : c'est le JSON Canonicalization Scheme de la
+  RFC 8785. Aucune espace ; les membres de chaque objet triés par leur nom,
+  comparé en unités de code UTF-16 ; dans les chaînes, seuls `"`, `\` et
+  les caractères de contrôle sont échappés (`\b`, `\t`, `\n`, `\f`, `\r`,
+  les autres en `\u00xx`, en minuscules), tout autre caractère tel quel, en
+  UTF-8 ; et les nombres tels que les écrit ECMAScript : un entier sans
+  partie décimale ni exposant (`1.0` et `1` s'écrivent tous deux `1`, `-0`
+  s'écrit `0`), tout autre nombre sous la forme la plus courte qui se relit
+  en ce même nombre (`0.5`, `1e+21`, `1e-7`, mais `100000000000000000000`
+  et `0.000001`). Un lecteur garde un nombre tel que le document l'a écrit
+  jusqu'à ce qu'il l'écrive ainsi. Les formes canoniques des § 8.2, § 8.4
+  et § 19.3, détaillées là où elles sont données, s'accordent avec elle.
+  Vecteurs de test : `vectors/canonical-json.json`.
 - **Les textes destinés aux personnes** (noms, résumés, notes) sont en
   Unicode. Un serveur SHOULD les écrire en forme normale NFC. [L-2.3-5] Là
   où ce texte compare ou cherche des noms (`q`, § 6.2 et § 8.5 ; les
@@ -229,6 +247,62 @@ deux lecteurs ne lisent jamais une même valeur de deux façons :
 - Un document de requête est envoyé avec `Content-Type: application/json`,
   un paramètre `charset=utf-8` étant admis. Un serveur MUST répondre `400`
   au document d'une route d'un autre type. [L-2.4-7]
+
+### 2.5 Navigateurs
+
+Un client dans un navigateur web (annexe A.7) ne lit un serveur d'une
+autre origine que dans la mesure où les règles CORS du navigateur le lui
+permettent (la norme Fetch du WHATWG) : le serveur nomme les origines dont
+les pages peuvent lire ses réponses et, avant toute requête qui n'est pas
+simple, le navigateur demande d'abord la permission par une **requête
+préliminaire** (preflight), une requête `OPTIONS` qui ne porte aucun
+jeton. Presque toute requête Lantern en demande une : une requête avec un
+jeton, une signature, un corps JSON, `Lantern-Platform`, `Accept-Schema`,
+`If-None-Match`, `If-Match` ou `Upload-Offset`, et tout `PUT`, `PATCH` et
+`DELETE`. Seul un `GET` ou un `HEAD` qui n'en a aucun, avec au plus
+`Accept`, `Accept-Language` et une seule `Range`, s'en passe.
+
+- Un serveur SHOULD laisser son propriétaire nommer les origines dont les
+  pages peuvent le lire (`https://app.example.org`), ou toutes (`*`), et
+  n'en autoriser aucune tant qu'il ne l'a pas fait. [L-2.5-1]
+- À une requête dont il autorise l'`Origin`, sur une route de ce texte
+  (`/.well-known/lantern`, et toute route sous `<base>`), un serveur MUST
+  répondre, erreurs comprises, avec `Access-Control-Allow-Origin`, cette
+  origine (et alors `Vary: Origin`) ou `*`, et avec
+  `Access-Control-Expose-Headers` qui nomme les en-têtes de ce texte qu'une
+  page lit : `Date`, `ETag`, `Content-Range`, `Accept-Ranges`,
+  `Repr-Digest`, `Retry-After`, `WWW-Authenticate`, `Accept-Signature`,
+  `Upload-Offset`, `Upload-Length`, `Lantern-Chunk-Size`, `Allow`,
+  `Deprecation`, `Sunset` et `Link`. [L-2.5-2]
+- À la requête préliminaire d'une telle requête (`OPTIONS` avec
+  `Access-Control-Request-Method`), quelle que soit sa route, un serveur
+  MUST répondre `204` sans demander de jeton, avec
+  `Access-Control-Allow-Origin` comme ci-dessus,
+  `Access-Control-Allow-Methods` qui nomme la méthode demandée (ou
+  `GET, HEAD, POST, PUT, PATCH, DELETE`), et `Access-Control-Allow-Headers`
+  qui nomme un par un chaque en-tête demandé que ce texte donne à un
+  client : `Authorization`, `Content-Type`, `Content-Digest`, `Signature`,
+  `Signature-Input`, `Accept-Schema`, `Lantern-Platform`, les en-têtes
+  d'une sauvegarde (§ 9.2, § 9.4), `Upload-Offset`, `If-Match`,
+  `If-None-Match`, `If-Range`, `Range` et `Last-Event-ID`. [L-2.5-3] Le
+  `*` de la norme Fetch ne couvre pas `Authorization`, qui est donc nommé.
+  Un serveur SHOULD donner `Access-Control-Max-Age`, de 600 secondes ou
+  plus, pour qu'une page ne redemande pas avant chaque requête. [L-2.5-4]
+- Les identifiants passent par `Authorization` seulement (§ 5.1). Un
+  serveur MUST NOT envoyer `Access-Control-Allow-Credentials`, poser un
+  cookie sur une route de ce texte, ni prendre un jeton ou un autre
+  identifiant dans un cookie. [L-2.5-5] Une page n'envoie ainsi au serveur
+  rien de ce que son navigateur garde pour elle, et une page d'une autre
+  origine n'emprunte rien de ce qui appartient à l'utilisateur.
+- À une origine qu'il n'autorise pas, un serveur n'envoie aucun de ces
+  en-têtes : le navigateur cache sa réponse à la page. Il répond à la
+  requête elle-même comme il le ferait sans `Origin`, et à un `OPTIONS` qui
+  n'est pas la requête préliminaire d'une origine autorisée par `405`.
+- Un serveur d'un réseau privé MAY répondre à une requête préliminaire qui
+  porte `Access-Control-Request-Private-Network: true` par
+  `Access-Control-Allow-Private-Network: true`, pour une origine qu'il
+  autorise, car certains navigateurs le demandent avant qu'une page
+  publique ne lise une adresse privée.
 
 ## 3. Versions
 
@@ -339,7 +413,7 @@ sa section « Modifications » le dit.
 ### 3.6 Versions publiées
 
 Chaque version de ce texte est publiée sur le dépôt, par une étiquette
-`spec-v<version>` (`spec-v0.6`) : sa release contient SPEC.md, les
+`spec-v<version>` (`spec-v0.7`) : sa release contient SPEC.md, les
 schémas, leurs exemples, les vecteurs de test, `openapi.yaml` et la suite
 de conformité, chacun comme un fichier à part et tous dans un zip, avec
 leurs sommes SHA-256 dans `SHA256SUMS`. GitHub atteste que chaque fichier a
@@ -348,7 +422,7 @@ dépôt (une attestation de provenance de build, SLSA). Pour vérifier un
 fichier :
 
 ```sh
-gh attestation verify lantern-0.6.zip --repo JigSawFr/lantern
+gh attestation verify lantern-0.7.zip --repo JigSawFr/lantern
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
@@ -413,7 +487,7 @@ MUST renvoyer le même document, avec ou sans jeton. [L-4.2-1]
  "features": {"library": 1, "titles": 1, "changes": 1, "sections": 1,
               "homebrew": 1, "saves": 1, "cheats": 1, "requests": 0,
               "pairing": 1, "signatures": 1, "admin": 0, "events": 1,
-              "peers": 1, "sync": 0, "encrypted_saves": 1},
+              "peers": 1, "sync": 0, "encrypted_saves": 1, "deltas": 1},
  "auth": {"bearer_only": true, "skew": 300},
  "peers": {"key": "<base64 of 32 bytes>", "grant_lifetime": 600},
  "limits": {"page_size": 500, "save_body": 8388608,
@@ -480,9 +554,9 @@ d'[Atlas](https://github.com/JigSawFr/Atlas) lorsqu'Atlas en a un
 (la New Nintendo 3DS et la famille 3DS), `vita` (PlayStation Vita), `ps4`,
 `android`, `ios` (iOS, iPadOS et tvOS), `windows`, `macos`, `linux` (tout
 système Linux, ordinateur ou console portable, quelle que soit sa
-distribution : il n'y a pas de nom par distribution) et `web` (une
-application exécutée dans un navigateur). Une version ultérieure ajoute des
-noms à cette liste ; ceux propres à un éditeur commencent par `x-<vendor>-`.
+distribution : il n'y a pas de nom par distribution) et `web` (un client
+dans un navigateur web, qui n'installe rien : annexe A.7). Une version
+ultérieure ajoute des noms à cette liste ; ceux propres à un éditeur commencent par `x-<vendor>-`.
 
 - Chaque app (§ 6.1), titre (§ 7), homebrew (§ 8), sauvegarde (§ 9) et lot
   de codes de triche (§ 10) porte sa `platform`.
@@ -509,7 +583,7 @@ noms à cette liste ; ceux propres à un éditeur commencent par `x-<vendor>-`.
 - Les réponses qui dépendent de la plateforme SHOULD porter
   `Vary: Lantern-Platform` (§ 14). [L-4.3-6]
 - Le profil d'une plateforme (annexe A) dit ce que le cœur laisse ouvert.
-  Sur une plateforme qui n'a pas encore de profil (annexe A.7), un serveur
+  Sur une plateforme qui n'a pas encore de profil (annexe A.8), un serveur
   MAY servir des apps et des homebrews selon les seules règles du cœur ; un
   client MUST NOT installer quoi que ce soit d'une plateforme pour laquelle
   il n'a pas de profil. [L-4.3-7] Il en va de même pour ce qu'un profil
@@ -589,7 +663,13 @@ MAY le proposer, pour ce qu'il accorde au-delà des appels anonymes.
 - Le serveur MUST limiter les demandes d'appairage par adresse et les
   tentatives sur un code : au-delà, il répond `429` `slow_down` avec
   `Retry-After`. [L-5.2-8] Il SHOULD répondre `429` `slow_down` aux
-  interrogations plus fréquentes que `interval`. [L-5.2-9]
+  interrogations plus fréquentes que `interval`. [L-5.2-9] Il MUST compter
+  `interval` à partir de la dernière interrogation à laquelle il a répondu
+  par `202` ou `200`, jamais d'une qu'il a refusée par `429`, et donner
+  dans `Retry-After` les secondes qui restent avant qu'il réponde de
+  nouveau : un client qui attend aussi longtemps que le dit `Retry-After`,
+  puis `interval` entre ses interrogations, obtient toujours son jeton.
+  [L-5.2-15]
 
 **Avec un QR code.** `verify_complete` est `verify` avec le code dans sa
 requête (le `verification_uri_complete` de la RFC 8628), pour que
@@ -976,6 +1056,8 @@ contenu additionnel.
   la seule foi d'`atlas`. [L-6.1-2] Atlas est une adresse externe (§ 7.1).
 - `mirrors`, facultatif : d'autres adresses du même fichier, depuis
   lesquelles un client peut le lire (§ 19.2).
+- `chunks`, facultatif : où se trouve l'index de morceaux du fichier, pour
+  une mise à jour qui ne télécharge que ce qui a changé (§ 22).
 
 ### 6.2 Listage
 
@@ -1324,7 +1406,7 @@ un paquet dont l'`arch` liste la sienne, ou à défaut un paquet sans
 convient. [L-8.2-8] Sur une plateforme à une seule architecture (l'annexe A
 le dit), un paquet MUST NOT porter `arch`. [L-8.2-9]
 
-Un paquet MAY porter `mirrors`, comme une app (§ 19.2).
+Un paquet MAY porter `mirrors`, comme une app (§ 19.2), et `chunks` (§ 22).
 
 Là où le profil le dit (Android), un paquet porte aussi `signer_sha256` :
 le SHA-256, en hexadécimal minuscule, du certificat qu'utilise la
@@ -1627,8 +1709,10 @@ morceaux qui survivent à une connexion perdue :
    grand, `413`. [L-9.3-2] Un morceau MAY porter son propre
    `Content-Digest`, que le serveur vérifie alors (`422`
    `digest_mismatch`).
-3. `HEAD <upload>` MUST répondre `204` avec `Upload-Offset` et
-   `Upload-Length` : où reprendre après une interruption. [L-9.3-3] Un
+3. `HEAD <upload>` MUST répondre `204` avec `Upload-Offset`,
+   `Upload-Length` et `Lantern-Chunk-Size` (le `chunk_size` de l'envoi) :
+   où reprendre après une interruption, et par quels morceaux, pour un
+   client qui n'a gardé que l'adresse de l'envoi. [L-9.3-3] Un
    serveur ne garde que des morceaux entiers, ou dit dans `Upload-Offset`
    combien il a gardé d'un morceau coupé.
 4. Le morceau qui atteint `size` termine l'envoi : le serveur MUST vérifier
@@ -1889,7 +1973,7 @@ ces limites : [L-13-2]
 | Élément | Au plus |
 |---|---|
 | Un document JSON | 32 Mio, profondeur d'imbrication 16 |
-| Un champ de texte | 4 Kio (`name` et la `reason` d'une demande 512 octets, `note` 120 octets, `profile` 64 octets), en UTF-8 |
+| Un champ de texte | 4 Kio (`name` et la `reason` d'une demande 512 octets, `note` 120 octets, `profile` 64 octets), en UTF-8 ; sauf le `text` d'un lot de codes de triche (§ 10), 1 Mio, la limite propre au lot |
 | Le `q` d'un listage | 256 octets |
 | Une page | 1000 éléments |
 | Titres lus à la fois | 100 |
@@ -1904,6 +1988,7 @@ ces limites : [L-13-2]
 | Les `mirrors` d'un fichier (§ 19.2) | 8 |
 | Une autorisation (§ 19.3) | 1 Kio |
 | Une écriture de synchronisation (§ 20.4) | 1000 éléments ; une collection `limits.sync_items`, 100 000 au plus |
+| Un index de morceaux (§ 22.1) | 8 Mio ; 100 000 morceaux, chacun de 4 fois la `size` de son découpeur au plus (16 Mio) |
 
 Un serveur MUST refuser un document de requête qui dépasse ces limites, ou
 ses propres limites plus basses, avec `400` ou `413`, sans jamais défaillir
@@ -1948,7 +2033,12 @@ réponses qui dépendent de la plateforme ou de la langue varient aussi selon
 - Un serveur ne peut pas changer les réglages d'un client ni ajouter
   d'en-têtes à ses requêtes ultérieures.
 - Un client vérifie le SHA-256 d'un téléchargement avant de l'installer
-  (§ 6.6), et la signature d'un homebrew quand il en a une (§ 8.4).
+  (§ 6.6), et la signature d'un homebrew quand il en a une (§ 8.4) ; pour
+  un fichier reconstitué à partir de morceaux, chaque morceau puis le tout
+  (§ 22).
+- Un client dans un navigateur garde sa clé là où aucun script ne la lit,
+  et un serveur ne prend aucun identifiant dans un cookie (§ 2.5,
+  annexe A.7).
 - Un homebrew n'écrit que les fichiers de son manifeste, sous les racines
   du profil, et rien hors des racines qui n'exigent pas de consentement
   sans l'accord de l'utilisateur (§ 8.3).
@@ -2118,6 +2208,47 @@ une clé USB.
   atteint ses fichiers, n'a ni jeton, ni plafond de classification, ni
   appairage ; sur un stockage local, rien ne dit qui l'a écrite.
 
+**Un index de morceaux ou une source de morceaux malveillants** (§ 22 :
+un serveur ou une bibliothèque statique dont l'index ment, un miroir ou un
+pair qui sert d'autres octets pour une plage, un index fait pour qu'un
+client écrive plus que le fichier).
+
+- Protégé : l'index est vérifié par la taille et le SHA-256 que donne son
+  app ou son paquet, et doit nommer ce fichier-là (§ 22.3) ; chaque morceau
+  est vérifié par son SHA-256 avant d'être gardé, et le fichier reconstitué
+  par le `sha256` du document avant que quoi que ce soit en soit installé
+  (§ 22.3, § 6.6) ; un morceau n'est nommé que par son empreinte, si bien
+  qu'un morceau trouvé ailleurs (dans la graine d'un autre jeu, par
+  exemple) est fait des mêmes octets, et l'empreinte du fichier fixe leur
+  ordre et leur place : aucun morceau n'en remplace un autre ; les morceaux
+  s'additionnent pour donner la taille du fichier, chacun de 16 Mio au
+  plus, 100 000 au plus dans un index de 8 Mio au plus (§ 13), si bien
+  qu'un client n'écrit jamais plus que la taille du fichier, quoi que dise
+  un index : rien ne gonfle comme le ferait une archive ; un client peut
+  toujours lire le fichier entier à la place.
+- Non protégé : les plages qu'un client demande disent à son serveur, ou à
+  un miroir, quels morceaux lui manquent, et donc à peu près quelle version
+  il avait ; une source malveillante fait perdre à un client du temps et de
+  la bande passante jusqu'à ce qu'il se rabatte sur le fichier entier.
+
+**Une page web malveillante** (un site que l'utilisateur ouvre dans le
+navigateur où tourne un client Lantern, une page d'une autre origine).
+
+- Protégé : un serveur ne répond qu'aux pages des origines qu'autorise son
+  propriétaire (§ 2.5), et ne prend aucun identifiant dans un cookie : une
+  page d'une autre origine n'emprunte rien de ce qui appartient à
+  l'utilisateur ; la clé d'un client dans un navigateur ne peut pas être
+  lue hors du stockage de son origine, et son jeton ne vaut rien sans elle
+  (annexe A.7) ; un client dans un navigateur n'atteint que les serveurs
+  auxquels son navigateur fait confiance, et ne demande jamais à son
+  utilisateur d'accepter un avertissement de certificat (annexe A.7).
+- Non protégé : un script qui s'exécute dans une page d'une origine
+  autorisée (une faille de script intersite du client) se sert de la clé
+  tant qu'il s'exécute ; un serveur qui autorise toutes les origines laisse
+  n'importe quelle page qu'ouvre son utilisateur lire ce qu'il donne
+  anonymement, depuis le réseau de l'utilisateur lui-même (une ludothèque à
+  la maison) : `*` est réservé à ce qui est public de toute façon.
+
 **Un jeton d'administration volé.**
 
 - Protégé : il est lié à la clé de son appareil comme tout autre (§ 5.4) ;
@@ -2147,7 +2278,10 @@ crée, et, avec `--admin-writes`, un compte à elle, qu'elle supprime ensuite
 lieu d'un serveur, à une adresse ou dans un dossier ; avec `--peer`, un pair
 (§ 19.4), jusqu'à remplir ses `slots` de téléchargement ; avec
 `--fetch-mirrors`, les octets de chaque miroir que nomme la bibliothèque
-(§ 19.2), lus sans jeton ni aucun identifiant du serveur. Ses contrôles de
+(§ 19.2), lus sans jeton ni aucun identifiant du serveur ; avec
+`--origin`, les réponses à une page de cette origine, requêtes
+préliminaires comprises (§ 2.5), d'un serveur ou d'une bibliothèque
+statique en HTTP. Ses contrôles de
 limitation de débit de l'appairage et des invitations passent en dernier :
 ils laissent l'adresse de la suite limitée pendant un moment. Un serveur de référence (`server/`) sert un dossier de paquets et
 de homebrews, l'exporte sous forme de bibliothèque statique, et passe la
@@ -2168,6 +2302,7 @@ suite ; `server/peer.py` est un pair de référence.
 | `+peers` | Autorisations et miroirs (§ 19.2, § 19.3) ; avec `--peer`, le profil du pair (§ 19.4) |
 | `+sync` | Synchronisation : collections, règle de fusion, suppression (§ 20) |
 | `+encrypted_saves` | Sauvegardes chiffrées de bout en bout conservées telles qu'envoyées (§ 9.4) |
+| `+deltas` | Mises à jour différentielles : les index de morceaux, leur route et les morceaux qu'ils nomment (§ 22) |
 | `Lantern Static` | Une bibliothèque statique : son organisation, ses documents et ses fichiers (§ 21), sans les routes d'un serveur |
 
 La suite affiche les niveaux qu'atteint un serveur : un niveau est atteint
@@ -2180,7 +2315,7 @@ sur un serveur public). Chaque niveau d'un serveur exige `Lantern Core` ;
 
 **Le nom.** Seule une implémentation qui passe la suite à un niveau peut se
 dire « Lantern compatible » et afficher le badge, avec ce niveau et la
-version du texte : « Lantern compatible 0.6 · Core +titles ». Les badges et
+version du texte : « Lantern compatible 0.7 · Core +titles ». Les badges et
 le registre des implémentations sont
 [sur le site](https://lantern.boreale.dev/conformance/) ; une
 implémentation rejoint le registre par une pull request accompagnée de son
@@ -2191,8 +2326,9 @@ serveurs : requêtes signées (§ 5.4), signatures de homebrews (§ 8.4),
 empreintes SPKI (§ 5.3), chemins (§ 8.2), `version_code` par profil
 (annexe A), exigences (§ 8.7), plafonds de classification (§ 5.6),
 sauvegardes chiffrées et phrases de récupération (§ 9.4), autorisations
-(§ 19.3), règle de fusion de la synchronisation (§ 20.4) et organisation
-statique (§ 21.1), chaque cas avec ce que décide un lecteur.
+(§ 19.3), règle de fusion de la synchronisation (§ 20.4), JSON canonique
+(§ 2.3), organisation statique (§ 21.1) et morceaux et leurs index (§ 22),
+chaque cas avec ce que décide un lecteur.
 
 ## 18. Événements (fonctionnalité `events`)
 
@@ -2554,8 +2690,8 @@ La règle de fusion, élément par élément, la même sur tous les serveurs :
 1. De l'élément qu'a le serveur et de celui envoyé, le serveur garde celui
    dont l'`updated` est le plus tardif.
 2. À `updated` égal, une suppression l'emporte ; entre deux valeurs, celle
-   dont le JSON canonique (clés triées, sans espace, caractères non ASCII
-   tels quels, en UTF-8) est la plus grande chaîne d'octets.
+   dont le JSON canonique (§ 2.3) est la plus grande chaîne d'octets ;
+   quand elles sont identiques, le serveur garde celle qu'il a.
 3. Un élément qu'il garde prend la `rev` suivante de la collection ; un
    élément qu'il ne garde pas reçoit pour réponse l'élément tel que le
    serveur l'a.
@@ -2628,6 +2764,7 @@ l'appareil. Chaque route de lecture est un fichier sous elle :
 | `GET <base>/v1/cheats?platform=<p>&title_id=<t>` | `v1/cheats/<p>/<t>.json` |
 | `GET <base>/v1/cheats/{id}` | `v1/cheats/<id>.txt` |
 | Un fichier (§ 6.6) | `v1/blobs/sha256/<hex>` : le fichier dont le SHA-256 est `<hex>` |
+| L'index de morceaux d'un fichier (§ 22.1) | `v1/chunks/sha256/<hex>.json` : l'index du fichier dont le SHA-256 est `<hex>` |
 
 `<p>` est une plateforme des `platforms` de la poignée de main. Un titre
 sans lot de codes de triche n'en a pas de fichier. Vecteurs de test :
@@ -2643,8 +2780,9 @@ sans lot de codes de triche n'en a pas de fichier. Vecteurs de test :
   d'un serveur (§ 3.2), ses pages chaînées comme ci-dessus, ainsi que
   chaque fichier vers lequel pointent ses documents, de leur taille et de
   leur SHA-256. [L-21.1-1]
-- Chaque `file` d'un document, et chaque `url` d'une image qui n'est pas
-  `external`, MUST être un chemin relatif à la racine, comme
+- Chaque `file` d'un document, chaque `url` d'une image qui n'est pas
+  `external`, et chaque `url` de `chunks` (§ 22.1), MUST être un chemin
+  relatif à la racine, comme
   `v1/blobs/sha256/3a7b…` : sans schéma, sans `/` initial, sans partie
   `..`, sans `\` et sans requête. [L-21.1-2]
 - Ses textes sont dans une seule langue, le `language` de la poignée de
@@ -2664,7 +2802,9 @@ racine.
   `sections`, `saves`, `encrypted_saves`, `requests`, `pairing`,
   `signatures`, `admin`, `events`, `peers` et `sync`. [L-21.2-1]
 - `cheats`, quand il est au-dessus de 0, est en lecture seule (§ 10).
-  `limits` ne donne que `page_size`.
+  `deltas` peut être au-dessus de 0 : une bibliothèque statique contient
+  les index de morceaux de ses fichiers (§ 22). `limits` ne donne que
+  `page_size`.
 
 ### 21.3 En lire une
 
@@ -2693,9 +2833,160 @@ racine.
   local, rien ne dit qui a écrit les fichiers, sinon l'utilisateur qui l'a
   branché ; les vérifications des § 6.6 et § 8 s'appliquent comme pour
   tout serveur.
-- Un client à qui l'on donne une adresse essaie d'abord le
-  `/.well-known/lantern` de l'origine, puis `<address>/lantern.json` ; un
-  document avec `static` est une bibliothèque statique.
+- Un client à qui l'on donne une adresse MUST y chercher une bibliothèque
+  dans cet ordre : d'abord le `/.well-known/lantern` de l'origine, où la
+  poignée de main d'un serveur (une poignée de main sans `static`) est le
+  serveur de cette origine (§ 4.2) ; puis `<address>/lantern.json`, où une
+  poignée de main avec `static` est une bibliothèque statique dont la
+  racine est l'adresse. Il passe sur une erreur, un document qu'il ne sait
+  pas lire (pas du JSON, ou d'un `schema` plus récent, § 3.2) et un
+  document de l'autre sorte : une poignée de main avec `static` au
+  `/.well-known/lantern` ne fait jamais de la racine de l'origine une
+  bibliothèque statique. Un dossier sur un stockage n'a pas d'origine : son
+  `lantern.json` seulement. [L-21.3-3]
+- En HTTP, les fichiers d'une bibliothèque statique SHOULD porter
+  `Access-Control-Allow-Origin: *`, pour qu'une page de n'importe quelle
+  origine les lise (GitHub Pages l'envoie). [L-21.3-4] Un navigateur les lit
+  avec des requêtes qui n'ont pas besoin de requête préliminaire
+  (annexe A.7), à laquelle un hébergeur web ne répond pas.
+
+## 22. Mises à jour différentielles (fonctionnalité `deltas`)
+
+Une version plus récente d'un paquet contient une grande partie de la
+version qu'a un appareil. Avec cette famille, un client prend ces octets
+dans ce qu'il détient et ne télécharge que le reste. Un fichier est découpé
+en **morceaux** selon une règle qui ne dépend que de ses octets (§ 22.2),
+de sorte que deux versions d'un fichier partagent les morceaux qui n'ont
+pas changé, et son **index** les liste, chacun par sa taille et son
+SHA-256 (§ 22.1). Rien n'est calculé à chaque requête : l'index est un
+document écrit une fois, qu'une bibliothèque statique contient sous forme
+de fichier ; un morceau est une plage du fichier (§ 6.6), que son serveur,
+un miroir ou un pair servent comme ils servent le fichier (§ 19). Chaque
+morceau est vérifié par son SHA-256, et le fichier reconstitué par le
+`sha256` de son app ou de son paquet, avant que quoi que ce soit en soit
+installé ; un client qui ne peut pas se servir d'un index lit le fichier
+entier, comme sans cette famille. Les sauvegardes ne sont pas concernées.
+
+### 22.1 Index de morceaux
+
+Une app (§ 6.1) et un paquet de homebrew (§ 8.2) MAY porter `chunks`, qui
+dit où se trouve l'index de leur fichier :
+
+```json
+"chunks": {"url": "<base>/v1/chunks/sha256/3a7bd3e2…", "size": 1033, "sha256": "5f0e9c1d…"}
+```
+
+`url` est l'adresse de l'index (dans une bibliothèque statique, son
+chemin, § 21.1) ; `size` et `sha256` sont ceux des octets de l'index.
+L'index, en JSON canonique (§ 2.3) :
+
+```json
+{"chunker":{"alg":"lantern-cdc-1","size":65536},"chunks":[[48083,"ece35ba2…"],[39083,"775fb5ff…"],[136252,"c236d967…"]],"schema":1,"sha256":"3a7bd3e2…","size":223418}
+```
+
+- `sha256` et `size` : ceux du fichier entier, tels que les donne son app
+  ou son paquet.
+- `chunker` : comment le fichier a été découpé : `alg`, `lantern-cdc-1`
+  (§ 22.2), et sa `size`, une puissance de deux de 65 536 (64 Kio) à
+  4 194 304 (4 Mio). Une version ultérieure peut ajouter des découpeurs.
+- `chunks` : chaque morceau du fichier, dans l'ordre, sous la forme
+  `[size, sha256]` : sa taille en octets et le SHA-256 de ses octets, en
+  hexadécimal minuscule. Le décalage d'un morceau est la somme des tailles
+  de ceux qui le précèdent ; les tailles s'additionnent pour donner celle
+  du fichier. Un fichier vide n'en a aucun.
+
+Un serveur qui donne `chunks` MUST servir à son `url` un index de ce
+fichier, de cette forme et dans les limites du § 13, découpé par son
+`chunker` exactement comme le dit le § 22.2 et écrit en JSON canonique
+(§ 2.3) : ses octets sont ceux dont `chunks` donne la `size` et le
+SHA-256. [L-22.1-1] Un fichier a ainsi le même index partout où il est
+découpé avec la même `size`. Vecteurs de test : `vectors/chunks.json`.
+
+`GET <base>/v1/chunks/sha256/{hex}`, avec la portée `library`, → l'index
+du fichier dont le SHA-256 est `{hex}`. Un serveur MUST y répondre pour
+chaque fichier pour lequel il donne `chunks` et que l'appelant peut lire
+(selon ses portées et sa plateforme, dans la limite de son plafond de
+classification : § 5.6), et `404` sinon, comme pour un fichier qu'il n'a
+pas. [L-22.1-2] Un client qui détient un fichier peut ainsi demander son
+index par son seul SHA-256.
+
+Un serveur MAY ne pas donner `chunks` pour un fichier (un petit fichier n'y
+gagne rien). `features.deltas` est le `schema` des index qu'il écrit
+(§ 4.2).
+
+### 22.2 Le découpeur, `lantern-cdc-1`
+
+Un découpeur défini par le contenu, de la famille du hachage « gear »
+(comme FastCDC), à un seul paramètre, sa `size` S = 2^b, b allant de 16 à
+22 :
+
+- un morceau fait au moins `min` = S / 4 octets et au plus `max` = 4 × S,
+  sauf le dernier du fichier, qui peut être plus court ; le masque M est
+  l'entier de 64 bits dont les b bits de poids fort sont à 1,
+  (2^b − 1) × 2^(64 − b) ;
+- la table gear G donne, pour chaque valeur d'octet i de 0 à 255, les
+  8 premiers octets, lus comme un entier gros-boutiste, du SHA-256 des
+  13 octets ASCII `lantern-cdc-1` suivis de l'octet i ;
+- le premier morceau commence au début du fichier, chacun des suivants là
+  où le précédent s'est terminé. Quand il reste `min` octets ou moins, ils
+  forment le dernier morceau. Sinon h vaut 0, et pour chaque octet B à
+  partir du début du morceau + `min`, h devient (2 × h + G[B]) modulo
+  2^64 ; le morceau se termine juste après le premier octet après lequel
+  h AND M vaut 0, ou après son `max`-ième octet, ou à la fin du fichier, au
+  premier des trois.
+
+La fin d'un morceau ne dépend que de son début et des octets qui le
+suivent : une modification d'un fichier déplace les fins voisines, et plus
+loin les morceaux se terminent là où ils se terminaient dans l'ancienne
+version. Ses `min` premiers octets ne sont pas hachés, ce qui évite les
+morceaux minuscules et rend le découpeur rapide.
+
+### 22.3 Mettre à jour avec un index
+
+Un client qui détient des octets d'une version plus ancienne (le paquet
+qu'il a téléchargé et gardé, les fichiers qu'une archive a installés, un
+fichier d'une autre version : ses **graines**) reconstitue un fichier plus
+récent :
+
+1. Il lit l'index à `chunks.url`, et le vérifie.
+2. Il découpe chaque graine avec le `chunker` de l'index (§ 22.2), et y
+   prend chaque morceau de l'index qu'il y trouve, de même taille et de
+   même SHA-256.
+3. Il lit les autres morceaux comme des plages du fichier (§ 6.6), auprès
+   de son serveur, d'un miroir ou d'un pair (§ 19), en réunissant à son gré
+   des voisins en une seule plage.
+4. Il vérifie le fichier reconstitué, puis l'installe comme tout
+   téléchargement.
+
+- Avant de se servir d'un index, un client MUST vérifier que ses octets
+  ont la taille et le SHA-256 que donne `chunks` ; le traiter comme absent
+  quand son `schema` est plus élevé que celui qu'il connaît (§ 3.2) ou que
+  son découpeur lui est inconnu ; et le refuser quand son `sha256` ou sa
+  `size` ne sont pas ceux de son fichier, ou que ses morceaux ont une autre
+  forme que celle du § 22.1 : chacun de 1 octet au `max` du découpeur, son
+  SHA-256 en minuscules, 100 000 au plus, leurs tailles s'additionnant pour
+  donner celle du fichier. [L-22.3-1]
+- Un client MUST vérifier le SHA-256 de chaque morceau, d'où qu'il vienne,
+  avant de le garder, et la taille et le SHA-256 du fichier entier par
+  rapport à ceux de son app ou de son paquet avant d'en installer quoi que
+  ce soit (§ 6.6), et refuser ce qui ne correspond pas. [L-22.3-2]
+- Un client MUST NOT écrire plus que la taille du fichier, ni lire d'une
+  source plus que la plage qu'il a demandée. [L-22.3-3]
+- Un client SHOULD lire le fichier entier (§ 6.6) quand il ne peut pas se
+  servir d'un index, ou quand un morceau ou une source échoue, comme il le
+  ferait sans cette famille. [L-22.3-4]
+
+Un miroir ou un pair se lit pour une plage comme pour un fichier : sans
+identifiant du serveur, un pair avec une autorisation (§ 19). Un fichier
+partiel garde les morceaux qu'il a vérifiés : un client reprend avec eux
+après une connexion perdue ou une mise en veille (annexe B.4).
+
+Ce que coûte une modification : les morceaux qu'elle touche, environ
+1,25 × S chacun. Un paquet que son format compresse d'un bloc, en un seul
+flux, diffère partout d'une version à l'autre et n'y gagne rien ; un
+paquet compressé par blocs ou par fichier, comme le sont `nsz` et `zip`,
+garde identiques les octets des parties qui n'ont pas changé, que ses
+morceaux retrouvent.
 
 ## Annexe A — Profils de plateforme
 
@@ -2719,8 +3010,9 @@ Les chemins s'écrivent comme le dit le § 8.2 ; le profil dit comment ils
 correspondent à l'appareil. Le profil de la Switch est complet. Ceux de la
 3DS, de la Vita, de la PS4, d'Android et de Linux sont des brouillons, **à
 relire par quelqu'un qui connaît la plateforme** : ce qui est marqué « (à
-vérifier) » n'est pas arrêté. Les autres plateformes sont ouvertes : pas
-encore de profil (annexe A.7).
+vérifier) » n'est pas arrêté. Celui du navigateur, `web`, ne lui donne
+rien à installer (annexe A.7). Les autres plateformes sont ouvertes : pas
+encore de profil (annexe A.8).
 
 ### A.1 Nintendo Switch (`switch`)
 
@@ -2951,11 +3243,67 @@ portable, quelle que soit leur distribution : ce qui les distingue
   ses architectures `aarch64`, `armhf` et `x86_64`, comme Lantern, si bien
   que la liste d'un portage se reprend telle quelle (à vérifier).
 
-### A.7 Plateformes ouvertes
+### A.7 Web (`web`)
 
-Ouvertes : pas encore de profil. `ios`, `windows`, `macos` et `web`, ainsi
-que les noms de boutiques d'Atlas (`steam`, `gog`, `xbox`), n'en ont pas ;
-le § 4.3 dit ce que font sur elles un serveur et un client.
+Un client dans un navigateur web : une page, ou une application installée
+depuis une page, qui lit une bibliothèque dans le navigateur. Il n'installe
+rien : ce qu'il télécharge, il le remet à son utilisateur, pour qu'il le
+copie sur la carte d'une console, par exemple. Ses règles découlent de ce
+qu'un navigateur permet et interdit ; le côté serveur en est le § 2.5.
+
+- **Identifiants, types, formats, codes de triche, sauvegardes,
+  homebrews** : aucun dans cette version. Un serveur MUST NOT lister une
+  app, un titre, un homebrew, un lot de codes de triche ou une sauvegarde
+  de la plateforme `web`, ni `web` parmi les `platforms` de sa poignée de
+  main : un navigateur n'a rien à installer. [L-A.7-1] Un client dans un
+  navigateur affiche la bibliothèque d'une autre plateforme, qu'il nomme
+  par `?platform=`.
+- **En-têtes.** Le navigateur écrit lui-même `User-Agent` (§ 2, `L-2-5`),
+  et `Lantern-Platform` demanderait une requête préliminaire avant chaque
+  lecture (§ 2.5) : un client dans un navigateur nomme la plateforme qu'il
+  affiche par `?platform=` à la place (§ 4.3, `L-4.3-5`).
+- **Transport.** Un client dans un navigateur MUST être servi en HTTPS (ou
+  en HTTP en clair depuis le bouclage, pour les tests), et ne lire les
+  serveurs, miroirs et pairs qu'en HTTPS, sauf un serveur sur le bouclage.
+  [L-A.7-2] Une page en HTTPS ne peut pas lire de HTTP en clair (contenu
+  mixte) : un miroir ou un pair en HTTP en clair (§ 19) est laissé de côté,
+  et le fichier pris auprès du serveur.
+- **Pas d'épinglage.** Une page ne voit pas la clé du serveur qu'elle
+  atteint : elle ne peut ni l'épingler (§ 5.3) ni afficher son empreinte à
+  l'appairage. Un client dans un navigateur MUST n'atteindre qu'un serveur
+  dont le navigateur accepte le certificat par son magasin d'autorités,
+  sans jamais demander à son utilisateur d'accepter un certificat contre
+  lequel le navigateur le met en garde. [L-A.7-3] Un serveur à la maison
+  est alors lu par un navigateur avec le certificat d'une autorité
+  publique, pour un domaine de son propriétaire, ou d'une autorité que son
+  utilisateur a installée sur cet appareil ; un serveur au certificat
+  auto-signé n'est pas fait pour les clients dans un navigateur.
+- **Clés d'appareil.** Un client dans un navigateur MUST s'appairer avec
+  une clé d'appareil (§ 5.4), créée par WebCrypto (Ed25519) comme non
+  extractible, et la garder, avec son jeton, dans l'IndexedDB de sa propre
+  origine seulement : jamais dans un cookie, dans `localStorage`, dans une
+  URL, ni là où un script peut lire les octets d'une clé. [L-A.7-4] Il
+  envoie son jeton dans `Authorization` seulement, signé (§ 5.4).
+- **Événements.** `EventSource` n'envoie pas d'`Authorization` : un client
+  dans un navigateur lit le flux (§ 18.1) avec `fetch`, ou fait de
+  l'interrogation longue (§ 18.3).
+- **Bibliothèques statiques.** Un hébergeur web comme GitHub Pages ne
+  répond à aucune requête préliminaire. Un client dans un navigateur MUST
+  lire une bibliothèque statique avec des requêtes qu'un navigateur envoie
+  sans requête préliminaire : `GET` ou `HEAD`, sans autre en-tête que ceux
+  que le navigateur pose lui-même, `Accept`, `Accept-Language` et une seule
+  `Range`. [L-A.7-5] L'hébergeur envoie
+  `Access-Control-Allow-Origin: *` (§ 21.3).
+- **Téléchargements.** Un client dans un navigateur MUST vérifier ce qu'il
+  télécharge (sa taille et son SHA-256, § 6.6 ; chaque morceau, § 22.3)
+  avant de le remettre à son utilisateur, et ne rien remettre qui échoue à
+  cette vérification. [L-A.7-6]
+
+### A.8 Plateformes ouvertes
+
+Ouvertes : pas encore de profil. `ios`, `windows` et `macos`, ainsi que
+les noms de boutiques d'Atlas (`steam`, `gog`, `xbox`), n'en ont pas ; le
+§ 4.3 dit ce que font sur elles un serveur et un client.
 
 ## Annexe B — Recommandations aux clients
 
@@ -2970,7 +3318,9 @@ utilisateurs et pour les serveurs qu'il lit.
 - Une requête JSON : 30 secondes sans un octet, 60 en tout.
 - Un fichier : pas de limite au total, mais 60 secondes sans un octet, puis
   reprise (B.4).
-- Interroger un appairage : comme le dit `interval`, jusqu'à `expires`.
+- Interroger un appairage : comme le dit `interval`, jusqu'à `expires` ;
+  après un `429`, attendre aussi longtemps que le dit son `Retry-After`,
+  puis de nouveau `interval` (§ 5.2).
 
 ### B.2 Nouvelles tentatives
 
@@ -3018,6 +3368,9 @@ utilisateurs et pour les serveurs qu'il lit.
   la console.
 - L'envoi d'une sauvegarde reprend de la même façon, à partir de
   l'`Upload-Offset` de `HEAD` (§ 9.3).
+- Un fichier reconstitué à partir de morceaux (§ 22.3) reprend par les
+  morceaux déjà vérifiés : garder, à côté du fichier partiel, lesquels des
+  morceaux de l'index il contient.
 
 ### B.5 Plusieurs serveurs
 
@@ -3128,23 +3481,56 @@ de l'appareil.
   système prend de lui-même, là où le système permet à un homebrew de le
   signaler.
 
+### B.13 Mises à jour différentielles
+
+- Garder le paquet de chaque app et de chaque homebrew installés, là où
+  l'appareil a la place, ou le dernier téléchargé : c'est la graine de la
+  prochaine mise à jour (§ 22.3). Une console qui partage des fichiers sur
+  le réseau local (§ 19.4) les garde de toute façon.
+- Découper une graine une fois par `size` de découpeur et garder la liste
+  de ses morceaux, par le SHA-256 de la graine, plutôt que de la redécouper
+  à chaque mise à jour.
+- Demander les morceaux à lire en quelques plages : réunir les voisins, et
+  ceux qui ne sont séparés que de quelques kilo-octets, ce qui coûte moins
+  qu'une requête de plus.
+- Montrer ce que télécharge une mise à jour, et ce qu'elle épargne
+  (« 12 Mo sur 1,4 Go »), et comparer l'espace libre à la `size` du
+  fichier : le fichier est reconstitué à côté de l'ancien avant de le
+  remplacer.
+
+### B.14 Clients dans un navigateur
+
+- Garder la clé et le jeton dans IndexedDB, sous l'`uid` du serveur ; un
+  utilisateur qui efface les données du site s'appaire de nouveau.
+- Lire le flux d'événements avec `fetch` et un lecteur de flux, ou faire
+  de l'interrogation longue : `EventSource` ne peut porter ni
+  `Authorization` ni signature.
+- Ne remettre un téléchargement à l'utilisateur qu'une fois vérifié
+  (annexe A.7) : le hacher à mesure qu'il arrive (WebCrypto n'a pas de
+  SHA-256 en flux : une petite bibliothèque s'en charge), puis proposer de
+  l'enregistrer.
+- Une page servie par le serveur lui-même (sa propre origine) n'a besoin
+  d'aucun CORS ; une page servie ailleurs a besoin que le propriétaire du
+  serveur autorise son origine (§ 2.5) : le dire, avec cette origine, quand
+  une requête préliminaire échoue.
+
 ## Annexe C — La route vers la 1.0
 
 Non normatif : ce dont ce texte a besoin avant sa version 1.0, quand
 `/v1/` et le `schema` 1 cesseront de changer de forme, et où en est chaque
-critère à ce brouillon, le 0.6.
+critère à ce brouillon, le 0.7.
 
-| | Critère | Où il en est au 0.6 |
+| | Critère | Où il en est au 0.7 |
 |---|---|---|
 | 1 | **Deux serveurs et deux clients indépendants** atteignent `Lantern Core` avec la suite de conformité, chacun écrit à partir de ce texte par des personnes qui n'ont pas écrit les autres, et chaque paire d'entre eux fonctionne ensemble : appairage, listage, téléchargement, ce qui manque. | Ouvert. Un serveur passe la suite, le serveur de référence de ce dépôt ; les bibliothèques de lantern-sdk sont écrites par les auteurs de ce texte et ne comptent pas. Le registre du site liste qui passe la suite. |
-| 2 | **Un cœur sans question ouverte** : chaque section du § 2 au § 14, et le § 17, sans partie marquée « à vérifier », et aucun ticket étiqueté comme question à leur sujet encore ouvert. | Rempli par ce brouillon. Le 0.6 a tranché ce que le cœur laissait ouvert (ses Modifications listent chaque point), aucune de ces sections n'est marquée « à vérifier », et la liste ci-dessous ne contient aucune question à leur sujet. Il le reste tant qu'aucun ticket étiqueté comme question à leur sujet n'est ouvert. |
+| 2 | **Un cœur sans question ouverte** : chaque section du § 2 au § 14, et le § 17, sans partie marquée « à vérifier », et aucun ticket étiqueté comme question à leur sujet encore ouvert. | Rempli. Le 0.6 a tranché ce que le cœur laissait ouvert, et le 0.7 ce que les navigateurs lui demandent (§ 2.5) et la forme canonique des nombres (§ 2.3) ; leurs Modifications listent chaque point. Aucune de ces sections n'est marquée « à vérifier », et la liste ci-dessous ne contient aucune question à leur sujet. Il le reste tant qu'aucun ticket étiqueté comme question à leur sujet n'est ouvert. |
 | 3 | **Des profils relus pour deux plateformes au moins**, par des personnes qui les connaissent et qui ne sont pas les auteurs de ce texte : celui de la Switch et un autre, leurs identifiants, formats, chemins et racines essayés sur de vrais appareils. | Ouvert. Le profil de la Switch est complet, pas encore relu de l'extérieur ; les brouillons (A.2 à A.6) gardent leurs « (à vérifier) ». |
 | 4 | **Une relecture extérieure** de ce qui détient des clés : les requêtes signées (§ 5.4), les sauvegardes chiffrées (§ 9.4), les autorisations et les pairs (§ 19), par quelqu'un qui ne les a pas écrits. | Ouvert. |
-| 5 | **Un texte publié et attesté** : chaque version publiée avec ses fichiers, leurs sommes et une attestation de provenance de build (§ 3.6). | Rempli à partir du 0.6 : le workflow de publication est en place ; la première étiquette, `spec-v0.6`, revient au mainteneur. |
+| 5 | **Un texte publié et attesté** : chaque version publiée avec ses fichiers, leurs sommes et une attestation de provenance de build (§ 3.6). | Rempli à partir du 0.6 : le workflow de publication est en place ; ses étiquettes, `spec-v0.6` et `spec-v0.7`, reviennent au mainteneur. |
 
 Ensuite, à la 1.0 :
 
-- Les familles au-delà du cœur (§ 7 à § 11, § 18 à § 21) peuvent rester au
+- Les familles au-delà du cœur (§ 7 à § 11, § 18 à § 22) peuvent rester au
   `schema` 1 et continuer de grandir après la 1.0, par ajouts seulement
   (§ 3.5).
 - La règle des brouillons (§ 3.5) prend fin : un changement de forme fait
@@ -3155,15 +3541,11 @@ Ensuite, à la 1.0 :
 1.0 : le critère 2 tient tant que la première liste est vide.
 
 - Sur le cœur (§ 2 à § 14, § 17) : aucune.
-- Ailleurs :
-  1. Les clients dans un navigateur (`web`, annexe A.7) : les en-têtes CORS
-     qu'envoie un serveur, et la façon dont une page garde une clé
-     d'appareil (§ 5.4). À décider avec le profil `web` ; d'ici là, une
-     application web lit un serveur de sa propre origine.
-  2. Chaque « (à vérifier) » des profils en brouillon (annexe A.2 à A.6),
-     que seule une personne qui connaît la plateforme peut trancher.
-  3. Les mises à jour de gros paquets par différences : après la 1.0, en
-     ajout.
+- Ailleurs : chaque « (à vérifier) » des profils en brouillon (annexe A.2
+  à A.6), que seule une personne qui connaît la plateforme peut trancher.
+
+Les clients dans un navigateur (§ 2.5, annexe A.7) et les mises à jour par
+différences (§ 22), sur la liste jusqu'au 0.6, sont tranchés par le 0.7.
 
 ## Modifications {#changes}
 
@@ -3462,3 +3844,79 @@ Ensuite, à la 1.0 :
     `--fetch-mirrors`, remplit les `slots` de téléchargement d'un pair, et
     vérifie ce que tranche le 0.6 ; la route vers la 1.0 dit où en est
     chaque critère, et liste les questions encore ouvertes (annexe C).
+- 0.7 (2026-10-30) : les mises à jour différentielles, les clients dans un
+  navigateur, et ce que la suite ne pouvait toujours pas vérifier ;
+  toujours `/v1/` et le `schema` 1, en tant que brouillon. Chaque route et
+  chaque champ du 0.6 restent, avec les ajouts ci-dessous ; une famille
+  facultative est nouvelle, déclarée dans `features` : `deltas`. Quatre
+  points restreignent ce que peut être un serveur ou un document, chacun
+  marqué **(plus étroit)**, comme l'a fait le 0.6 ; un élargit ce que peut
+  faire un client, marqué **(plus large)**.
+  - Mises à jour différentielles (§ 22, fonctionnalité `deltas`) : un
+    fichier découpé en morceaux par `lantern-cdc-1`, un découpeur défini
+    par le contenu et décrit à l'octet près (une table gear tirée de
+    SHA-256, un masque, un plus petit et un plus grand morceau), de sorte
+    que deux versions partagent les morceaux qui n'ont pas changé ; un
+    index par fichier, en JSON canonique, chaque morceau par sa taille et
+    son SHA-256, nommé par `chunks` sur une app ou un paquet (son `url`, sa
+    `size` et son SHA-256) et servi à `<base>/v1/chunks/sha256/{hex}`, ou
+    comme fichier d'une bibliothèque statique (§ 21.1) ; un client prend
+    dans ses graines les morceaux qu'il détient et lit les autres comme des
+    plages du fichier, auprès de son serveur, d'un miroir ou d'un pair,
+    vérifie chaque morceau, puis le fichier entier, avant de l'installer,
+    et lit le fichier entier quand quelque chose échoue (`L-22.1-1`,
+    `L-22.1-2`, `L-22.3-1` à `L-22.3-4`). Ni format de correctif, ni
+    travail à chaque requête : l'index est écrit une fois, un morceau est
+    une plage. Limites (§ 13) : un index de 8 Mio, 100 000 morceaux,
+    16 Mio par morceau. Un modèle de menaces pour elles (§ 16), le niveau
+    `+deltas` (§ 17), des vecteurs (`vectors/chunks.json`) et des
+    recommandations aux clients (annexe B.13).
+  - Navigateurs (§ 2.5) : les réponses CORS qu'un serveur donne aux
+    origines qu'autorise son propriétaire, erreurs et requêtes
+    préliminaires comprises, les en-têtes de requête qu'il nomme et les
+    en-têtes de réponse qu'il expose (`L-2.5-1` à `L-2.5-5`) ; aucun
+    identifiant dans un cookie, jamais `Access-Control-Allow-Credentials`.
+    Le profil `web` (annexe A.7) : un client dans un navigateur n'installe
+    rien et est servi en HTTPS, n'atteint que les serveurs auxquels son
+    navigateur fait confiance, puisqu'il ne peut pas épingler une clé,
+    garde une clé WebCrypto non extractible dans IndexedDB, lit une
+    bibliothèque statique avec des requêtes simples, et vérifie ce qu'il
+    remet à son utilisateur (`L-A.7-2` à `L-A.7-6`). Un serveur ne sert
+    rien de la plateforme `web` et ne la liste pas **(plus étroit)**
+    (`L-A.7-1`) : jusqu'au 0.6, `web` était une plateforme ouverte, dont un
+    serveur pouvait servir des apps. Un client dans un navigateur n'est
+    tenu ni à `User-Agent`, qu'écrit son navigateur, ni à
+    `Lantern-Platform` (`L-2-5`, `L-2-7`) **(plus large)**. Les plateformes
+    ouvertes deviennent l'annexe A.8. Recommandations aux clients B.14. Les
+    deux questions ouvertes de l'annexe C au-delà des profils sont
+    tranchées.
+  - JSON canonique (§ 2.3) : celui de la RFC 8785, les nombres tels que
+    les écrit ECMAScript, les membres triés par unités de code UTF-16, là
+    où la règle de fusion de la synchronisation disait « clés triées » sans
+    dire comment, et rien des nombres **(plus étroit)** ; à `updated` égal
+    et à JSON canonique égal, le serveur garde son propre élément
+    (§ 20.4). Vecteurs : `vectors/canonical-json.json`, et des nombres dans
+    `vectors/sync-merge.json`.
+  - Appairage (§ 5.2) : un serveur compte `interval` à partir de la
+    dernière interrogation à laquelle il a répondu, jamais d'une qu'il a
+    refusée par `429`, et son `Retry-After` est le temps restant, pour
+    qu'un client qui interroge un peu trop vite ne soit pas exclu pour de
+    bon **(plus étroit)** (`L-5.2-15`).
+  - Bibliothèques statiques (§ 21.3) : un client cherche la poignée de
+    main d'un serveur au `/.well-known/lantern` de l'origine d'abord, puis
+    `lantern.json` à l'adresse, en passant sur ce qu'il ne sait pas lire,
+    et ne prend jamais une poignée de main statique au
+    `/.well-known/lantern` pour la racine d'une bibliothèque (`L-21.3-3`) ;
+    en HTTP, les fichiers portent `Access-Control-Allow-Origin: *`
+    (`L-21.3-4`) ; les index de morceaux des fichiers (§ 21.1).
+  - Envois reprenables (§ 9.3) : `HEAD` sur un envoi donne aussi
+    `Lantern-Chunk-Size`, son `chunk_size`, pour qu'un client qui reprend
+    après un redémarrage, et n'a gardé que l'adresse de l'envoi, envoie des
+    morceaux que le serveur accepte **(plus étroit)** (`L-9.3-3`).
+  - Limites (§ 13) : le `text` d'un lot de codes de triche, écrit par le
+    § 10, est la seule chaîne au-delà de 4 Kio : 1 Mio, la limite propre au
+    lot, comme le disait le § 10.
+  - Conformité (§ 17) : `--origin` vérifie les réponses d'un serveur ou
+    d'une bibliothèque statique à une page de cette origine ; la suite ne
+    demande `zstd` que quand son Python sait le lire, et vérifie les images
+    du serveur de référence sur sa propre origine (§ 7.1).
