@@ -4,18 +4,19 @@ Seul le texte anglais fait foi. Pour la mettre à jour : traduire ce qui a
 changé dans SPEC.md depuis `commit`, puis donner ici le nouveau commit et la
 somme SHA-256 de SPEC.md à ce commit (sha256sum SPEC.md).
 language: fr
-commit: ca10e3146a6300cc99814e2290de5da97c735965
-sha256: ea82945a9f07fa5e75114a2062e5edfcba5c7432e0d42c5640e899a11e61898c
+commit: aaa15bbae9d9a0ad37ef89ad5d03e1e986024382
+sha256: 391ace6ec9d340061853e0c53c1557bfe5df6b6d26ee409fe3b1dadf99b3b9f4
 banner: Traduction informative ; seul le texte anglais fait foi.
 english: Lire le texte anglais, qui fait référence
 source: SPEC.fr.md sur GitHub
 -->
 # Lantern — un protocole ouvert pour les serveurs de bibliothèques de jeux
 
-Brouillon 0.5, 2026-10-30. Statut : **brouillon**, susceptible de changer jusqu'à la 1.0.
+Brouillon 0.6, 2026-10-30. Statut : **brouillon**, susceptible de changer jusqu'à la 1.0 : le
+brouillon qui prépare le texte pour elle (annexe C).
 Ce texte est publié sous licence [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
-**Traduction informative.** Ce texte traduit en français le brouillon 0.5
+**Traduction informative.** Ce texte traduit en français le brouillon 0.6
 de la spécification. Seul le texte anglais fait foi : en cas de doute ou
 d'écart, c'est lui qui s'applique. Les identifiants d'exigence
 (`[L-5.2-3]`), le code, les noms de champs, les documents JSON et les mots
@@ -150,6 +151,85 @@ main (§ 4.2).
 - Les codes, les noms de champs et les valeurs énumérées (`code`, `kind`,
   `genres`, `state`) ne changent jamais avec la langue.
 
+### 2.3 Valeurs
+
+Les formes que partagent tous les documents et toutes les routes, pour que
+deux lecteurs ne lisent jamais une même valeur de deux façons :
+
+- **JSON.** Tout document est en I-JSON (RFC 7493) : UTF-8 sans marque
+  d'ordre des octets, aucun nom de membre deux fois dans un même objet,
+  aucun substitut (surrogate) isolé, et tout entier compris entre
+  −(2^53 − 1) et 2^53 − 1, écrit sans partie décimale ni exposant (`size`
+  et `version_code` compris). Un serveur MUST n'écrire que de tels
+  documents, et répondre `400` à un document de requête qui n'en est pas
+  un. [L-2.3-1]
+- **Instants.** Un instant est un `date-time` de la RFC 3339 en UTC, avec
+  `Z` et sans décalage : `2026-10-30T09:12:03Z`, ou avec une fraction de
+  seconde, `2026-10-30T09:12:03.250Z`. Une date, comme la `release` d'un
+  titre, s'écrit `2026-03-14`. Un serveur MUST écrire chaque instant et
+  chaque date de ses documents sous ces formes. [L-2.3-2] Un lecteur MUST
+  lire une fraction de 1 à 9 chiffres là où ce texte ne la borne pas (le
+  `updated` d'un élément de synchronisation en a 3 au plus, § 20.2).
+  [L-2.3-3]
+- **Les empreintes en hexadécimal** sont en minuscules : `sha256`,
+  `manifest_sha256`, `signer_sha256`, l'identifiant d'une clé de
+  sauvegarde, et le `{hex}` d'un chemin (§ 19.3, § 19.4, § 21.1). Un
+  serveur MUST les écrire en minuscules, et répondre `404` à une route dont
+  le chemin contient un SHA-256 qui n'est pas fait de 64 chiffres
+  hexadécimaux en minuscules. [L-2.3-4] Un lecteur les compare telles
+  quelles, casse comprise. Une empreinte courte (§ 5.3), destinée aux
+  personnes, est le seul hexadécimal en majuscules ; les identifiants d'une
+  plateforme (annexe A) ont leurs propres formes.
+- **Base64** est celui de la RFC 4648 § 4, avec son remplissage ;
+  **base64url**, celui de son § 5, sans. Chaque champ dit lequel.
+- **Les textes destinés aux personnes** (noms, résumés, notes) sont en
+  Unicode. Un serveur SHOULD les écrire en forme normale NFC. [L-2.3-5] Là
+  où ce texte compare ou cherche des noms (`q`, § 6.2 et § 8.5 ; les
+  chemins d'un manifeste, § 8.2), il les compare selon la correspondance
+  canonique sans casse d'Unicode (The Unicode Standard § 3.13, D145 : NFD,
+  puis repli de casse par défaut, puis NFD), de sorte que `É` et `é`, ou
+  `ß` et `ss`, sont identiques ; un serveur MUST les comparer ainsi.
+  [L-2.3-6] Les identifiants, codes, jetons, clés et valeurs énumérées (une
+  plateforme, un `kind`, un genre) se comparent exactement, octet par
+  octet.
+- **Rien** est une liste vide, jamais une erreur : un listage qui n'a rien
+  pour son appelant et ses filtres MUST répondre `200` avec `"items": []`,
+  `"next": null` et, quand il en donne un, `"total": 0`. [L-2.3-7] Un
+  fichier peut être vide : sa `size` vaut 0, il a un SHA-256 comme tout
+  autre (`e3b0c442…`), et toute `Range` sur lui donne `416` (RFC 9110
+  § 14.1.1).
+
+### 2.4 Routes et requêtes
+
+- Le chemin d'une route est celui qu'écrit ce texte, sous `<base>`, ses
+  segments encodés en pourcentage comme le dit la RFC 3986 (les
+  identifiants de ce texte n'ont pas besoin d'encodage). Une `/` finale
+  fait un autre chemin : `<base>/v1/apps/` n'est pas une route, et donne
+  `404` ; `<base>/v1` et `<base>/v1/` sont tous deux la poignée de main. Un
+  serveur MUST NOT répondre à une route de ce texte par une redirection
+  (`3xx`). [L-2.4-1] Un client MUST NOT suivre la redirection d'une route,
+  pour que son jeton et ses signatures n'aillent que là où il les a
+  envoyés (§ 2). [L-2.4-2]
+- Chaque paramètre de requête est donné une seule fois : un serveur MUST
+  répondre `400` à une requête qui en donne un deux fois
+  (`?type=base&type=dlc`). [L-2.4-3] Une liste est un seul paramètre, ses
+  valeurs séparées par des virgules (`ids`, § 7.2).
+- Un paramètre de valeur vide est absent : `?platform=&type=` demande
+  toutes les plateformes et tous les types, pour qu'un client puisse
+  remplir un modèle tel que ce texte l'écrit. Un serveur MUST le lire
+  ainsi. [L-2.4-4] Il MUST ignorer un paramètre que ce texte ne donne pas
+  pour cette route, pour qu'une version ultérieure puisse en ajouter un ;
+  cette version dit comment un client apprend qu'un serveur le lit.
+  [L-2.4-5]
+- Toute route qui répond à `GET` MUST répondre à `HEAD` comme elle répond
+  à `GET` : le même statut et les mêmes en-têtes, sans corps (RFC 9110
+  § 9.3.2). [L-2.4-6] Toutefois, l'adresse d'interrogation d'un appairage
+  (§ 5.2), dont un `HEAD` ne récupérerait pas le jeton, et le flux d'événements (§ 18.1), qui ne finit
+  jamais, MAY répondre à `HEAD` par `405`.
+- Un document de requête est envoyé avec `Content-Type: application/json`,
+  un paramètre `charset=utf-8` étant admis. Un serveur MUST répondre `400`
+  au document d'une route d'un autre type. [L-2.4-7]
+
 ## 3. Versions
 
 ### 3.1 Version du protocole
@@ -175,6 +255,11 @@ envoie, MUST avoir un entier `schema` à sa racine. [L-3.2-1]
   acceptent les champs qu'ils ne listent pas, comme doit le faire un
   lecteur. Les documents d'un serveur MUST être valides selon eux.
   [L-3.2-5]
+- Le `$id` de chaque schéma est son adresse stable,
+  `https://lantern.boreale.dev/schemas/v1/<name>.json` (`apps.json`,
+  `common.json`…), où le site le sert : l'adresse d'un schéma de `/v1/` ne
+  change jamais, et chaque version publiée de ce texte (§ 3.6) porte les
+  mêmes fichiers.
 - Un serveur MUST répondre à un document de requête d'un `schema` qu'il ne
   sait pas lire par `422` `unsupported_schema` (§ 12). [L-3.2-6]
 - `features` (§ 4.2) donne, par famille, le `schema` qu'écrit le serveur ;
@@ -251,6 +336,25 @@ Jusqu'à la 1.0, les brouillons gardent `/v1/` et le `schema` 1 : un
 brouillon peut encore changer une forme qu'un autre brouillon a écrite, et
 sa section « Modifications » le dit.
 
+### 3.6 Versions publiées
+
+Chaque version de ce texte est publiée sur le dépôt, par une étiquette
+`spec-v<version>` (`spec-v0.6`) : sa release contient SPEC.md, les
+schémas, leurs exemples, les vecteurs de test, `openapi.yaml` et la suite
+de conformité, chacun comme un fichier à part et tous dans un zip, avec
+leurs sommes SHA-256 dans `SHA256SUMS`. GitHub atteste que chaque fichier a
+été produit à partir de cette étiquette par le workflow de publication du
+dépôt (une attestation de provenance de build, SLSA). Pour vérifier un
+fichier :
+
+```sh
+gh attestation verify lantern-0.6.zip --repo JigSawFr/lantern
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+Une implémentation nomme la version qu'elle suit, et la suite de cette
+version la vérifie (§ 17).
+
 ## 4. Découverte, poignée de main et plateformes
 
 ### 4.1 Sur le réseau local
@@ -275,8 +379,8 @@ Lantern a sa propre découverte, sur le port UDP **47115** :
 - Chaque datagramme est du JSON UTF-8 d'au plus 1200 octets. Un serveur ne
   répond qu'à une requête qu'il sait lire (§ 3.2) et se tait sinon. Il
   SHOULD ne répondre qu'aux adresses de ses propres réseaux. [L-4.1-2] Il
-  SHOULD ne répondre que quelques fois par seconde à une même adresse.
-  [L-4.1-3]
+  SHOULD répondre au plus 10 fois par seconde à une même adresse, et se
+  taire au-delà. [L-4.1-3]
 - Un serveur SHOULD aussi s'annoncer par DNS-SD (RFC 6763) sur DNS
   multicast (RFC 6762) sous `_lantern._tcp`, avec les clés TXT `uid=<uid>`,
   `path=<base>` et `v=1` (les versions, séparées par des virgules).
@@ -346,7 +450,7 @@ MUST renvoyer le même document, avec ou sans jeton. [L-4.2-1]
   jetons qu'aucune clé ne lie ; `skew`, de combien de secondes le `created`
   d'une signature peut différer de l'horloge du serveur.
 - `limits` : `page_size`, le nombre maximal d'éléments sur une page
-  (§ 6.2) ; avec `saves`, `save_body`, la plus grande sauvegarde qu'accepte
+  (§ 6.2), de 1 à 1000 ; avec `saves`, `save_body`, la plus grande sauvegarde qu'accepte
   une seule requête (§ 9.2), `save_size`, la plus grande sauvegarde tout
   court (§ 9.3), et `saves_kept_per_title`, le nombre de sauvegardes que le
   serveur garde par titre, plateforme et compte avant de supprimer la plus
@@ -383,7 +487,8 @@ noms à cette liste ; ceux propres à un éditeur commencent par `x-<vendor>-`.
 - Chaque app (§ 6.1), titre (§ 7), homebrew (§ 8), sauvegarde (§ 9) et lot
   de codes de triche (§ 10) porte sa `platform`.
 - Un client indique sa propre plateforme par l'en-tête
-  `Lantern-Platform: <name>` à chaque appel.
+  `Lantern-Platform: <name>` à chaque appel, comme le demande le § 2
+  (`L-2-7`).
 - Avec cet en-tête, un serveur MUST répondre pour cette plateforme
   seulement : le listage des apps, ce qui manque (§ 6.3), les changements
   (§ 6.4), les sections, les titres, les homebrews, les sauvegardes et les
@@ -397,8 +502,8 @@ noms à cette liste ; ceux propres à un éditeur commencent par `x-<vendor>-`.
   `POST <base>/v1/homebrew/updates` (§ 8.5) et les routes qui écrivent une
   sauvegarde (§ 9) MUST donner `400` sans plateforme. [L-4.3-4] Une route
   qui nomme un `title_id` ou un `id` de homebrew connu sur plusieurs
-  plateformes donne aussi `400`, jusqu'à ce que le client nomme la
-  plateforme.
+  plateformes MUST aussi donner `400`, jusqu'à ce que le client nomme la
+  plateforme. [L-4.3-8]
 - `?platform=<name>` sur un listage (ou sur une route qui exige une
   plateforme) MUST l'emporter sur l'en-tête. [L-4.3-5]
 - Les réponses qui dépendent de la plateforme SHOULD porter
@@ -473,8 +578,11 @@ MAY le proposer, pour ce qu'il accorde au-delà des appels anonymes.
 
 - Le code MUST utiliser l'alphabet `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (sans
   `0`, `O`, `1` ni `I`), avoir 8 à 32 symboles (au moins 40 bits), et être
-  affiché par groupes de 4 reliés par `-`. [L-5.2-5] Le serveur ignore la
-  casse, les espaces et les tirets quand l'utilisateur le saisit.
+  affiché par groupes de 4 reliés par `-`. [L-5.2-5] Un serveur MUST lire
+  un code que l'utilisateur saisit, sur sa page ou par le § 5.7, en
+  ignorant la casse, les espaces et les tirets : `kq4m 7txd` est
+  `KQ4M-7TXD`. [L-5.2-14]
+- `interval` vaut de 1 à 60 secondes.
 - Un code MUST expirer en 10 minutes au plus (`expires`, en secondes, au
   plus 600). [L-5.2-6] L'adresse d'interrogation MUST être impossible à
   deviner (au moins 128 bits) et ne donner le jeton qu'une fois. [L-5.2-7]
@@ -663,7 +771,9 @@ lien ou de code.
   d'appareils peuvent l'utiliser, de 1 à 100 ; `used` : combien l'ont fait ;
   `rating_cap` (§ 5.6) et `note`, facultatifs.
 - Un appareil l'utilise en s'appairant (§ 5.2) avec
-  `"invitation": "<code>"`. L'appairage est approuvé aussitôt, pour le
+  `"invitation": "<code>"`, qu'un serveur MUST lire en ignorant la casse,
+  les espaces et les tirets, comme un code d'appairage (§ 5.2). [L-5.5-4]
+  L'appairage est approuvé aussitôt, pour le
   compte de l'invitation, avec celles des portées demandées que
   l'invitation détient, et son `rating_cap` : la première interrogation
   donne le jeton.
@@ -759,6 +869,8 @@ pages, comme au § 6.2 : `{"schema":1, "items":[…], "total":3,
 | `GET <base>/v1/admin/invitations` | Les invitations encore utilisables (§ 5.5). |
 | `POST <base>/v1/admin/invitations` | `{"schema":1, "user":"sam", "scopes":["library"], "expires":"2026-11-06T18:00:00Z", "devices":2, "rating_cap":{"age":12}, "note":"…"}` → `201` l'invitation, avec son `code` et son `link`. |
 | `DELETE <base>/v1/admin/invitations/{id}` | La révoque → `204` : son code donne `410`. |
+| `GET <base>/v1/admin/requests?status=&user=&platform=` | Les demandes de tous les comptes (§ 11), de la plus récente à la plus ancienne, chacune avec son `user`. |
+| `POST <base>/v1/admin/requests/{id}` | `{"schema":1, "decision":"decline", "reason":"…"}` ou `{"schema":1, "decision":"done"}` → `200` la demande (§ 11). |
 
 - Un serveur MUST répondre à chaque route de cette famille par `403`
   `forbidden` pour un jeton sans la portée `admin` (`401` sans jeton).
@@ -841,7 +953,8 @@ contenu additionnel.
   comparent des entiers, jamais du texte. `version_name`, facultatif, est la
   version lisible par les personnes (`1.3.0`), jamais comparée. Vecteurs de
   test : `vectors/version-codes.json`.
-- `size` : en octets, un entier sur 64 bits. `installed_size`, facultatif :
+- `size` : en octets, un entier de la plage d'I-JSON (§ 2.3 : 8 Pio au
+  plus). `installed_size`, facultatif :
   les octets qu'occupe l'app une fois installée, quand le serveur les
   connaît (ceux d'un `nsz`, décompressé), qu'un client compare à son espace
   libre (§ 6.3).
@@ -873,10 +986,15 @@ contenu additionnel.
 ```
 
 - `platform` l'emporte sur `Lantern-Platform` (§ 4.3) ; `type` et
-  `title_id` MUST filtrer, et `q` cherche dans les noms. [L-6.2-1]
-- `sort` : `name` (par défaut), `added` ou `release` (tous deux du plus
-  récent au plus ancien) ; les ex aequo MUST être départagés par `id`, pour
-  que l'ordre soit stable. [L-6.2-2]
+  `title_id` MUST filtrer, et `q` garder les apps dont le `name` le
+  contient, comparés comme le dit le § 2.3. [L-6.2-1] `q` fait 256 octets
+  au plus.
+- `sort` : `name` (par défaut), selon le `name` comparé comme le dit le
+  § 2.3 ; `added`, du plus récent au plus ancien ; ou `release`, du plus
+  récent au plus ancien selon la date de sortie du titre de l'app, celles
+  qui n'en ont pas en dernier. Les ex aequo MUST être départagés par `id`,
+  comparé octet par octet, du plus petit au plus grand, pour que l'ordre
+  soit stable. [L-6.2-2]
 - `cursor` est opaque ; `next` vaut `null` sur la dernière page. Lire avec
   un curseur pendant que la bibliothèque change MUST ne sauter ni répéter
   aucune app. [L-6.2-3]
@@ -885,7 +1003,12 @@ contenu additionnel.
   l'a donné pour un autre listage (ou `410`, quand le serveur ne sait pas le
   distinguer d'un curseur expiré). [L-6.2-4]
 - `page_size` vaut au plus `limits.page_size` ; une valeur plus grande MUST
-  être ramenée à cette limite. [L-6.2-5]
+  être ramenée à cette limite. [L-6.2-5] Une valeur qui n'est pas un entier
+  positif, ou un `q` de plus de 256 octets, MUST donner `400`. [L-6.2-6]
+  Sans `page_size`, le serveur choisit, dans la limite de
+  `limits.page_size`.
+- `total`, facultatif, est le nombre d'éléments que contient le listage
+  entier pour cet appelant et ces filtres, quand le serveur les compte.
 
 ### 6.3 Ce qui manque à l'appareil
 
@@ -914,6 +1037,13 @@ contenu additionnel.
 Un serveur connaît le jeu d'une app installée par sa bibliothèque, ou par
 la règle du profil quand il en a une. Paginé avec `cursor` dans la requête.
 
+`installed` est toujours envoyé, et peut être vide (une console sur
+laquelle rien n'est encore installé) ; `want` contient une ou plusieurs
+des valeurs `base`, `update` et `dlc`. Un serveur MUST répondre `400` à un
+`want` vide ou contenant une autre valeur, et ignorer un `app_id` installé
+qu'il ne connaît pas ; un `app_id` listé deux fois compte pour son
+`version_code` le plus élevé. [L-6.3-2]
+
 **Espace libre.** C'est le client qui décide de ce qui tient, pas le
 serveur : il compare son espace libre à l'`installed_size` de chaque app
 (sa `size` quand il n'y en a pas), et dit lesquelles ne tiennent pas avant
@@ -932,8 +1062,10 @@ client a nommée, ou pour toutes les plateformes. Sans `since`, la route
 MUST ne renvoyer aucune app, et le jeton courant. [L-6.4-1] Un jeton
 `since` MUST donner `410` quand il est trop ancien pour le serveur (le
 client relit alors toute la bibliothèque), et `400` quand le serveur ne l'a
-jamais donné (ou `410`, comme pour un curseur, § 6.2). [L-6.4-2] Avec
-`wait`, une requête attend que quelque chose change, et son document porte
+jamais donné (ou `410`, comme pour un curseur, § 6.2). [L-6.4-2] Une
+app dont le fichier a changé est une autre app (son `id` change, § 6.1) :
+l'ancien identifiant figure dans `removed`, la nouvelle app dans `added`.
+Avec `wait`, une requête attend que quelque chose change, et son document porte
 les événements du § 18 (§ 18.3).
 
 ### 6.5 Sections (fonctionnalité `sections`)
@@ -954,6 +1086,14 @@ compose. Un client MAY les afficher à côté des siens.
   du fichier entier, la même que le `sha256` de l'app. [L-6.6-2]
 - Les octets servis MUST être ceux dont le document donne le SHA-256, de la
   taille qu'il donne, sans `Content-Encoding` (§ 2.1). [L-6.6-3]
+- MUST honorer `If-Range` avec son `ETag` (RFC 9110 § 13.1.5) : la plage
+  quand l'étiquette correspond, le fichier entier (`200`) sinon, pour qu'un
+  client qui reprend un fichier qui a changé recommence depuis le début
+  (annexe B.4). [L-6.6-6]
+- Une requête de plusieurs plages MAY recevoir le fichier entier (`200`) ;
+  un serveur MUST NOT répondre en `multipart/byteranges`, qu'aucun client
+  de ce texte ne lit. [L-6.6-7] Une plage de suffixe (`bytes=-500`) est une
+  plage comme une autre.
 - L'identifiant dans le chemin est opaque et non énumérable. Il MAY
   expirer : le client relit alors l'app. Un identifiant inconnu ou expiré
   MUST donner `404` ou `410`. [L-6.6-4]
@@ -1031,7 +1171,8 @@ virgules) → `{"schema":1, "titles":[Title…], "unknown":["…"]}` : les titre
 que le serveur a parmi ces identifiants, pour la plateforme que le client a
 nommée (ou pour chaque plateforme qui a l'identifiant), et les identifiants
 qu'il ne connaît pas. Un serveur MUST placer chaque identifiant demandé
-dans l'une des deux listes, et répondre `400` à plus de 100 identifiants.
+dans l'une des deux listes, un identifiant demandé deux fois n'y figurant
+qu'une fois, et répondre `400` à plus de 100 identifiants ou à aucun.
 [L-7.2-1]
 
 ### 7.3 Changements
@@ -1153,7 +1294,7 @@ fait correspondre : il commence par `/` ; ses parties sont séparées par
 `/`, aucune n'est vide, `.` ou `..` ; il ne contient ni `\`, ni `:`, ni
 `"`, ni caractère de contrôle, ni NUL ; une partie fait au plus 255
 octets, le chemin 1024. Deux chemins d'un même manifeste ne sont jamais
-identiques à la casse près. Un serveur MUST NOT servir un manifeste qui
+identiques à la casse près, comparés comme le dit le § 2.3. Un serveur MUST NOT servir un manifeste qui
 enfreint ces règles, ou dont des chemins se trouvent hors des racines du
 profil pour les homebrews (annexe A). [L-8.2-4] Vecteurs de test :
 `vectors/paths.json`.
@@ -1413,8 +1554,8 @@ ne jamais juger un appareil d'après elles ni filtrer un listage avec elles.
 
 `GET <base>/v1/saves?platform=&title_id=` → `{"schema":1,
 "saves":[Save…]}`, qui MUST contenir les sauvegardes du compte lui-même, de
-la plus récente à la plus ancienne pour chaque titre, une sauvegarde étant :
-[L-9.1-1]
+la plus récente à la plus ancienne pour chaque titre (l'ordre des titres
+étant celui du serveur), une sauvegarde étant : [L-9.1-1]
 
 ```json
 {"platform": "switch", "title_id": "0100ABCD00010000", "save_id": "s_03",
@@ -1429,7 +1570,9 @@ la plus récente à la plus ancienne pour chaque titre, une sauvegarde étant :
 - `kind` : `account` (la sauvegarde d'un utilisateur), `device` (celle de
   l'appareil, partagée par ses utilisateurs), `bcat` (des données que le
   système a téléchargées pour le jeu), `cache`, ou `other`, selon la façon
-  dont le profil fait correspondre les types propres à la plateforme.
+  dont le profil fait correspondre les types propres à la plateforme. Une
+  sauvegarde envoyée sans `kind` n'en a pas, et un lecteur la lit comme
+  `other`.
 - `game_version_code` : le `version_code` du jeu (§ 6.1) au moment de la
   sauvegarde, pour qu'un client SHOULD avertir avant de restaurer une
   sauvegarde sur un jeu plus ancien. [L-9.1-2]
@@ -1643,9 +1786,16 @@ protège ce que contient une sauvegarde, pas sa présence.
 
 ## 11. Demandes (fonctionnalité `requests`)
 
+Un utilisateur demande à son serveur un jeu que celui-ci n'a pas ; son
+administrateur l'ajoute, ou refuse, et dit pourquoi.
+
 - `GET <base>/v1/requests` → `{"schema":1, "requests":[{"id", "platform",
-  "title_id", "name", "status", "created"}…]}` : celles du compte lui-même,
-  de la plateforme nommée (§ 4.3). `status` : `open`, `done` ou `declined`.
+  "title_id", "name", "status", "created", "updated", "reason"}…]}` :
+  celles du compte lui-même, de la plateforme nommée (§ 4.3), de la plus
+  récente à la plus ancienne. `status` : `open`, `done` ou `declined` ;
+  `updated`, le moment du dernier changement de statut ; `reason`, sur une
+  demande refusée seulement, les mots de l'administrateur pour celui qui
+  l'a faite (512 octets au plus).
 - `POST <base>/v1/requests` `{"schema":1, "platform":"switch",
   "title_id":"…"}` → `201` avec la nouvelle demande (`{"schema":1,
   "id":…}`, telle que listée), ou `200` avec la demande ouverte pour le
@@ -1657,6 +1807,37 @@ protège ce que contient une sauvegarde, pas sa présence.
 - Chaque appareil du compte lit les mêmes demandes ; l'événement `request`
   (§ 18.2) leur dit quand une demande est créée, change de statut ou est
   retirée.
+
+**États.** Une demande ne passe d'un état à l'autre que comme le dit ce
+tableau :
+
+| De | Vers | Comment | Événement `request` (§ 18.2) |
+|---|---|---|---|
+| (aucun) | `open` | Le compte demande un titre pour lequel il n'a pas de demande ouverte (`POST`). | `"status": "open"` |
+| `open` | `done` | Le titre arrive dans la bibliothèque (le serveur le voit), ou un administrateur indique qu'elle est satisfaite. | `"status": "done"` |
+| `open` | `declined` | Un administrateur la refuse, avec ou sans `reason`. | `"status": "declined"` |
+| tout état | (aucun) | Le compte la retire (`DELETE`). | `"deleted": true` |
+
+- `done` et `declined` sont définitifs : un serveur MUST NOT changer le
+  statut d'une demande autrement que comme le dit le tableau, et un compte
+  qui redemande le même titre crée une nouvelle demande. [L-11-3]
+- Avec la portée `admin` (§ 5.7), `GET <base>/v1/admin/requests` liste
+  les demandes de tous les comptes, de la plus récente à la plus ancienne,
+  chacune avec son `user`, par pages comme au § 6.2, filtrées par
+  `status`, `user` et `platform` ; `POST <base>/v1/admin/requests/{id}`
+  tranche une demande ouverte : `{"schema":1, "decision":"decline",
+  "reason":"Only the games this household owns."}` (`reason` facultatif,
+  avec `decline` seulement) ou `{"schema":1, "decision":"done"}`. Un
+  serveur MUST répondre `200` avec la demande telle qu'elle est alors,
+  `409` `conflict` quand elle n'est plus ouverte, `404` quand il ne la
+  connaît pas, et `400` à une autre décision ou à un `reason` avec `done`.
+  [L-11-4]
+- Un serveur MUST donner la `reason` d'une demande refusée à celui qui l'a
+  faite, dans son listage, telle que l'administrateur l'a écrite. [L-11-5]
+  Elle est destinée aux personnes, dans la langue de l'administrateur : le
+  serveur ne la traduit pas.
+- Un serveur MUST envoyer l'événement `request` à chaque changement du
+  tableau, aux flux du compte et à ceux de la portée `admin`. [L-11-6]
 
 ## 12. Erreurs
 
@@ -1675,12 +1856,12 @@ le tableau donne pour ce statut. [L-12-2] Son `type` est la page du code,
 
 | Statut | `code` | Quand |
 |---|---|---|
-| 400 | `bad_request`, `key_required` | Une requête ou un corps mal formés ; un curseur ou un jeton `since` que le serveur n'a jamais donné ; une plateforme manquante là où il en faut une ; un appairage sans clé d'appareil, sur un serveur qui ne délivre que des jetons liés (§ 5.4) |
+| 400 | `bad_request`, `key_required` | Une requête ou un corps mal formés, un paramètre donné deux fois, un corps qui n'est pas en I-JSON (§ 2.3, § 2.4) ; un curseur ou un jeton `since` que le serveur n'a jamais donné ; une plateforme manquante là où il en faut une ; un appairage sans clé d'appareil, sur un serveur qui ne délivre que des jetons liés (§ 5.4) |
 | 401 | `unauthorized`, `signature_required`, `signature_invalid`, `signature_expired`, `signature_replayed` | Pas de jeton là où il en faut un, ou un jeton inconnu, révoqué ou expiré (avec `WWW-Authenticate: Bearer`) ; un jeton lié sans signature (§ 5.4) ; une signature qui ne se vérifie pas ou n'a pas la forme que donne le § 5.4 ; le `created` d'une signature hors de la fenêtre du serveur ; le `nonce` d'une signature déjà vu |
 | 403 | `forbidden`, `account_frozen` | Une portée manquante ; un compte gelé ; l'autorisation d'un pair absente ou non valide (§ 19.4) ; l'`installed` d'un autre appareil (§ 20.4) |
 | 404 | `not_found` | |
 | 405 | `bad_request` | Une méthode que la route n'accepte pas (avec `Allow`) |
-| 409 | `conflict` | Le décalage d'un envoi qui n'est pas celui du serveur (avec `Upload-Offset`) ; un lot de codes de triche ou un compte qui existe déjà (§ 10, § 5.7) ; un compte qui ne peut pas être supprimé (§ 5.7) ; une écriture de synchronisation d'une autre génération (§ 20.4) |
+| 409 | `conflict` | Le décalage d'un envoi qui n'est pas celui du serveur (avec `Upload-Offset`) ; un lot de codes de triche ou un compte qui existe déjà (§ 10, § 5.7) ; un compte qui ne peut pas être supprimé (§ 5.7) ; une écriture de synchronisation d'une autre génération (§ 20.4) ; une décision sur une demande qui n'est plus ouverte (§ 11) |
 | 410 | `gone` | Un curseur, un jeton `since`, un identifiant d'événement, une révision de synchronisation, un appairage, une invitation ou un identifiant de fichier expirés |
 | 412 | `precondition_failed` | Une écriture de synchronisation dont le `If-Match` n'est pas celui de la collection (§ 20.4) |
 | 413 | `too_large` | Une sauvegarde ou un morceau au-delà de la limite du serveur ; une collection de synchronisation pleine (§ 20.5) |
@@ -1691,6 +1872,8 @@ le tableau donne pour ce statut. [L-12-2] Son `type` est la page du code,
 | 503 | `unavailable` | Analyse en cours, maintenance (avec `Retry-After`) |
 
 - Une route inconnue MUST donner `404` `not_found`. [L-12-3]
+- La réponse à un `HEAD` n'a pas de corps, celle d'une erreur comprise :
+  son statut et ses en-têtes le disent.
 - `title` et `detail` sont destinés aux personnes, dans la langue
   `language` (§ 2.2) ; un client les affiche bornés et sans caractères de
   contrôle, et n'agit que d'après `status` et `code`.
@@ -1706,7 +1889,8 @@ ces limites : [L-13-2]
 | Élément | Au plus |
 |---|---|
 | Un document JSON | 32 Mio, profondeur d'imbrication 16 |
-| Un champ de texte | 4 Kio (`name` 512 octets, `note` 120 octets, `profile` 64 octets) |
+| Un champ de texte | 4 Kio (`name` et la `reason` d'une demande 512 octets, `note` 120 octets, `profile` 64 octets), en UTF-8 |
+| Le `q` d'un listage | 256 octets |
 | Une page | 1000 éléments |
 | Titres lus à la fois | 100 |
 | Un manifeste | 4096 fichiers, chaque chemin 1024 octets |
@@ -1728,7 +1912,14 @@ ses propres limites plus basses, avec `400` ou `413`, sans jamais défaillir
 ## 14. Mise en cache
 
 Chaque `GET` qui renvoie du JSON SHOULD porter un `ETag` et honorer
-`If-None-Match` avec `304`. [L-14-1] Les réponses aux appels authentifiés
+`If-None-Match` avec `304`. [L-14-1] Un serveur qui envoie un `ETag` MUST
+répondre à un `If-None-Match` qui le contient (comparé faiblement, RFC 9110
+§ 13.1.2), ou `*`, par `304`, sans corps, et avec les `ETag`, `Vary` et
+`Cache-Control` que porterait le `200` ; [L-14-3] et son `ETag` MUST
+changer quand le document qu'il enverrait à cet appelant change : une
+autre page, une autre plateforme, langue, compression ou un autre plafond
+de classification. [L-14-4] Les pages d'un listage sont des documents
+comme les autres, chacune avec son étiquette. Les réponses aux appels authentifiés
 SHOULD porter `Cache-Control: private` et `Vary: Authorization` ; les
 réponses qui dépendent de la plateforme ou de la langue varient aussi selon
 `Lantern-Platform` et `Accept-Language`, et les réponses compressées selon
@@ -1954,7 +2145,11 @@ synchronisation, les appareils qu'elle appaire et les invitations qu'elle
 crée, et, avec `--admin-writes`, un compte à elle, qu'elle supprime ensuite
 (§ 5.7). Avec `--static`, elle vérifie une bibliothèque statique (§ 21) au
 lieu d'un serveur, à une adresse ou dans un dossier ; avec `--peer`, un pair
-(§ 19.4). Un serveur de référence (`server/`) sert un dossier de paquets et
+(§ 19.4), jusqu'à remplir ses `slots` de téléchargement ; avec
+`--fetch-mirrors`, les octets de chaque miroir que nomme la bibliothèque
+(§ 19.2), lus sans jeton ni aucun identifiant du serveur. Ses contrôles de
+limitation de débit de l'appairage et des invitations passent en dernier :
+ils laissent l'adresse de la suite limitée pendant un moment. Un serveur de référence (`server/`) sert un dossier de paquets et
 de homebrews, l'exporte sous forme de bibliothèque statique, et passe la
 suite ; `server/peer.py` est un pair de référence.
 
@@ -1968,7 +2163,7 @@ suite ; `server/peer.py` est un pair de référence.
 | `+saves` | Sauvegardes (§ 9) |
 | `+cheats` | Codes de triche, et leur écriture quand elle est proposée (§ 10) |
 | `+requests` | Demandes (§ 11) |
-| `+admin` | Administration, invitations, plafonds de classification et suppression de comptes (§ 5.5–5.7) |
+| `+admin` | Administration, invitations, plafonds de classification, suppression de comptes (§ 5.5–5.7), et décisions sur les demandes quand les demandes sont proposées (§ 11) |
 | `+events` | Événements : le flux, l'interrogation longue et leurs limites (§ 18) |
 | `+peers` | Autorisations et miroirs (§ 19.2, § 19.3) ; avec `--peer`, le profil du pair (§ 19.4) |
 | `+sync` | Synchronisation : collections, règle de fusion, suppression (§ 20) |
@@ -1985,7 +2180,7 @@ sur un serveur public). Chaque niveau d'un serveur exige `Lantern Core` ;
 
 **Le nom.** Seule une implémentation qui passe la suite à un niveau peut se
 dire « Lantern compatible » et afficher le badge, avec ce niveau et la
-version du texte : « Lantern compatible 0.5 · Core +titles ». Les badges et
+version du texte : « Lantern compatible 0.6 · Core +titles ». Les badges et
 le registre des implémentations sont
 [sur le site](https://lantern.boreale.dev/conformance/) ; une
 implémentation rejoint le registre par une pull request accompagnée de son
@@ -2043,7 +2238,9 @@ data: {"schema":1,"id":"r_7Qm2","platform":"switch","title_id":"0100ABCD00010000
   quand il ne peut pas poser l'en-tête (la requête l'emporte). Le serveur
   MUST alors envoyer, après `ready`, chaque événement postérieur à ce jeton
   que l'appelant peut voir, dans l'ordre, puis les nouveaux à mesure qu'ils
-  arrivent. [L-18.1-3] Un jeton trop ancien pour le serveur MUST donner
+  arrivent. [L-18.1-3] Il MUST envoyer ces événements avant le premier
+  battement de cœur du flux, pour qu'un client sache, à ce battement, qu'il
+  est à jour. [L-18.1-10] Un jeton trop ancien pour le serveur MUST donner
   `410` `gone`, et un jeton qu'il n'a jamais donné `400` (ou `410`, comme
   pour `since`, § 6.4), avant que le flux ne commence. [L-18.1-4] Le client
   relit alors ce qu'il affiche (la bibliothèque, ses demandes) et se
@@ -2074,7 +2271,7 @@ data: {"schema":1,"id":"r_7Qm2","platform":"switch","title_id":"0100ABCD00010000
 |---|---|---|
 | `ready` | Chaque flux | `{"schema":1}` : le flux commence (18.1). |
 | `library` | Portée `library` | `{"schema":1, "families":["apps","titles","homebrew","cheats"], "platforms":["switch"]}` : quelque chose de ces familles a changé sur ces plateformes. Le client relit leurs changements (§ 6.4, § 7.3) ou leurs listages. |
-| `request` | Portée `requests` : les demandes du compte lui-même | `{"schema":1, "id", "platform", "title_id", "status"}` (§ 11) ; `"deleted": true` à la place de `status` quand elle a été retirée. |
+| `request` | Portée `requests` : les demandes du compte lui-même ; portée `admin` : celles de tous les comptes, avec leur `user` | `{"schema":1, "id", "platform", "title_id", "status"}` (§ 11), à chaque changement du tableau du § 11 ; `"deleted": true` à la place de `status` quand elle a été retirée. |
 | `pairing` | Portée `admin` | Un appairage en attente d'approbation, tel que le liste le § 5.7 : `{"schema":1, "id", "code", "device", "key", "expires"}`. |
 | `save` | Portée `saves` : les sauvegardes du compte lui-même | Une sauvegarde conservée : `{"schema":1, "platform", "title_id", "save_id", "created", "device"}` (§ 9). |
 | `sync` | Portée `sync.read` : celles du compte lui-même | `{"schema":1, "collection":"wishes", "rev":42}` : une collection a changé (§ 20). |
@@ -2164,8 +2361,9 @@ plus 8 autres adresses des mêmes octets : `[{"url":
 
 - L'`url` d'un miroir est absolue, en `https`, ou en `http` pour une
   adresse d'un réseau privé : `10.0.0.0/8`, `172.16.0.0/12`,
-  `192.168.0.0/16`, `fc00::/7` ou `fe80::/10`. Un client MUST NOT lire un
-  miroir en HTTP en clair à une autre adresse. [L-19.2-1]
+  `192.168.0.0/16`, `fc00::/7` ou `fe80::/10`, ou de bouclage, pour les
+  tests (§ 2). Un client MUST NOT lire un miroir en HTTP en clair à une
+  autre adresse. [L-19.2-1]
 - Un serveur MUST ne nommer comme miroir qu'une adresse qui sert exactement
   les octets du fichier, et n'y mettre aucun de ses jetons. [L-19.2-2]
 - Un client lit un miroir comme un fichier (§ 6.6), avec `Range` pour
@@ -2488,7 +2686,10 @@ racine.
   changements ni événements : un client relit `lantern.json`, puis ses
   pages quand `static.generated` a changé (leur `ETag`, là où HTTP en
   donne un, épargne celles qui n'ont pas changé).
-- Sur HTTP, le § 2 s'applique : HTTPS sauf sur le bouclage. Sur un stockage
+- Sur HTTP, le § 2 s'applique : HTTPS sauf sur le bouclage. Les fichiers
+  d'une bibliothèque statique ne sont pas les routes d'un serveur (§ 2.4) :
+  un client peut suivre la redirection d'un hébergeur web entre eux en
+  HTTPS, puisqu'il ne leur envoie aucun identifiant. Sur un stockage
   local, rien ne dit qui a écrit les fichiers, sinon l'utilisateur qui l'a
   branché ; les vérifications des § 6.6 et § 8 s'appliquent comme pour
   tout serveur.
@@ -2930,26 +3131,39 @@ de l'appareil.
 ## Annexe C — La route vers la 1.0
 
 Non normatif : ce dont ce texte a besoin avant sa version 1.0, quand
-`/v1/` et le `schema` 1 cesseront de changer de forme.
+`/v1/` et le `schema` 1 cesseront de changer de forme, et où en est chaque
+critère à ce brouillon, le 0.6.
 
-1. **Deux serveurs et deux clients indépendants** atteignent `Lantern Core`
-   avec la suite de conformité, chacun écrit à partir de ce texte par des
-   personnes qui n'ont pas écrit les autres, et chaque paire d'entre eux
-   fonctionne ensemble : appairage, listage, téléchargement, ce qui manque.
-2. **Un cœur sans question ouverte** : chaque section du § 2 au § 14, et le
-   § 17, sans partie marquée « à vérifier », et aucun ticket étiqueté comme
-   question à leur sujet encore ouvert.
-3. **Des profils relus pour deux plateformes au moins**, par des personnes
-   qui les connaissent et qui ne sont pas les auteurs de ce texte : celui de
-   la Switch et un autre, leurs identifiants, formats, chemins et racines
-   essayés sur de vrais appareils.
-4. Les familles au-delà du cœur (§ 7 à § 11, § 18 à § 21) peuvent rester au
-   `schema` 1 et continuer de grandir après la 1.0, par ajouts seulement
-   (§ 3.5).
-5. Ensuite la règle des brouillons (§ 3.5) prend fin : un changement de
-   forme fait monter le `schema` d'un document, et l'ancien reste servi tant
-   que des clients le lisent.
+| | Critère | Où il en est au 0.6 |
+|---|---|---|
+| 1 | **Deux serveurs et deux clients indépendants** atteignent `Lantern Core` avec la suite de conformité, chacun écrit à partir de ce texte par des personnes qui n'ont pas écrit les autres, et chaque paire d'entre eux fonctionne ensemble : appairage, listage, téléchargement, ce qui manque. | Ouvert. Un serveur passe la suite, le serveur de référence de ce dépôt ; les bibliothèques de lantern-sdk sont écrites par les auteurs de ce texte et ne comptent pas. Le registre du site liste qui passe la suite. |
+| 2 | **Un cœur sans question ouverte** : chaque section du § 2 au § 14, et le § 17, sans partie marquée « à vérifier », et aucun ticket étiqueté comme question à leur sujet encore ouvert. | Rempli par ce brouillon. Le 0.6 a tranché ce que le cœur laissait ouvert (ses Modifications listent chaque point), aucune de ces sections n'est marquée « à vérifier », et la liste ci-dessous ne contient aucune question à leur sujet. Il le reste tant qu'aucun ticket étiqueté comme question à leur sujet n'est ouvert. |
+| 3 | **Des profils relus pour deux plateformes au moins**, par des personnes qui les connaissent et qui ne sont pas les auteurs de ce texte : celui de la Switch et un autre, leurs identifiants, formats, chemins et racines essayés sur de vrais appareils. | Ouvert. Le profil de la Switch est complet, pas encore relu de l'extérieur ; les brouillons (A.2 à A.6) gardent leurs « (à vérifier) ». |
+| 4 | **Une relecture extérieure** de ce qui détient des clés : les requêtes signées (§ 5.4), les sauvegardes chiffrées (§ 9.4), les autorisations et les pairs (§ 19), par quelqu'un qui ne les a pas écrits. | Ouvert. |
+| 5 | **Un texte publié et attesté** : chaque version publiée avec ses fichiers, leurs sommes et une attestation de provenance de build (§ 3.6). | Rempli à partir du 0.6 : le workflow de publication est en place ; la première étiquette, `spec-v0.6`, revient au mainteneur. |
 
+Ensuite, à la 1.0 :
+
+- Les familles au-delà du cœur (§ 7 à § 11, § 18 à § 21) peuvent rester au
+  `schema` 1 et continuer de grandir après la 1.0, par ajouts seulement
+  (§ 3.5).
+- La règle des brouillons (§ 3.5) prend fin : un changement de forme fait
+  monter le `schema` d'un document, et l'ancien reste servi tant que des
+  clients le lisent.
+
+**Questions ouvertes.** Ce qui reste à décider, et que lit le passage à la
+1.0 : le critère 2 tient tant que la première liste est vide.
+
+- Sur le cœur (§ 2 à § 14, § 17) : aucune.
+- Ailleurs :
+  1. Les clients dans un navigateur (`web`, annexe A.7) : les en-têtes CORS
+     qu'envoie un serveur, et la façon dont une page garde une clé
+     d'appareil (§ 5.4). À décider avec le profil `web` ; d'ici là, une
+     application web lit un serveur de sa propre origine.
+  2. Chaque « (à vérifier) » des profils en brouillon (annexe A.2 à A.6),
+     que seule une personne qui connaît la plateforme peut trancher.
+  3. Les mises à jour de gros paquets par différences : après la 1.0, en
+     ajout.
 
 ## Modifications {#changes}
 
@@ -3143,3 +3357,108 @@ Non normatif : ce dont ce texte a besoin avant sa version 1.0, quand
     conformité `+events`, `+peers`, `+sync`, `+encrypted_saves` et
     `Lantern Static` (§ 17), les recommandations aux clients B.10 à B.12,
     et la route vers la 1.0 (annexe C).
+- 0.6 (2026-10-30) : le brouillon qui prépare le texte pour la 1.0 ;
+  toujours `/v1/` et le `schema` 1, en tant que brouillon. Chaque route et
+  chaque champ du 0.5 restent, avec les ajouts ci-dessous ; quatre points
+  restreignent ce que peut être un document ou une requête, chacun marqué
+  **(plus étroit)** : aucun serveur ni client de ce texte ne les écrivait,
+  et les schémas, qui gardent le `schema` 1 (§ 3.5), les refusent
+  désormais.
+  - Un cœur sans question ouverte (annexe C, critère 2). Ce que les § 2 à
+    § 14 et le § 17 laissaient ouvert est tranché :
+    - Le JSON est de l'I-JSON (§ 2.3, `L-2.3-1`) : aucun nom de membre deux
+      fois, aucun substitut isolé, aucune marque d'ordre des octets ; des
+      entiers entre −(2^53 − 1) et 2^53 − 1, si bien que `size` n'est plus
+      « un entier sur 64 bits » **(plus étroit)** ; un document de requête
+      qui n'est pas en I-JSON donne `400`.
+    - Les instants sont au format de la RFC 3339 en UTC avec `Z`, sans
+      décalage **(plus étroit)**, avec une fraction de 1 à 9 chiffres que
+      tout lecteur lit ; les dates en `YYYY-MM-DD` (§ 2.3, `L-2.3-2`,
+      `L-2.3-3`).
+    - Les empreintes hexadécimales sont partout en minuscules, et le
+      SHA-256 d'un chemin d'une autre forme donne `404` (§ 2.3, `L-2.3-4`).
+    - Les noms se comparent et se cherchent selon la correspondance
+      canonique sans casse d'Unicode, et s'écrivent en NFC ; les
+      identifiants, codes et valeurs énumérées exactement (§ 2.3,
+      `L-2.3-5`, `L-2.3-6`) : `q`, qui « cherche dans les noms » (§ 6.2)
+      sans dire ni comment ni dans quoi, garde les apps dont le `name` le
+      contient, et les chemins d'un manifeste « identiques à la casse
+      près » (§ 8.2) se comparent ainsi.
+    - Rien est une page vide (`items` `[]`, `next` `null`), jamais une
+      erreur ; un fichier vide a son SHA-256 et donne `416` à toute plage
+      (§ 2.3, `L-2.3-7`).
+    - Routes et requêtes (§ 2.4) : des chemins exactement tels qu'écrits,
+      une `/` finale faisant un autre chemin, aucune redirection d'un
+      serveur et aucune suivie par un client (`L-2.4-1`, `L-2.4-2`) ; un
+      paramètre donné deux fois donne `400` **(plus étroit)** (`L-2.4-3`) ;
+      une valeur vide vaut absence, pour que les modèles qu'écrit ce texte
+      (`?platform=&type=`) fonctionnent tels quels (`L-2.4-4`) ; un
+      paramètre qu'une route ne connaît pas est ignoré (`L-2.4-5`) ; `HEAD`
+      sur chaque route `GET`, sauf l'interrogation d'un appairage et le
+      flux d'événements (`L-2.4-6`) ; un document de requête envoyé
+      autrement qu'en `application/json` donne `400` (`L-2.4-7`).
+    - Listages (§ 6.2) : l'ordre de `name`, `added` et `release` (la date
+      de sortie du titre, de la plus récente à la plus ancienne, celles qui
+      n'en ont pas en dernier), les ex aequo départagés par `id` octet par
+      octet ; `q` de 256 octets au plus ; un `page_size` qui n'est pas un
+      entier positif donne `400` (`L-6.2-6`) ; `total` facultatif, exact
+      quand il est donné ; `limits.page_size` de 1 à 1000 (§ 4.2).
+    - Ce qui manque (§ 6.3, `L-6.3-2`) : `installed` peut être vide,
+      `want` contient une ou plusieurs des valeurs `base`, `update` et
+      `dlc`, toute autre valeur donnant `400` **(plus étroit)** ; un
+      `app_id` inconnu est ignoré, un `app_id` listé deux fois compte pour
+      sa version la plus élevée.
+    - Changements (§ 6.4) : une app dont le fichier a changé est retirée,
+      puis ajoutée sous son nouvel identifiant.
+    - Fichiers (§ 6.6) : `If-Range` honoré (`L-6.6-6`), comme le supposait
+      l'annexe B.4 ; plusieurs plages peuvent recevoir le fichier entier,
+      jamais `multipart/byteranges` (`L-6.6-7`).
+    - Titres à la fois (§ 7.2) : un identifiant demandé deux fois reçoit
+      une seule réponse ; aucun identifiant donne `400`. Sauvegardes
+      (§ 9.1) : de la plus récente à la plus ancienne par titre, l'ordre
+      des titres étant celui du serveur ; une sauvegarde sans `kind` se lit
+      comme `other`.
+    - Plateformes (§ 4.3) : un identifiant connu sur plusieurs plateformes
+      donne `400` sans plateforme, désormais avec son identifiant
+      (`L-4.3-8`) ; le `Lantern-Platform` d'un client est le SHOULD du § 2
+      (`L-2-7`), comme le dit désormais le § 4.3.
+    - Appairage et invitations : un code saisi se lit en ignorant la casse,
+      les espaces et les tirets, sur la page du serveur et dans une
+      invitation (`L-5.2-14`, `L-5.5-4`) ; `interval` vaut de 1 à
+      60 secondes. Découverte : « quelques fois par seconde » devient
+      10 réponses par seconde au plus à une même adresse (`L-4.1-3`).
+    - Mise en cache (§ 14) : un serveur qui envoie un `ETag` répond à un
+      `If-None-Match` qui le contient, comparé faiblement, ou à `*`, par
+      `304` avec les mêmes `ETag`, `Vary` et `Cache-Control` (`L-14-3`), et
+      son étiquette change avec le document que recevrait un appelant
+      (`L-14-4`).
+    - Erreurs (§ 12) : un paramètre donné deux fois, un corps qui n'est pas
+      en I-JSON ; la réponse à un `HEAD` n'a pas de corps.
+    - Les `$id` des schémas sont leurs adresses stables,
+      `https://lantern.boreale.dev/schemas/v1/<name>.json` (§ 3.2), et les
+      instants, dates, entiers et `interval` d'appairage ci-dessus sont
+      vérifiés par eux.
+  - Demandes (§ 11) : leurs états et transitions dans un tableau, `done` et
+    `declined` définitifs (`L-11-3`) ; un administrateur refuse une
+    demande, avec une `reason` que lit celui qui l'a faite, ou la marque
+    comme satisfaite, par `POST <base>/v1/admin/requests/{id}`, et liste
+    celles de tous les comptes par `GET <base>/v1/admin/requests`
+    (`L-11-4`, `L-11-5`) ; une demande gagne `updated` et `reason` ;
+    l'événement `request` à chaque transition, au compte et à la portée
+    `admin`, avec le `user` de la demande (`L-11-6`, § 18.2).
+  - Événements (§ 18.1) : les événements qui suivent un jeton de reprise
+    arrivent avant le premier battement de cœur du flux, qui dit à un
+    client qu'il est à jour (`L-18.1-10`).
+  - Miroirs (§ 19.2) : HTTP en clair sur le bouclage aussi, pour les tests,
+    comme le permet le § 2.
+  - Versions publiées (§ 3.6) : chaque version du texte publiée par une
+    étiquette `spec-v<version>`, avec ses fichiers, un zip, leurs sommes
+    SHA-256 et des attestations de provenance de build, vérifiées avec
+    `gh attestation verify`.
+  - Rédactionnel, sans changement d'aucun schéma : les données d'Atlas
+    qu'un client peut lire (§ 6.1) ne nomment plus les prix ; Lantern ne
+    porte aucune notion de prix ni de promotion.
+  - Conformité (§ 17) : la suite lit chaque miroir avec
+    `--fetch-mirrors`, remplit les `slots` de téléchargement d'un pair, et
+    vérifie ce que tranche le 0.6 ; la route vers la 1.0 dit où en est
+    chaque critère, et liste les questions encore ouvertes (annexe C).

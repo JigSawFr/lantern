@@ -31,6 +31,9 @@
 - the demo library (demo/) is a static library whose files carry no tracking
   (no Umami, no UTM tag: only the pages count visits), and its trapped
   variant (demo/trapped/) stays out of the sitemap and of search engines;
+- every schema of schemas/ is served at its `$id`
+  (https://lantern.boreale.dev/schemas/v1/<name>.json is
+  schemas/v1/<name>.json in the site), byte for byte, without tracking;
 - each translation of the specification (site/translations/) names the
   English commit it translates: when SPEC.md has changed since, a warning
   (never a failure), and while it has not, the translation carries every
@@ -208,6 +211,35 @@ def check_drafts_and_demo(site: Path) -> list:
     return errors
 
 
+def check_schemas(site: Path) -> list:
+    """Each schema at its $id (SPEC.md § 3.2), as it is in schemas/: the address a validator fetches."""
+    errors = []
+    for source in sorted((ROOT / "schemas").rglob("*.json")):
+        name = source.relative_to(ROOT).as_posix()
+        try:
+            sid = json.loads(source.read_text(encoding="utf-8")).get("$id", "")
+        except ValueError as error:
+            errors.append(f"{name}: not JSON ({error})")
+            continue
+        url = urlparse(sid)
+        if url.scheme != "https" or url.hostname != "lantern.boreale.dev" or not url.path.startswith("/schemas/"):
+            errors.append(f"{name}: its $id {sid!r} is not an address of the site's schemas/")
+            continue
+        built = site / url.path.lstrip("/")
+        if not built.is_file():
+            errors.append(f"{name}: its $id {sid} has no file in the site ({url.path})")
+        elif built.read_bytes() != source.read_bytes():
+            errors.append(f"{url.path}: not {name} as it is")
+    for built in sorted((site / "schemas").rglob("*")) if (site / "schemas").exists() else []:
+        if built.is_file():
+            data = built.read_bytes()
+            if b"umami" in data.lower() or b"utm_" in data:
+                errors.append(f"{built.relative_to(site)}: tracking (Umami or a UTM tag) in a schema")
+            if not (ROOT / built.relative_to(site)).is_file():
+                errors.append(f"{built.relative_to(site)}: no such schema in the repository")
+    return errors
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -299,6 +331,7 @@ def main() -> None:
             errors.append(f"site/registry.json: {entry.get('name', '?')} without Lantern Core, which every level needs")
     errors += check_translations(site, ids)
     errors += check_drafts_and_demo(site)
+    errors += check_schemas(site)
     for level in ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
                   "encrypted_saves", "static"):
         if not list((site / "assets" / "badges").glob(f"lantern-*-{level}.svg")):
