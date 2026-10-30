@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lantern.boreale.dev/schemas/v1/pairing-code.json",
+  "title": "Pairing code",
+  "description": "The answer to a pairing request (SPEC.md § 5.2).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "$ref": "common.json#/$defs/schema1"
+    },
+    "code": {
+      "type": "string",
+      "minLength": 4,
+      "maxLength": 32
+    },
+    "verify": {
+      "$ref": "common.json#/$defs/url"
+    },
+    "poll": {
+      "$ref": "common.json#/$defs/url"
+    },
+    "interval": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "expires": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "schema",
+    "code",
+    "verify",
+    "poll",
+    "interval",
+    "expires"
+  ]
+}

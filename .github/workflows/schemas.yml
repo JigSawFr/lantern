@@ -1,0 +1,36 @@
+# The JSON Schemas against their examples and refused ones
+# (tools/check_schemas.py), and the OpenAPI description with the schemas it
+# refers to.
+name: schemas
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ "schemas/**", "examples/**", "openapi.yaml", "tools/check_schemas.py", "tools/requirements.txt", ".github/workflows/schemas.yml" ]
+  pull_request:
+    paths: [ "schemas/**", "examples/**", "openapi.yaml", "tools/check_schemas.py", "tools/requirements.txt", ".github/workflows/schemas.yml" ]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The checkers
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet -r tools/requirements.txt
+      - name: The schemas against their examples
+        run: '"$RUNNER_TEMP/venv/bin/python" tools/check_schemas.py'
+      - name: The OpenAPI description
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" - <<'PY'
+          from openapi_spec_validator import validate
+          from openapi_spec_validator.readers import read_from_filename
+          spec, base = read_from_filename("openapi.yaml")
+          validate(spec, base_uri=base)
+          print("openapi.yaml: valid")
+          PY

@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "device": "Lea's Switch",
+  "scopes": [
+    "library",
+    "saves"
+  ]
+}

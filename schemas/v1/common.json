@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lantern.boreale.dev/schemas/v1/common.json",
+  "title": "Lantern common definitions",
+  "description": "Definitions shared by Lantern's documents (SPEC.md). Readers ignore fields they do not know; every document allows them.",
+  "$defs": {
+    "schema1": {
+      "description": "The document's schema (SPEC.md § 3.2). A reader treats a higher one as absent.",
+      "const": 1
+    },
+    "id16": {
+      "description": "A title or app id: 16 upper-case hex digits.",
+      "type": "string",
+      "pattern": "^[0-9A-F]{16}$"
+    },
+    "sha256": {
+      "description": "A SHA-256, lower-case hex.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "opaque": {
+      "description": "An opaque id or token, chosen by the server.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "text": {
+      "description": "A string field (SPEC.md § 11: 4 KiB at most).",
+      "type": "string",
+      "maxLength": 4096
+    },
+    "name": {
+      "description": "A name (SPEC.md § 11: 512 bytes at most).",
+      "type": "string",
+      "maxLength": 512
+    },
+    "note": {
+      "description": "A note (SPEC.md § 11: 120 bytes at most).",
+      "type": "string",
+      "maxLength": 120
+    },
+    "url": {
+      "description": "An absolute URL, or a path on the server's origin.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "time": {
+      "description": "A UTC time, RFC 3339.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "uint64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "uint32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "scope": {
+      "enum": [
+        "library",
+        "saves",
+        "cheats",
+        "cheats.write",
+        "requests",
+        "admin"
+      ]
+    },
+    "app_type": {
+      "enum": [
+        "base",
+        "update",
+        "dlc"
+      ]
+    },
+    "app": {
+      "description": "One installable package (SPEC.md § 6.1).",
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/opaque"
+        },
+        "title_id": {
+          "$ref": "#/$defs/id16"
+        },
+        "app_id": {
+          "$ref": "#/$defs/id16"
+        },
+        "type": {
+          "$ref": "#/$defs/app_type"
+        },
+        "version": {
+          "$ref": "#/$defs/uint32"
+        },
+        "display_version": {
+          "$ref": "#/$defs/name"
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "size": {
+          "$ref": "#/$defs/uint64"
+        },
+        "format": {
+          "enum": [
+            "nsp",
+            "nsz",
+            "xci",
+            "xcz"
+          ]
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "added": {
+          "$ref": "#/$defs/time"
+        },
+        "file": {
+          "$ref": "#/$defs/url"
+        }
+      },
+      "required": [
+        "id",
+        "title_id",
+        "app_id",
+        "type",
+        "version",
+        "size",
+        "format",
+        "file"
+      ]
+    },
+    "image": {
+      "description": "An image (SPEC.md § 6.6). external: elsewhere than the server's origin, never sent credentials.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "$ref": "#/$defs/url"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "external": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "page": {
+      "description": "A page of apps (SPEC.md § 6.2).",
+      "type": "object",
+      "properties": {
+        "schema": {
+          "$ref": "#/$defs/schema1"
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/app"
+          }
+        },
+        "total": {
+          "$ref": "#/$defs/uint64"
+        },
+        "next": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/opaque"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "items",
+        "next"
+      ]
+    }
+  }
+}

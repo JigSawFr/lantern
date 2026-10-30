@@ -19,8 +19,11 @@ issues are welcome, from client and server authors especially.
   identifier, no proprietary encryption, no server-driven change to the
   client.
 
-Coming here: JSON Schemas for every document (`schemas/`), an OpenAPI
-description, a conformance suite to run against a server (`conformance/`)
+- **[JSON Schemas](schemas/v1/)** for every document, with
+  [examples](examples/v1/), and an **[OpenAPI description](openapi.yaml)**;
+  `tools/check_schemas.py` checks them, in CI too.
+
+Coming here: a conformance suite to run against a server (`conformance/`)
 and a small reference server (`server/`). PlayShelf, a homebrew package
 manager for the Nintendo Switch, will be the first client.
 

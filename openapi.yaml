@@ -1,0 +1,183 @@
+# Lantern protocol, v1 (SPEC.md). The documents' shapes are the JSON Schemas
+# of schemas/v1/, referred to here; SPEC.md is the reference where the two
+# would differ. Paths are relative to the base the server announces
+# (default /api/lantern), but /.well-known/lantern, at the origin's root.
+openapi: 3.1.0
+info:
+  title: Lantern protocol
+  version: 0.1.0
+  summary: An open protocol between console homebrews and self-hosted game library servers.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: https://shelf.example.org/api/lantern
+    description: An example server, its base as announced
+security:
+  - basic: []
+  - bearer: []
+  - {}
+components:
+  securitySchemes:
+    basic: { type: http, scheme: basic }
+    bearer: { type: http, scheme: bearer, description: "A token from pairing (SPEC.md § 5.2)." }
+  responses:
+    Problem:
+      description: An error (SPEC.md § 10).
+      content:
+        application/problem+json:
+          schema: { $ref: "schemas/v1/problem.json" }
+    Apps:
+      description: A page of apps.
+      content:
+        application/json:
+          schema: { $ref: "schemas/v1/apps.json" }
+  parameters:
+    TitleId:
+      name: title_id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[0-9A-F]{16}$" }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 1000 }
+paths:
+  /.well-known/lantern:
+    get:
+      summary: The handshake, at the origin's root (§ 4.2)
+      security: [ {}, { basic: [] }, { bearer: [] } ]
+      responses:
+        "200": { description: "The server and what it offers this caller.", content: { application/json: { schema: { $ref: "schemas/v1/handshake.json" } } } }
+  /v1/:
+    get:
+      summary: The handshake (§ 4.2)
+      security: [ {}, { basic: [] }, { bearer: [] } ]
+      responses:
+        "200": { description: "The server and what it offers this caller.", content: { application/json: { schema: { $ref: "schemas/v1/handshake.json" } } } }
+  /v1/pairing:
+    post:
+      summary: Ask to pair a console (§ 5.2)
+      security: [ {} ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/pairing-request.json" } } } }
+      responses:
+        "200": { description: "The code to show and where to poll.", content: { application/json: { schema: { $ref: "schemas/v1/pairing-code.json" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/pairing/{id}:
+    get:
+      summary: Poll a pairing (§ 5.2)
+      security: [ {} ]
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses:
+        "200": { description: "Approved.", content: { application/json: { schema: { $ref: "schemas/v1/pairing-token.json" } } } }
+        "202": { description: "Still waiting for the user." }
+        "410": { $ref: "#/components/responses/Problem" }
+  /v1/apps:
+    get:
+      summary: The library, a page at a time (§ 6.2)
+      parameters:
+        - { name: type, in: query, schema: { enum: [base, update, dlc] } }
+        - { name: title_id, in: query, schema: { type: string, pattern: "^[0-9A-F]{16}$" } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: sort, in: query, schema: { enum: [name, added, release] } }
+        - { $ref: "#/components/parameters/PageSize" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200": { $ref: "#/components/responses/Apps" }
+        "304": { description: "Not modified (If-None-Match)." }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/apps/missing:
+    post:
+      summary: What the console is missing (§ 6.3)
+      parameters: [ { $ref: "#/components/parameters/PageSize" }, { $ref: "#/components/parameters/Cursor" } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/missing-request.json" } } } }
+      responses:
+        "200": { $ref: "#/components/responses/Apps" }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/changes:
+    get:
+      summary: What changed since a token (§ 6.4)
+      parameters: [ { name: since, in: query, schema: { type: string } } ]
+      responses:
+        "200": { description: "Added and removed apps, and the next token.", content: { application/json: { schema: { $ref: "schemas/v1/changes.json" } } } }
+        "410": { $ref: "#/components/responses/Problem" }
+  /v1/sections:
+    get:
+      summary: The server's shelves (§ 6.5)
+      responses:
+        "200": { description: "Sections.", content: { application/json: { schema: { $ref: "schemas/v1/sections.json" } } } }
+  /v1/titles/{title_id}:
+    get:
+      summary: A game's sheet and media (§ 6.6)
+      parameters: [ { $ref: "#/components/parameters/TitleId" } ]
+      responses:
+        "200": { description: "The title.", content: { application/json: { schema: { $ref: "schemas/v1/title.json" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /v1/files/{id}:
+    get:
+      summary: A package, with ranges (§ 6.7)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } }, { name: Range, in: header, schema: { type: string } } ]
+      responses:
+        "200": { description: "The whole file (Repr-Digest, ETag, Accept-Ranges).", content: { application/octet-stream: {} } }
+        "206": { description: "A range of it.", content: { application/octet-stream: {} } }
+        "410": { $ref: "#/components/responses/Problem" }
+        "416": { description: "The range is outside the file." }
+  /v1/saves:
+    get:
+      summary: The account's save backups (§ 7)
+      responses:
+        "200": { description: "Save backups.", content: { application/json: { schema: { $ref: "schemas/v1/saves.json" } } } }
+  /v1/saves/{title_id}:
+    post:
+      summary: Send a save backup (§ 7)
+      parameters: [ { $ref: "#/components/parameters/TitleId" }, { name: Lantern-Note, in: header, schema: { type: string } }, { name: Content-Digest, in: header, schema: { type: string } } ]
+      requestBody: { required: true, content: { application/zip: {} } }
+      responses:
+        "201": { description: "The backup kept.", content: { application/json: { schema: { $ref: "schemas/v1/save.json" } } } }
+        "413": { $ref: "#/components/responses/Problem" }
+  /v1/saves/{title_id}/{save_id}:
+    parameters: [ { $ref: "#/components/parameters/TitleId" }, { name: save_id, in: path, required: true, schema: { type: string } } ]
+    get:
+      summary: Download a save backup (§ 7)
+      responses:
+        "200": { description: "The zip archive.", content: { application/zip: {} } }
+    delete:
+      summary: Delete a save backup (§ 7)
+      responses:
+        "204": { description: "Deleted." }
+  /v1/cheats:
+    get:
+      summary: The cheats (§ 8)
+      parameters: [ { name: title_id, in: query, schema: { type: string, pattern: "^[0-9A-F]{16}$" } } ]
+      responses:
+        "200": { description: "Cheats.", content: { application/json: { schema: { $ref: "schemas/v1/cheats.json" } } } }
+  /v1/cheats/{title_id}/{build_id}:
+    parameters: [ { $ref: "#/components/parameters/TitleId" }, { name: build_id, in: path, required: true, schema: { type: string, pattern: "^[0-9A-F]{1,64}$" } } ]
+    get:
+      summary: A cheat file (§ 8)
+      responses:
+        "200": { description: "Its text, as Atmosphère reads it.", content: { text/plain: {} } }
+    put:
+      summary: Write a cheat file (§ 8, scope cheats.write)
+      requestBody: { required: true, content: { text/plain: {} } }
+      responses:
+        "204": { description: "Written." }
+    delete:
+      summary: Delete a cheat file (§ 8, scope cheats.write)
+      responses:
+        "204": { description: "Deleted." }
+  /v1/requests:
+    get:
+      summary: The account's requests (§ 9)
+      responses:
+        "200": { description: "Requests.", content: { application/json: { schema: { $ref: "schemas/v1/requests.json" } } } }
+    post:
+      summary: Ask for a game (§ 9)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/request-create.json" } } } }
+      responses:
+        "200": { description: "The open request for the same title." }
+        "201": { description: "Asked." }

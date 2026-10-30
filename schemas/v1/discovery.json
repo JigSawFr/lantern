@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lantern.boreale.dev/schemas/v1/discovery.json",
+  "title": "LAN discovery reply",
+  "description": "A server's answer to OWNFOIL_DISCOVER on UDP 8465 (SPEC.md § 4.1). Ownfoil's shape; `lantern` only on servers that speak Lantern.",
+  "type": "object",
+  "properties": {
+    "magic": {
+      "const": "OWNFOIL"
+    },
+    "uid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/name"
+    },
+    "version": {
+      "$ref": "common.json#/$defs/name"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "public": {
+      "type": "boolean"
+    },
+    "remote": {
+      "type": "string",
+      "maxLength": 4096
+    },
+    "lantern": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "$ref": "common.json#/$defs/schema1"
+        },
+        "base": {
+          "$ref": "common.json#/$defs/url"
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "schema",
+        "base",
+        "versions"
+      ]
+    }
+  },
+  "required": [
+    "magic",
+    "uid",
+    "name",
+    "port"
+  ]
+}

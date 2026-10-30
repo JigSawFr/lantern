@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lantern.boreale.dev/schemas/v1/cheats.json",
+  "title": "Cheats",
+  "description": "GET <base>/v1/cheats (SPEC.md § 8).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "$ref": "common.json#/$defs/schema1"
+    },
+    "cheats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title_id": {
+            "$ref": "common.json#/$defs/id16"
+          },
+          "build_id": {
+            "type": "string",
+            "pattern": "^[0-9A-F]{1,64}$"
+          },
+          "note": {
+            "$ref": "common.json#/$defs/note"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1048576
+          },
+          "sha256": {
+            "$ref": "common.json#/$defs/sha256"
+          }
+        },
+        "required": [
+          "title_id",
+          "build_id",
+          "size"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "cheats"
+  ]
+}

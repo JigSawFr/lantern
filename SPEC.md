@@ -63,6 +63,9 @@ has an integer `schema` at its top level.
 - A reader that gets a `schema` higher than it knows MUST treat the document
   as absent (the feature is unavailable), not as an error, and MUST NOT
   write it back.
+- Every document has a JSON Schema in `schemas/v1/` (2020-12), with an
+  example in `examples/v1/`. The schemas describe schema 1 and allow fields
+  they do not list, as a reader must.
 - `features` (§ 4.2) gives, per family, the `schema` the server writes; a
   client MAY send `Accept-Schema: <family>=<n>, …` to ask for an older one,
   which a server SHOULD honour while it still can write it.
@@ -87,12 +90,14 @@ Lantern reuses Ownfoil's discovery, which three clients already speak:
   {"magic": "OWNFOIL", "uid": "6f1c2a8e-…", "name": "Living room shelf",
    "version": "2.7.0", "port": 8465, "public": false,
    "remote": "https://shelf.example.org",
-   "lantern": {"base": "/api/lantern", "versions": [1]}}
+   "lantern": {"schema": 1, "base": "/api/lantern", "versions": [1]}}
   ```
 
 - The server's address is the datagram's source address. `lantern` is
   present only on servers that speak Lantern; a client that does not know
   it ignores it.
+- The reply keeps Ownfoil's shape, which has no `schema`; Lantern's own
+  part, `lantern`, carries one.
 
 ### 4.2 Handshake
 
@@ -297,7 +302,7 @@ Every error is `application/problem+json` (RFC 9457) with a real status
 code, never `200`:
 
 ```json
-{"type": "https://lantern.boreale.dev/errors/account-frozen",
+{"schema": 1, "type": "https://lantern.boreale.dev/errors/account-frozen",
  "title": "Account frozen", "status": 403, "code": "account_frozen",
  "detail": "Your access is paused until Sunday."}
 ```
