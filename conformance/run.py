@@ -211,7 +211,8 @@ REQS = {
     "transport.pin": [],
     "static.handshake": ["L-21.2-1", "L-3.2-5"], "static.pages": ["L-21.1-1"], "static.titles": ["L-21.1-1"],
     "static.homebrew": ["L-21.1-1", "L-8.1-3"], "static.cheats": ["L-21.1-1"], "static.paths": ["L-21.1-2"],
-    "static.files": ["L-21.1-1"],
+    "static.files": ["L-21.1-1"], "static.manifests": ["L-8.2-2", "L-8.2-4", "L-8.2-5"],
+    "static.signatures": ["L-8.4-1", "L-8.4-5"], "static.limits": ["L-13-2"],
     # Draft 0.6 (checks_v06.py, and admin.requests here).
     "values.i-json-refused": ["L-2.3-1"], "documents.i-json": ["L-2.3-1"], "documents.times": ["L-2.3-2"],
     "documents.nfc": ["L-2.3-5"], "values.hex-case": ["L-2.3-4"], "apps.search": ["L-2.3-6", "L-6.2-1"],
@@ -2778,7 +2779,8 @@ def bind_checks():
     load run.py twice, under two names (tools/make_demo.py does), each with classes of its own."""
     checks_v05.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Response=Response, Client=Client,
                     check_repr_digest=lambda r, d: check_repr_digest(r, d), problem_detail=lambda r: problem_detail(r))
-    static_check.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Client=Client)
+    static_check.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, Client=Client, client=client,
+                      limit_problems=lambda doc: limit_problems(doc))
     checks_v06.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
 
 

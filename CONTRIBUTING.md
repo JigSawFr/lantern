@@ -33,6 +33,19 @@ server together, so that the suite never lags behind the text (SPEC.md
 (`[L-5.2-12]`), which a check of the suite names, or the suite's list of
 what it cannot see; `python3 tools/requirements.py` checks the ids.
 
+## Translations
+
+The specification is written in English, and only the English text is
+authoritative. Informative translations live in `site/translations/` and
+are shown on the website with a banner that says so; there is a French one
+(`SPEC.fr.md`). Translations into other languages are welcome: copy its
+header, name the English commit you translate and SPEC.md's SHA-256 at that
+commit, and keep the requirement ids, code, field names, JSON and the
+key words (MUST, SHOULD, MAY…) exactly as in English, explaining the key
+words in your preamble as the French text does. When SPEC.md moves on, the
+site's check warns that the translation lags behind; updating it, or saying
+it is behind, is just as welcome.
+
 ## Pull requests
 
 - Titles and commits in [Conventional Commits](https://www.conventionalcommits.org/),

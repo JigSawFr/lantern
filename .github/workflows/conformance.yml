@@ -15,9 +15,9 @@ name: conformance
 on:
   push:
     branches: [ main ]
-    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", "tools/pair_for_ci.py", "tools/requirements.py", "tools/make_vectors.py", "vectors/**", "SPEC.md", ".github/workflows/conformance.yml" ]
+    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", "tools/pair_for_ci.py", "tools/requirements.py", "tools/make_vectors.py", "vectors/**", "SPEC.md", "tools/make_demo.py", "site/demo/**", ".github/workflows/conformance.yml" ]
   pull_request:
-    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", "tools/pair_for_ci.py", "tools/requirements.py", "tools/make_vectors.py", "vectors/**", "SPEC.md", ".github/workflows/conformance.yml" ]
+    paths: [ "server/**", "conformance/**", "tests/**", "schemas/**", "tools/requirements.txt", "tools/pair_for_ci.py", "tools/requirements.py", "tools/make_vectors.py", "vectors/**", "SPEC.md", "tools/make_demo.py", "site/demo/**", ".github/workflows/conformance.yml" ]
 
 permissions:
   contents: read
