@@ -52,12 +52,14 @@ META = {"schema": 1, "apps": [
      "languages": ["en", "fr", "ja"],
      "summary": {"en": "Guide a lantern-bearer across a frozen archipelago.",
                  "fr": "Guidez un porteur de lanterne sur un archipel gelé."},
-     "video": "https://video.example.org/frostline/trailer"},
+     "video": "https://video.example.org/frostline/trailer", "atlas": "Q900001"},
     {"file": "Moss and Ember [0100EFEF00020000][v0].xci", "name": "Moss & Ember",
-     "version_name": "1.0.0", "release": "2025-03-14"},
+     "version_name": "1.0.0", "release": "2025-03-14", "installed_size": 8192,
+     "ratings": [{"system": "PEGI", "rating": "16"}, {"system": "ESRB", "rating": "T"}]},
     {"file": "Moss and Ember [0100EFEF00020800][v131072].nsp", "name": "Moss & Ember",
      "version_name": "1.2.0"},
     {"file": "more/Tidewalker [0100C3D400040000][v0].nsp", "release": "2026-01-20",
+     "ratings": [{"system": "CERO", "rating": "A"}],
      "x-example-shelf": "unknown fields are ignored"},
     {"file": "android/Frostline Tales.apk", "platform": "android", "title_id": "org.example.frostlinetales",
      "version_code": 12, "version_name": "1.2.0", "name": "Frostline Tales", "genres": ["adventure"],
@@ -238,7 +240,8 @@ HOMEBREW = {
     # Signed by its author (SPEC.md § 8.4).
     "homebrew/paperlamp/paperlamp.nro": PAPERLAMP_NRO,
     "homebrew/paperlamp/homebrew.json": json.dumps({
-        "schema": 1, "id": PAPERLAMP, "build": 902, "kind": "game", "genres": ["puzzle"],
+        "schema": 1, "id": PAPERLAMP, "build": 902, "kind": "game", "genres": ["puzzle"], "atlas": "Q900002",
+        "ratings": [{"system": "PEGI", "rating": "12"}],
         "license": "GPL-3.0-or-later", "icon": "https://media.example.org/paperlamp/icon.jpg",
         "signature": PAPERLAMP_SIGNATURE}).encode(),
     # A port: the user brings the original game's data (SPEC.md § 8.1).

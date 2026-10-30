@@ -2,6 +2,7 @@
   "schema": 1,
   "code": "KQ4M-7TXD",
   "verify": "https://shelf.example.org/pair",
+  "verify_complete": "https://shelf.example.org/pair?code=KQ4M-7TXD",
   "poll": "/api/lantern/v1/pairing/p_4Fh2",
   "interval": 5,
   "expires": 600

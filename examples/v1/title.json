@@ -55,5 +55,6 @@
   "video": {
     "url": "https://video.example.org/frostline/trailer",
     "external": true
-  }
+  },
+  "atlas": "Q900001"
 }

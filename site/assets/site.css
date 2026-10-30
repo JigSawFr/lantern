@@ -315,3 +315,27 @@ main section.status-card {
 .errors td a { display: inline-flex; align-items: center; min-height: 32px; }
 /* A long inline address or path breaks rather than widen a phone (a code block scrolls in its box). */
 :is(.prose, .lede) :not(pre) > code { overflow-wrap: anywhere; }
+
+/* Requirement ids (SPEC.md § 3.5): a small anchor after each MUST and SHOULD of the specification. */
+a.req {
+  display: inline; margin-left: 2px; padding: 0 6px; border: 1px solid var(--night-line); border-radius: 99px;
+  font: 500 0.6875rem/1.6 var(--mono); color: var(--dusk); text-decoration: none; white-space: nowrap; vertical-align: 1px;
+  scroll-margin-top: 16px;
+}
+a.req:hover, a.req:target, a.req:focus-visible { color: var(--aurora); border-color: rgb(0 255 204 / 0.5); }
+/* The conformance pages: wider prose, the traceability list, the badges. */
+.prose.wide { max-width: 92ch; }
+.reqs { list-style: none; padding: 0 !important; display: grid; gap: 10px; }
+.reqs li { padding: 12px 16px; border: 1px solid var(--night-line); border-radius: 12px; background: rgb(14 26 51 / 0.5); scroll-margin-top: 16px; }
+.reqs li:target { border-color: rgb(0 255 204 / 0.5); }
+.reqs .req-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 0.875rem; }
+.reqs .req-head a.req { margin: 0; font-size: 0.75rem; color: var(--snow); min-height: 24px; display: inline-flex; align-items: center; }
+.reqs .seen { color: var(--mist); }
+.reqs .seen.suite { color: var(--aurora); }
+.reqs li > p + p { margin-top: 6px; color: var(--snow); }
+.badges { list-style: none; padding: 0 !important; display: grid; gap: 12px; }
+.badges li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.badges img { display: block; height: 28px; width: auto; max-width: 100%; }
+.badges code { color: var(--mist); font-size: 0.8125rem; }
+.conformance td .state { display: inline-block; margin: 2px 4px 2px 0; }
+#conformance .actions { flex-wrap: wrap; }

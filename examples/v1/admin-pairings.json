@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "items": [
+    {
+      "id": "pr_Qm4t",
+      "code": "KQ4M-7TXD",
+      "device": "Lea's Switch",
+      "scopes": [
+        "library",
+        "saves"
+      ],
+      "key": "5D1A 07C3 9E42 B810",
+      "created": "2026-10-30T18:10:00Z",
+      "expires": "2026-10-30T18:20:00Z"
+    }
+  ],
+  "total": 1,
+  "next": null
+}

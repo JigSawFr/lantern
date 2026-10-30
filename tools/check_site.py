@@ -21,16 +21,20 @@
 - UTM tags only on the links to another of Boréale's sites (utm_source=lantern);
 - no e-mail address and no mailto: link (contact goes through the issues);
 - every error type of SPEC.md (its section "Errors") has its page (errors/<name>/), the
-  address its `type` gives.
+  address its `type` gives;
+- every requirement id of SPEC.md (tools/requirements.py) is an anchor of the
+  specification's page and has its entry on the traceability page
+  (requirements/), and site/registry.json is of schema 1, each entry with
+  its name, kind, url, draft and levels; the badges of every level are there.
 """
 import json
 import os
 import re
 import sys
-import xml.etree.ElementTree as ElementTree
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qsl, urlparse
+from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parent.parent
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
@@ -174,6 +178,27 @@ def main() -> None:
     for name in sorted(set(re.findall(r"https://lantern\.boreale\.dev/errors/([a-z-]+)", spec))):
         if not (site / "errors" / name / "index.html").exists():
             errors.append(f"SPEC.md: its error type {name} has no page (errors/{name}/)")
+    sys.path.insert(0, str(ROOT / "tools"))
+    import requirements
+    ids = [r["id"] for r in requirements.requirements()[0]]
+    for page in ("spec/index.html", "requirements/index.html"):
+        target = site / page
+        text = target.read_text(encoding="utf-8") if target.exists() else ""
+        missing = [i for i in ids if f'id="{i}"' not in text]
+        if missing:
+            errors.append(f"{page}: no anchor for {len(missing)} requirement(s), {', '.join(missing[:5])}")
+    registry = json.loads((ROOT / "site" / "registry.json").read_text(encoding="utf-8"))
+    if registry.get("schema") != 1:
+        errors.append("site/registry.json: not of schema 1")
+    for entry in registry.get("implementations", []):
+        lacking = [k for k in ("name", "kind", "url", "draft", "levels") if not entry.get(k)]
+        if lacking:
+            errors.append(f"site/registry.json: {entry.get('name', '?')} lacks {', '.join(lacking)}")
+        if "core" not in entry.get("levels", []):
+            errors.append(f"site/registry.json: {entry.get('name', '?')} without Lantern Core, which every level needs")
+    for level in ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin"):
+        if not list((site / "assets" / "badges").glob(f"lantern-*-{level}.svg")):
+            errors.append(f"assets/badges: no badge for {level}")
     for path in sorted(site.rglob("*")):
         if path.is_file() and path.suffix in (".html", ".xml", ".txt", ".js", ".css", ".json"):
             text = path.read_text(encoding="utf-8", errors="replace")

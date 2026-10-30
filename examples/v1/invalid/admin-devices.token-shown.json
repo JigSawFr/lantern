@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "items": [
+    {
+      "id": "d_7c1e0f9a2b3d4e5f",
+      "user": "sam",
+      "device": "Sam's Switch",
+      "scopes": [
+        "library"
+      ],
+      "created": "2026-10-30T18:05:00Z",
+      "bound": true,
+      "key": "5D1A 07C3 9E42 B810",
+      "rating_cap": {
+        "age": 12
+      },
+      "invitation": "i_3VxQ",
+      "token": "et_c8V1nQ0xYb"
+    }
+  ],
+  "next": null
+}

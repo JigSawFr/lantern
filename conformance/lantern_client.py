@@ -20,7 +20,12 @@ for the conformance suite to apply to what a server serves.
   (§ 8.1);
 - requires_problems() and offer(): the shapes of an entry's requirements,
   and whether a device offers its package, with a warning, or refuses it
-  (§ 8.7).
+  (§ 8.7);
+- signed requests (§ 5.4): ed25519_keypair() and ed25519_sign() (RFC 8032,
+  in pure Python), key_thumbprint(), signature_base() and sign(), which
+  give a request its Content-Digest, Signature-Input and Signature;
+- rating caps (§ 5.6): rating_age() and above_cap(), what a server hides;
+- version codes (Annex A): version_code() and version_name() per profile.
 
 The roots are those of the Switch's profile, and of the draft Linux one
 (Annex A.6). A client installs nothing of a platform it has no profile for
@@ -233,6 +238,12 @@ def _point(raw):
     return None if x is None else (x, y & ((1 << 255) - 1), 1, x * (y & ((1 << 255) - 1)) % _P)
 
 
+def small_order(point):
+    """Whether [8]P is the identity: one of the 8 points of small order."""
+    q = _mul(8, point)
+    return q[0] % _P == 0 and (q[1] - q[2]) % _P == 0
+
+
 _GY = 4 * pow(5, _P - 2, _P) % _P
 _G = (_x(_GY, 0), _GY, 1, _x(_GY, 0) * _GY % _P)
 
@@ -243,7 +254,9 @@ def ed25519_verify(public, message, signature):
         return False
     a, r = _point(public), _point(signature[:32])
     s = int.from_bytes(signature[32:], "little")
-    if a is None or r is None or s >= _L:
+    # A key or an R of small order, or not canonically encoded, is refused before the equation (SPEC.md
+    # § 8.4): with S = 0 they satisfy it for about one message in 8.
+    if a is None or r is None or s >= _L or small_order(a) or small_order(r):
         return False
     h = int.from_bytes(hashlib.sha512(signature[:32] + public + message).digest(), "little") % _L
     left, right = _mul(s, _G), _add(r, _mul(h, a))
@@ -514,3 +527,188 @@ def offer(entry, device):
     if fails:
         return "refuse", fails
     return ("warn", unknown) if unknown else ("offer", [])
+
+
+# Ed25519 signing (RFC 8032, § 5.1.5 and 5.1.6), for a client's device key
+# (SPEC.md § 5.4). Pure Python: slow, but a request needs one signature.
+# Not constant-time: a library on a device uses its platform's, or
+# Monocypher's; this one is for the suite, the tests and the vectors.
+
+def _encode(point):
+    x, y, z, _ = point
+    zi = pow(z, _P - 2, _P)
+    x, y = x * zi % _P, y * zi % _P
+    return (y | ((x & 1) << 255)).to_bytes(32, "little")
+
+
+def _secret(seed):
+    h = hashlib.sha512(seed).digest()
+    a = int.from_bytes(h[:32], "little")
+    a &= (1 << 254) - 8
+    a |= 1 << 254
+    return a, h[32:]
+
+
+def ed25519_public(seed):
+    """The 32-byte public key of a 32-byte seed (the private key)."""
+    return _encode(_mul(_secret(seed)[0], _G))
+
+
+def ed25519_sign(seed, message):
+    """The 64-byte Ed25519 signature of `message` by the key of `seed`."""
+    a, prefix = _secret(seed)
+    public = _encode(_mul(a, _G))
+    r = int.from_bytes(hashlib.sha512(prefix + message).digest(), "little") % _L
+    big_r = _encode(_mul(r, _G))
+    k = int.from_bytes(hashlib.sha512(big_r + public + message).digest(), "little") % _L
+    return big_r + ((r + k * a) % _L).to_bytes(32, "little")
+
+
+def ed25519_keypair():
+    """(seed, public key): a new device key, from the system's randomness."""
+    import secrets
+    seed = secrets.token_bytes(32)
+    return seed, ed25519_public(seed)
+
+
+# Signed requests (SPEC.md § 5.4, RFC 9421).
+
+LABEL = "lantern"
+
+
+def b64url(raw):
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def key_thumbprint(public):
+    """keyid: the base64url, without padding, of the SHA-256 of the key's 32 bytes."""
+    return b64url(hashlib.sha256(public).digest())
+
+
+def content_digest(body):
+    """Content-Digest (RFC 9530) of a request's body, sha-256."""
+    return "sha-256=:" + base64.b64encode(hashlib.sha256(body).digest()).decode() + ":"
+
+
+def target_uri(scheme, host, port, path_and_query):
+    """@target-uri (RFC 9421 § 2.2.2) as SPEC.md § 5.4 gives it: the host in
+    lower case, its port only when not the scheme's default, the path and
+    query as sent."""
+    default = {"https": 443, "http": 80}[scheme]
+    authority = host.lower() + ("" if port in (None, default) else f":{port}")
+    return f"{scheme}://{authority}{path_and_query}"
+
+
+def signature_params(components, created, nonce, keyid):
+    """The value of Signature-Input's lantern member, which is also @signature-params."""
+    inner = " ".join(f'"{c}"' for c in components)
+    return f'({inner});created={created};nonce="{nonce}";keyid="{keyid}";alg="ed25519"'
+
+
+def signature_base(method, uri, authorization, digest, created, nonce, keyid):
+    """(the signature base, the Signature-Input's lantern member) of a request
+    (SPEC.md § 5.4). `authorization` None for a pairing's poll; `digest` the
+    request's Content-Digest, None without a body."""
+    components, lines = ["@method", "@target-uri"], [f'"@method": {method.upper()}', f'"@target-uri": {uri}']
+    if authorization is not None:
+        components.append("authorization")
+        lines.append(f'"authorization": {authorization}')
+    if digest is not None:
+        components.append("content-digest")
+        lines.append(f'"content-digest": {digest}')
+    params = signature_params(components, created, nonce, keyid)
+    lines.append(f'"@signature-params": {params}')
+    return "\n".join(lines), params
+
+
+def new_nonce():
+    import secrets
+    return b64url(secrets.token_bytes(16))
+
+
+def sign(seed, method, uri, authorization=None, body=b"", created=None, nonce=None):
+    """The headers a signed request adds (SPEC.md § 5.4): Content-Digest when
+    it has a body, Signature-Input and Signature."""
+    import time
+    created = int(time.time()) if created is None else created
+    nonce = new_nonce() if nonce is None else nonce
+    digest = content_digest(body) if body else None
+    base, params = signature_base(method, uri, authorization, digest, created, nonce,
+                                  key_thumbprint(ed25519_public(seed)))
+    value = base64.b64encode(ed25519_sign(seed, base.encode())).decode()
+    headers = {"Signature-Input": f"{LABEL}={params}", "Signature": f"{LABEL}=:{value}:"}
+    if digest:
+        headers["Content-Digest"] = digest
+    return headers
+
+
+# Rating caps (SPEC.md § 5.6).
+
+RATING_AGES = {
+    "PEGI": {"3": 3, "7": 7, "12": 12, "16": 16, "18": 18},
+    "ESRB": {"EC": 3, "E": 6, "E10+": 10, "T": 13, "M": 17, "AO": 18},
+    "CERO": {"A": 0, "B": 12, "C": 15, "D": 17, "Z": 18},
+    "USK": {"0": 0, "6": 6, "12": 12, "16": 16, "18": 18},
+    "ACB": {"G": 0, "PG": 8, "M": 15, "MA15+": 15, "R18+": 18, "X18+": 18},
+    "CLASSIND": {"L": 0, "10": 10, "12": 12, "14": 14, "16": 16, "18": 18},
+    "GRAC": {"ALL": 0, "12": 12, "15": 15, "18": 18},
+}
+
+
+def cap_age(cap):
+    """The age a cap allows: its age, or its rating's in the table; None when the table cannot read it."""
+    if "age" in cap:
+        return cap["age"]
+    return RATING_AGES.get(cap.get("system"), {}).get(cap.get("rating"))
+
+
+def rating_age(ratings, cap):
+    """The age of a title or homebrew of these `ratings` for `cap`: its
+    rating of the cap's system when it has one, else the highest age the
+    table reads; None when unrated."""
+    ratings = [r for r in ratings or [] if isinstance(r, dict) and isinstance(r.get("system"), str)
+               and isinstance(r.get("rating"), str)]
+    if "system" in cap:
+        own = [RATING_AGES.get(r.get("system"), {}).get(r.get("rating")) for r in ratings if r.get("system") == cap["system"]]
+        own = [a for a in own if a is not None]
+        if own:
+            return max(own)
+    ages = [RATING_AGES.get(r.get("system"), {}).get(r.get("rating")) for r in ratings]
+    ages = [a for a in ages if a is not None]
+    return max(ages) if ages else None
+
+
+def above_cap(ratings, cap):
+    """Whether a capped token must not see what has these ratings (SPEC.md § 5.6)."""
+    if not cap:
+        return False
+    limit, age = cap_age(cap), rating_age(ratings, cap)
+    if age is None:
+        return cap.get("unrated") == "hide"
+    return limit is None or age > limit
+
+
+# Version codes (SPEC.md Annex A).
+
+def version_code(platform, version):
+    """`version_code` from a platform's own version: an integer (Switch, 3DS,
+    Android) as it is, an APP_VER "XX.YY" (Vita, PS4) as XX*100+YY."""
+    if platform in ("vita", "ps4"):
+        m = re.fullmatch(r"([0-9]{2})\.([0-9]{2})", version)
+        if not m:
+            raise ValueError(f"{version!r} is not an APP_VER XX.YY")
+        return int(m.group(1)) * 100 + int(m.group(2))
+    if isinstance(version, int) and not isinstance(version, bool) and version >= 0:
+        if platform == "3ds" and version >= 1 << 16:
+            raise ValueError("a 3DS title version is 16 bits")
+        return version
+    raise ValueError(f"{version!r} is not a version of {platform}")
+
+
+def version_name(platform, code):
+    """The version people read, where the profile derives it from version_code (the 3DS's)."""
+    if platform == "3ds":
+        return f"{code >> 10}.{(code >> 4) & 0x3F}.{code & 0xF}"
+    if platform in ("vita", "ps4"):
+        return f"{code // 100:02d}.{code % 100:02d}"
+    return None

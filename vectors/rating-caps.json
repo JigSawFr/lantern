@@ -1,0 +1,222 @@
+{
+ "schema": 1,
+ "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
+ "vectors": "rating-caps",
+ "description": "Ratings and rating caps (SPEC.md § 5.6): whether a server hides the title (or the homebrew) from a token of that cap, and the age it reads.",
+ "ages": {
+  "PEGI": {
+   "3": 3,
+   "7": 7,
+   "12": 12,
+   "16": 16,
+   "18": 18
+  },
+  "ESRB": {
+   "EC": 3,
+   "E": 6,
+   "E10+": 10,
+   "T": 13,
+   "M": 17,
+   "AO": 18
+  },
+  "CERO": {
+   "A": 0,
+   "B": 12,
+   "C": 15,
+   "D": 17,
+   "Z": 18
+  },
+  "USK": {
+   "0": 0,
+   "6": 6,
+   "12": 12,
+   "16": 16,
+   "18": 18
+  },
+  "ACB": {
+   "G": 0,
+   "PG": 8,
+   "M": 15,
+   "MA15+": 15,
+   "R18+": 18,
+   "X18+": 18
+  },
+  "CLASSIND": {
+   "L": 0,
+   "10": 10,
+   "12": 12,
+   "14": 14,
+   "16": 16,
+   "18": 18
+  },
+  "GRAC": {
+   "ALL": 0,
+   "12": 12,
+   "15": 15,
+   "18": 18
+  }
+ },
+ "cases": [
+  {
+   "name": "An age cap reads the highest age",
+   "ratings": [
+    {
+     "system": "PEGI",
+     "rating": "12"
+    },
+    {
+     "system": "ESRB",
+     "rating": "T"
+    }
+   ],
+   "cap": {
+    "age": 12
+   },
+   "age": 13,
+   "hidden": true
+  },
+  {
+   "name": "ESRB T is 13",
+   "ratings": [
+    {
+     "system": "PEGI",
+     "rating": "12"
+    },
+    {
+     "system": "ESRB",
+     "rating": "T"
+    }
+   ],
+   "cap": {
+    "age": 13
+   },
+   "age": 13,
+   "hidden": false
+  },
+  {
+   "name": "A cap of a system reads that system's rating",
+   "ratings": [
+    {
+     "system": "PEGI",
+     "rating": "12"
+    },
+    {
+     "system": "ESRB",
+     "rating": "T"
+    }
+   ],
+   "cap": {
+    "system": "PEGI",
+    "rating": "12"
+   },
+   "age": 12,
+   "hidden": false
+  },
+  {
+   "name": "A system the title has no rating of: the highest age",
+   "ratings": [
+    {
+     "system": "USK",
+     "rating": "16"
+    }
+   ],
+   "cap": {
+    "system": "PEGI",
+    "rating": "12"
+   },
+   "age": 16,
+   "hidden": true
+  },
+  {
+   "name": "Unrated, shown by default",
+   "ratings": [],
+   "cap": {
+    "age": 7
+   },
+   "age": null,
+   "hidden": false
+  },
+  {
+   "name": "Unrated, hidden when asked",
+   "ratings": [],
+   "cap": {
+    "age": 7,
+    "unrated": "hide"
+   },
+   "age": null,
+   "hidden": true
+  },
+  {
+   "name": "A rating the table does not list is unrated",
+   "ratings": [
+    {
+     "system": "ESRB",
+     "rating": "RP"
+    }
+   ],
+   "cap": {
+    "age": 7,
+    "unrated": "hide"
+   },
+   "age": null,
+   "hidden": true
+  },
+  {
+   "name": "A system the table does not list is unrated",
+   "ratings": [
+    {
+     "system": "OFLC",
+     "rating": "M"
+    }
+   ],
+   "cap": {
+    "age": 18
+   },
+   "age": null,
+   "hidden": false
+  },
+  {
+   "name": "At the cap is not above it",
+   "ratings": [
+    {
+     "system": "CERO",
+     "rating": "B"
+    }
+   ],
+   "cap": {
+    "age": 12
+   },
+   "age": 12,
+   "hidden": false
+  },
+  {
+   "name": "ACB MA15+",
+   "ratings": [
+    {
+     "system": "ACB",
+     "rating": "MA15+"
+    }
+   ],
+   "cap": {
+    "system": "CLASSIND",
+    "rating": "14"
+   },
+   "age": 15,
+   "hidden": true
+  },
+  {
+   "name": "GRAC ALL",
+   "ratings": [
+    {
+     "system": "GRAC",
+     "rating": "ALL"
+    }
+   ],
+   "cap": {
+    "age": 0
+   },
+   "age": 0,
+   "hidden": false
+  }
+ ]
+}

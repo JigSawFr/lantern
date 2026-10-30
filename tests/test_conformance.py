@@ -7,11 +7,13 @@ fictional library made in a temporary folder (tests/library.py). A test
 gets a device's token by pairing, approved through the server object or
 its /pair page; the TLS tests make a self-signed certificate with openssl.
 """
+import base64
 import hashlib
 import importlib.util
 import io
 import json
 import re
+import secrets
 import shutil
 import socket
 import ssl
@@ -35,6 +37,9 @@ sys.path.insert(0, str(ROOT / "tests"))
 import library
 
 from server import lantern_server as ls
+
+sys.path.insert(0, str(ROOT / "conformance"))
+import lantern_client as client
 
 ls.log = lambda msg: None  # the server's notes (skipped files…) stay out of the test output
 
@@ -127,13 +132,39 @@ class Running:
         return json.loads(body)
 
     def pair(self, user, doc=PAIRING):
-        """A token for `user`: asked for over HTTP, approved through the server object."""
+        """A bearer-only token for `user`, as a 0.3 client gets one: asked for over HTTP, approved through the
+        server object."""
         code = self.start_pairing(doc)
         pairing = self.server.pairing
         pairing.approve(pairing.by_code(code["code"]), user)
         status, _, body = self.get(code["poll"])
         assert status == 200, body
         return json.loads(body)["token"]
+
+    def pair_keyed(self, user, doc=PAIRING, rating_cap=None):
+        """(token, the device key's seed, the file of the key) for `user`: a token bound to a key made here
+        (SPEC.md § 5.4), its poll signed."""
+        seed, public = client.ed25519_keypair()
+        code = self.start_pairing({**doc, "key": {"alg": "ed25519", "public_key": base64.b64encode(public).decode()}})
+        pairing = self.server.pairing
+        pairing.approve(pairing.by_code(code["code"]), user, rating_cap=rating_cap)
+        status, _, body = self.request(code["poll"], headers=client.sign(seed, "GET", self.url.rstrip("/") + code["poll"]))
+        assert status == 200, body
+        key = Path(self.tmp.name) / f"device-{secrets.token_hex(4)}.key"
+        key.write_text(base64.b64encode(seed).decode(), encoding="ascii")
+        return json.loads(body)["token"], seed, str(key)
+
+    def signed(self, path, token, seed, method="GET", data=None, headers=None, **sign):
+        """A request signed by the device key `seed` (SPEC.md § 5.4)."""
+        headers = dict(headers or {})
+        if isinstance(data, dict):
+            data = json.dumps(data).encode()
+            headers.setdefault("Content-Type", "application/json")
+        auth = "Bearer " + token if token else None
+        headers.update(client.sign(seed, method, self.url.rstrip("/") + path, auth, data or b"", **sign))
+        if auth:
+            headers["Authorization"] = auth
+        return self.request(path, headers=headers, method=method, data=data)
 
 
 def run_suite(url, *args):
@@ -174,24 +205,38 @@ class SuiteAgainstReference(unittest.TestCase):
                             "pairing.unknown", "schema.refused.pairing", "errors.www-authenticate"])
 
     def test_private_with_every_scope(self):
+        """A token bound to its device key, holding every scope: every level (SPEC.md § 17)."""
         srv = Running(USERS)
         self.addCleanup(srv.close)
-        report = self.passes(srv, "--token", srv.pair("mila", EVERY_SCOPE),
+        token, _, key = srv.pair_keyed("mila", EVERY_SCOPE)
+        report = self.passes(srv, "--token", token, "--key", key, "--admin-writes",
                              expect=["saves.upload", "saves.read", "saves.upload-digest", "saves.single",
                                      "saves.cleanup", "schema.refused.saves", "schema.refused.homebrew",
                                      "cheats.sets", "cheats.text", "titles.bulk", "titles.bulk-limit",
                                      "homebrew.ports", "homebrew.signatures", "homebrew.updates",
                                      "homebrew.filters", "homebrew.requires", "homebrew.packages",
                                      "cheats.write-cycle", "requests.list", "requests.create",
-                                     "schema.refused.requests", "platforms.filter", "missing.no-platform"])
+                                     "schema.refused.requests", "platforms.filter", "missing.no-platform",
+                                     "signatures.unsigned", "signatures.invalid", "signatures.stale",
+                                     "signatures.replayed", "signatures.digest", "pairing.key", "requests.delete",
+                                     "admin.users", "admin.users-write", "admin.pairings", "admin.rating-cap",
+                                     "admin.refuse", "admin.devices", "admin.invitations", "language.problem",
+                                     "compression.files", "limits.depth", "budget.cold-start"])
+        self.assertIn("Levels reached (SPEC.md § 17, draft 0.4): Lantern Core +titles +homebrew +saves +cheats "
+                      "+requests +admin\n", report)
         self.assertIn("2 backup(s) deleted", report)
         self.assertIn("for another architecture", report)                # the Linux port's packages, read
         self.assertIn("posted, replaced and deleted", report)
         self.assertFalse((srv.root / "cheats" / "switch").exists())         # nor a cheat set
         self.assertEqual(json.loads((srv.root / "cheats" / "index.json").read_text())["notes"], {})
-        self.assertEqual(len(srv.lib.requests()), 1)                         # the one request it cannot delete
+        self.assertEqual(srv.lib.requests(), [])                             # nor a request (SPEC.md § 11)
         self.assertEqual(srv.server.saves.index["saves"], [])         # the suite left nothing behind
         self.assertEqual(srv.server.saves.index["uploads"], {})
+        devices = srv.server.tokens.devices()                               # nor a device: only its own token
+        self.assertEqual([r["device"] for _, r in devices], ["Mila's Switch"])
+        self.assertEqual(srv.server.invitations.listed(), [])
+        made = [n for n in srv.server.accounts.names() if n.startswith("lantern-conformance-")]
+        self.assertEqual([srv.server.accounts.get(n)["state"] for n in made], ["frozen"])   # --admin-writes
 
     def test_private_anonymously(self):
         srv = Running(USERS)
@@ -214,9 +259,11 @@ class SuiteAgainstReference(unittest.TestCase):
     def test_over_tls_with_a_self_signed_certificate(self):
         srv = Running(USERS, tls=True)
         self.addCleanup(srv.close)
-        report = self.passes(srv, "--cafile", srv.cafile, "--token", srv.pair("mila", EVERY_SCOPE),
+        token, _, key = srv.pair_keyed("mila", EVERY_SCOPE)
+        report = self.passes(srv, "--cafile", srv.cafile, "--token", token, "--key", key,
                              expect=["transport.https", "pairing.code", "files.ranges", "saves.upload",
-                                     "homebrew.packages"])
+                                     "homebrew.packages", "pairing.verify-page", "signatures.replayed",
+                                     "admin.invitations"])
         self.assertNotIn("WARN  § 2 ", report)
 
 
@@ -238,11 +285,17 @@ class PairForCI(unittest.TestCase):
         self.addCleanup(lambda: subprocess.run(["kill", str(pid)], check=False))
         self.assertEqual(run.returncode, 0, run.stderr)
         token = run.stdout.strip()
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/.well-known/lantern",
-                                     headers={"Authorization": "Bearer " + token})
+        seed = base64.b64decode((work / "device.key").read_text())
+        url = f"http://127.0.0.1:{port}/.well-known/lantern"
+        req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token,
+                                                   **client.sign(seed, "GET", url, "Bearer " + token)})
         with urllib.request.urlopen(req, timeout=10) as r:
             hello = json.loads(r.read())
         self.assertEqual((hello["account"]["state"], hello["account"]["scopes"]), ("active", list(ls.SCOPES)))
+        self.assertTrue(hello["account"]["bound"])                                  # SPEC.md § 5.4
+        with self.assertRaises(urllib.error.HTTPError) as unsigned:
+            urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": "Bearer " + token}), timeout=10)
+        self.assertEqual(unsigned.exception.code, 401)
         self.assertEqual(hello["features"]["requests"], 1)
         users = json.loads((work / "users.json").read_text())
         self.assertTrue(users["users"][0]["password"].startswith("pbkdf2-sha256$"))     # only its hash is kept
@@ -443,16 +496,16 @@ class SuiteCatchesFaults(unittest.TestCase):
 
     def test_repr_digest_missing(self):
         class NoDigest(ls.Handler):
-            def send_head(self, status, length, headers):
-                super().send_head(status, length, {k: v for k, v in headers.items() if k != "Repr-Digest"})
+            def send_head(self, status, length, headers, **kw):
+                super().send_head(status, length, {k: v for k, v in headers.items() if k != "Repr-Digest"}, **kw)
         self.fails(NoDigest, "files.whole")
 
     def test_digest_on_ranges_missing(self):
         class NoRangeDigest(ls.Handler):
-            def send_head(self, status, length, headers):
+            def send_head(self, status, length, headers, **kw):
                 if status == 206:
                     headers = {k: v for k, v in headers.items() if k != "Repr-Digest"}
-                super().send_head(status, length, headers)
+                super().send_head(status, length, headers, **kw)
         self.fails(NoRangeDigest, "files.ranges")
 
     def test_basic_challenge(self):
@@ -586,7 +639,7 @@ class Server(unittest.TestCase):
         srv = self.private()
         status, hello = srv.get_json("/.well-known/lantern")
         self.assertEqual((status, hello["account"]["state"]), (200, "anonymous"))
-        self.assertEqual({k for k, v in hello["features"].items() if v}, {"pairing"})
+        self.assertEqual({k for k, v in hello["features"].items() if v}, {"pairing", "signatures"})
         status, problem = srv.get_json("/api/lantern/v1/apps")
         self.assertEqual((status, problem["code"]), (401, "unauthorized"))
         status, hello = srv.get_json("/api/lantern/v1/", token=srv.pair("lea"))

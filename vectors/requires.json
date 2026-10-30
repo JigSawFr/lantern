@@ -1,0 +1,284 @@
+{
+ "schema": 1,
+ "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
+ "vectors": "requires",
+ "description": "Requirements (SPEC.md § 8.7) and what a client knows of its device: offer, warn (a condition it cannot read: it still offers, naming it) or refuse (a condition the device fails); conditions counts those it names.",
+ "cases": [
+  {
+   "name": "Atmosphère at least, met",
+   "requires": {
+    "text": "Atmosphère 1.7",
+    "min": {
+     "atmosphere": "1.7.0"
+    }
+   },
+   "device": {
+    "firmware": "18.1.0",
+    "atmosphere": "1.7.1"
+   },
+   "decision": "offer",
+   "conditions": 0
+  },
+  {
+   "name": "A missing part is 0: 1.7 is 1.7.0",
+   "requires": {
+    "text": "Atmosphère 1.7",
+    "min": {
+     "atmosphere": "1.7"
+    }
+   },
+   "device": {
+    "firmware": "18.1.0",
+    "atmosphere": "1.7.1"
+   },
+   "decision": "offer",
+   "conditions": 0
+  },
+  {
+   "name": "A firmware above the device's",
+   "requires": {
+    "text": "System 19",
+    "min": {
+     "firmware": "19.0.0"
+    }
+   },
+   "device": {
+    "firmware": "18.1.0",
+    "atmosphere": "1.7.1"
+   },
+   "decision": "refuse",
+   "conditions": 1
+  },
+  {
+   "name": "Parts compare as numbers: 2.31 is above 2.4",
+   "requires": {
+    "text": "glibc 2.4",
+    "min": {
+     "glibc": "2.4"
+    }
+   },
+   "device": {
+    "glibc": "2.31",
+    "ram_mb": 1024,
+    "screen": "640x480",
+    "gpu": [
+     "gles2",
+     "gles3"
+    ]
+   },
+   "decision": "offer",
+   "conditions": 0
+  },
+  {
+   "name": "glibc above the device's",
+   "requires": {
+    "text": "glibc 2.35",
+    "min": {
+     "glibc": "2.35"
+    }
+   },
+   "device": {
+    "glibc": "2.31",
+    "ram_mb": 1024,
+    "screen": "640x480",
+    "gpu": [
+     "gles2",
+     "gles3"
+    ]
+   },
+   "decision": "refuse",
+   "conditions": 1
+  },
+  {
+   "name": "Memory and screen, met",
+   "requires": {
+    "text": "1 GiB, 640×480",
+    "min": {
+     "ram_mb": 1024,
+     "screen": "640x480"
+    }
+   },
+   "device": {
+    "glibc": "2.31",
+    "ram_mb": 1024,
+    "screen": "640x480",
+    "gpu": [
+     "gles2",
+     "gles3"
+    ]
+   },
+   "decision": "offer",
+   "conditions": 0
+  },
+  {
+   "name": "A screen too small in one way",
+   "requires": {
+    "text": "720p",
+    "min": {
+     "screen": "1280x480"
+    }
+   },
+   "device": {
+    "glibc": "2.31",
+    "ram_mb": 1024,
+    "screen": "640x480",
+    "gpu": [
+     "gles2",
+     "gles3"
+    ]
+   },
+   "decision": "refuse",
+   "conditions": 1
+  },
+  {
+   "name": "One of the GPU interfaces is enough",
+   "requires": {
+    "text": "GLES 3 or Vulkan",
+    "gpu": [
+     "gles3",
+     "vulkan"
+    ]
+   },
+   "device": {
+    "glibc": "2.31",
+    "ram_mb": 1024,
+    "screen": "640x480",
+    "gpu": [
+     "gles2",
+     "gles3"
+    ]
+   },
+   "decision": "offer",
+   "conditions": 0
+  },
+  {
+   "name": "None of the GPU interfaces",
+   "requires": {
+    "text": "Vulkan",
+    "gpu": [
+     "vulkan"
+    ]
+   },
+   "device": {
+    "glibc": "2.31",
+    "ram_mb": 1024,
+    "screen": "640x480",
+    "gpu": [
+     "gles2",
+     "gles3"
+    ]
+   },
+   "decision": "refuse",
+   "conditions": 1
+  },
+  {
+   "name": "A GPU name this text does not know",
+   "requires": {
+    "text": "Metal",
+    "gpu": [
+     "metal"
+    ]
+   },
+   "device": {
+    "glibc": "2.31",
+    "ram_mb": 1024,
+    "screen": "640x480",
+    "gpu": [
+     "gles2",
+     "gles3"
+    ]
+   },
+   "decision": "warn",
+   "conditions": 1
+  },
+  {
+   "name": "A key this text does not know: a warning",
+   "requires": {
+    "text": "A pump",
+    "min": {
+     "pump": "2"
+    }
+   },
+   "device": {
+    "glibc": "2.31",
+    "ram_mb": 1024,
+    "screen": "640x480",
+    "gpu": [
+     "gles2",
+     "gles3"
+    ]
+   },
+   "decision": "warn",
+   "conditions": 1
+  },
+  {
+   "name": "Unknown to the device: a warning",
+   "requires": {
+    "text": "glibc 2.30",
+    "min": {
+     "glibc": "2.30"
+    }
+   },
+   "device": {},
+   "decision": "warn",
+   "conditions": 1
+  },
+  {
+   "name": "A vendor's key is ignored",
+   "requires": {
+    "text": "Nothing",
+    "x-example-dock": true
+   },
+   "device": {
+    "glibc": "2.31",
+    "ram_mb": 1024,
+    "screen": "640x480",
+    "gpu": [
+     "gles2",
+     "gles3"
+    ]
+   },
+   "decision": "offer",
+   "conditions": 0
+  },
+  {
+   "name": "A failure wins over a warning",
+   "requires": {
+    "text": "Mixed",
+    "min": {
+     "glibc": "2.40",
+     "pump": "1"
+    }
+   },
+   "device": {
+    "glibc": "2.31",
+    "ram_mb": 1024,
+    "screen": "640x480",
+    "gpu": [
+     "gles2",
+     "gles3"
+    ]
+   },
+   "decision": "refuse",
+   "conditions": 1
+  },
+  {
+   "name": "A key of requires this text does not list",
+   "requires": {
+    "text": "Network",
+    "network": "lan"
+   },
+   "device": {
+    "glibc": "2.31",
+    "ram_mb": 1024,
+    "screen": "640x480",
+    "gpu": [
+     "gles2",
+     "gles3"
+    ]
+   },
+   "decision": "warn",
+   "conditions": 1
+  }
+ ]
+}

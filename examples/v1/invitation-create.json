@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "user": "sam",
+  "scopes": [
+    "library"
+  ],
+  "expires": "2026-11-06T18:00:00Z",
+  "devices": 2,
+  "rating_cap": {
+    "age": 12
+  },
+  "note": "Sam's consoles"
+}

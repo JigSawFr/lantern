@@ -4,5 +4,10 @@
   "scopes": [
     "library",
     "saves"
-  ]
+  ],
+  "bound": true,
+  "rating_cap": {
+    "system": "PEGI",
+    "rating": "12"
+  }
 }

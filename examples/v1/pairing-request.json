@@ -4,5 +4,9 @@
   "scopes": [
     "library",
     "saves"
-  ]
+  ],
+  "key": {
+    "alg": "ed25519",
+    "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+  }
 }

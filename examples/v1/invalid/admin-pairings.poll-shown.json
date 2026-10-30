@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "items": [
+    {
+      "id": "pr_Qm4t",
+      "code": "KQ4M-7TXD",
+      "device": "Lea's Switch",
+      "scopes": [
+        "library"
+      ],
+      "expires": "2026-10-30T18:20:00Z",
+      "poll": "/api/lantern/v1/pairing/p_4Fh2"
+    }
+  ],
+  "next": null
+}

@@ -21,7 +21,11 @@
     "scopes": [
       "library",
       "saves"
-    ]
+    ],
+    "bound": true,
+    "rating_cap": {
+      "age": 12
+    }
   },
   "features": {
     "library": 1,
@@ -32,7 +36,14 @@
     "saves": 1,
     "cheats": 1,
     "requests": 0,
-    "pairing": 1
+    "pairing": 1,
+    "signatures": 1,
+    "admin": 0
+  },
+  "language": "en",
+  "auth": {
+    "bearer_only": true,
+    "skew": 300
   },
   "limits": {
     "page_size": 500,

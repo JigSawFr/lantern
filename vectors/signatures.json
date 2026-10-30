@@ -1,0 +1,191 @@
+{
+ "schema": 1,
+ "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
+ "vectors": "signatures",
+ "description": "Signed requests (SPEC.md § 5.4, RFC 9421): each accepted request's signature base and headers, by the key below, at the server time below; then requests a server refuses, in order, each with the code it answers.",
+ "key": {
+  "seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+  "public_key": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+  "keyid": "If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk",
+  "short_fingerprint": "21FE 31DF A154 A261",
+  "note": "RFC 8032 § 7.1, test 1: a published test key, never a real one."
+ },
+ "token": "et_c8V1nQ0xYbExampleVectorToken0000000000",
+ "server_time": 1793345400,
+ "skew": 300,
+ "accepted": [
+  {
+   "name": "GET without a body",
+   "method": "GET",
+   "uri": "https://shelf.example.org/api/lantern/v1/apps?page_size=50",
+   "body": "",
+   "headers": {
+    "Authorization": "Bearer et_c8V1nQ0xYbExampleVectorToken0000000000",
+    "Signature-Input": "lantern=(\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"tQ0Vb3Yt7sXx2c1mZ8kq4A\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\"",
+    "Signature": "lantern=:M8AuwRfGqDSUYUefbsIOlmFKxvi+6HnHv0pvbD22n/lrJqHvPcvYThUUCqK+6C63s9nTQPThdrTfM9yFwt6aBA==:"
+   },
+   "signature_base": "\"@method\": GET\n\"@target-uri\": https://shelf.example.org/api/lantern/v1/apps?page_size=50\n\"authorization\": Bearer et_c8V1nQ0xYbExampleVectorToken0000000000\n\"@signature-params\": (\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"tQ0Vb3Yt7sXx2c1mZ8kq4A\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\""
+  },
+  {
+   "name": "POST with a JSON body: content-digest covered",
+   "method": "POST",
+   "uri": "https://shelf.example.org/api/lantern/v1/apps/missing?platform=switch",
+   "body": "{\"schema\":1,\"installed\":[{\"app_id\":\"0100ABCD00010000\",\"version_code\":0}],\"want\":[\"update\",\"dlc\"]}",
+   "headers": {
+    "Authorization": "Bearer et_c8V1nQ0xYbExampleVectorToken0000000000",
+    "Content-Digest": "sha-256=:AiEqeKhcZ0pwUZhgfcD0XNrb5ZsGsXJ/3UlXI9xRjUo=:",
+    "Signature-Input": "lantern=(\"@method\" \"@target-uri\" \"authorization\" \"content-digest\");created=1793345400;nonce=\"Wm9nZ2xlLWZyb3N0bGluZQ\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\"",
+    "Signature": "lantern=:EhjpnOAIWX2eymFSC33YADeBtu64PWM+V8ftc5O6SIGOv2Yos91y+N1ttFbJMxwsNWIN+lh3DPtPVjPpT476Cg==:"
+   },
+   "signature_base": "\"@method\": POST\n\"@target-uri\": https://shelf.example.org/api/lantern/v1/apps/missing?platform=switch\n\"authorization\": Bearer et_c8V1nQ0xYbExampleVectorToken0000000000\n\"content-digest\": sha-256=:AiEqeKhcZ0pwUZhgfcD0XNrb5ZsGsXJ/3UlXI9xRjUo=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"authorization\" \"content-digest\");created=1793345400;nonce=\"Wm9nZ2xlLWZyb3N0bGluZQ\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\""
+  },
+  {
+   "name": "A port other than the scheme's, and a query percent-encoded as sent",
+   "method": "GET",
+   "uri": "https://192.0.2.10:8443/api/lantern/v1/apps?q=Moss%20%26%20Ember&page_size=10",
+   "body": "",
+   "headers": {
+    "Authorization": "Bearer et_c8V1nQ0xYbExampleVectorToken0000000000",
+    "Signature-Input": "lantern=(\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"bW9zcy1hbmQtZW1iZXItMDE\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\"",
+    "Signature": "lantern=:e+nMQDPG/jbyTavVIQHkWlgUTMMqUo8LpYXCFs2IwSAN7rK4VUifVTMTEhhckMuWaJX2doy1dmrSKMpwUAvVCA==:"
+   },
+   "signature_base": "\"@method\": GET\n\"@target-uri\": https://192.0.2.10:8443/api/lantern/v1/apps?q=Moss%20%26%20Ember&page_size=10\n\"authorization\": Bearer et_c8V1nQ0xYbExampleVectorToken0000000000\n\"@signature-params\": (\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"bW9zcy1hbmQtZW1iZXItMDE\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\""
+  },
+  {
+   "name": "A DELETE without a body",
+   "method": "DELETE",
+   "uri": "https://shelf.example.org/api/lantern/v1/requests/r_Hk3",
+   "body": "",
+   "headers": {
+    "Authorization": "Bearer et_c8V1nQ0xYbExampleVectorToken0000000000",
+    "Signature-Input": "lantern=(\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"ZGVsZXRlLXRoZS1yZXF1ZXN0\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\"",
+    "Signature": "lantern=:SU/1VZf6qBLeQR/dU5F2ybA9LwWhzRY48eD2aJRaTt/hr7lW9fIGpWfXgknK2ZqK94O+zJa1Jn/XwkLzODTYBA==:"
+   },
+   "signature_base": "\"@method\": DELETE\n\"@target-uri\": https://shelf.example.org/api/lantern/v1/requests/r_Hk3\n\"authorization\": Bearer et_c8V1nQ0xYbExampleVectorToken0000000000\n\"@signature-params\": (\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"ZGVsZXRlLXRoZS1yZXF1ZXN0\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\""
+  },
+  {
+   "name": "Polling a pairing made with a key: no authorization",
+   "method": "GET",
+   "uri": "https://shelf.example.org/api/lantern/v1/pairing/p_4Fh2Lm9Q",
+   "body": "",
+   "headers": {
+    "Signature-Input": "lantern=(\"@method\" \"@target-uri\");created=1793345400;nonce=\"cG9sbGluZy10aGUtcGFpcmluZw\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\"",
+    "Signature": "lantern=:NLvJC19rEa68J0+U2aTdr86narOk8zX1YRjl5Bbdm4pA7VN4IxgD5p1qyjSbvVMMoVYsF2D6wS3+RZw1Cl5WCA==:"
+   },
+   "signature_base": "\"@method\": GET\n\"@target-uri\": https://shelf.example.org/api/lantern/v1/pairing/p_4Fh2Lm9Q\n\"@signature-params\": (\"@method\" \"@target-uri\");created=1793345400;nonce=\"cG9sbGluZy10aGUtcGFpcmluZw\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\""
+  }
+ ],
+ "refused": [
+  {
+   "name": "No signature",
+   "request": {
+    "name": "GET without a body",
+    "method": "GET",
+    "uri": "https://shelf.example.org/api/lantern/v1/apps?page_size=50",
+    "body": "",
+    "headers": {
+     "Authorization": "Bearer et_c8V1nQ0xYbExampleVectorToken0000000000"
+    },
+    "signature_base": "\"@method\": GET\n\"@target-uri\": https://shelf.example.org/api/lantern/v1/apps?page_size=50\n\"authorization\": Bearer et_c8V1nQ0xYbExampleVectorToken0000000000\n\"@signature-params\": (\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"tQ0Vb3Yt7sXx2c1mZ8kq4A\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\""
+   },
+   "code": "signature_required"
+  },
+  {
+   "name": "Another method than the one signed",
+   "request": {
+    "name": "GET without a body",
+    "method": "DELETE",
+    "uri": "https://shelf.example.org/api/lantern/v1/apps?page_size=50",
+    "body": "",
+    "headers": {
+     "Authorization": "Bearer et_c8V1nQ0xYbExampleVectorToken0000000000",
+     "Signature-Input": "lantern=(\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"tQ0Vb3Yt7sXx2c1mZ8kq4A\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\"",
+     "Signature": "lantern=:M8AuwRfGqDSUYUefbsIOlmFKxvi+6HnHv0pvbD22n/lrJqHvPcvYThUUCqK+6C63s9nTQPThdrTfM9yFwt6aBA==:"
+    },
+    "signature_base": "\"@method\": GET\n\"@target-uri\": https://shelf.example.org/api/lantern/v1/apps?page_size=50\n\"authorization\": Bearer et_c8V1nQ0xYbExampleVectorToken0000000000\n\"@signature-params\": (\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"tQ0Vb3Yt7sXx2c1mZ8kq4A\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\""
+   },
+   "code": "signature_invalid"
+  },
+  {
+   "name": "Components in another order",
+   "request": {
+    "name": "GET without a body",
+    "method": "GET",
+    "uri": "https://shelf.example.org/api/lantern/v1/apps?page_size=50",
+    "body": "",
+    "headers": {
+     "Authorization": "Bearer et_c8V1nQ0xYbExampleVectorToken0000000000",
+     "Signature-Input": "lantern=(\"@target-uri\" \"@method\" \"authorization\");created=1793345400;nonce=\"cmVvcmRlcmVkLWlucHV0LTAx\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\"",
+     "Signature": "lantern=:M8AuwRfGqDSUYUefbsIOlmFKxvi+6HnHv0pvbD22n/lrJqHvPcvYThUUCqK+6C63s9nTQPThdrTfM9yFwt6aBA==:"
+    },
+    "signature_base": "\"@method\": GET\n\"@target-uri\": https://shelf.example.org/api/lantern/v1/apps?page_size=50\n\"authorization\": Bearer et_c8V1nQ0xYbExampleVectorToken0000000000\n\"@signature-params\": (\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"tQ0Vb3Yt7sXx2c1mZ8kq4A\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\""
+   },
+   "code": "signature_invalid"
+  },
+  {
+   "name": "Signed by another key (keyid is not the token's)",
+   "request": {
+    "method": "GET",
+    "uri": "https://shelf.example.org/api/lantern/v1/apps?page_size=50",
+    "body": "",
+    "headers": {
+     "Authorization": "Bearer et_c8V1nQ0xYbExampleVectorToken0000000000",
+     "Signature-Input": "lantern=(\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"b3RoZXIta2V5LXNpZ25lZA\";keyid=\"E545QOZLVJFyIIjZoNdBYo_IJuCUddNBp4Cs3jxLgHA\";alg=\"ed25519\"",
+     "Signature": "lantern=:I+BkJ+M2/5jXzagOM94W7HTlEjvoDESc+DyeDvmqfj4xrdxPG6+7gG3+z4D5ufZvq92r9DP4/4kwEPFEePqODA==:"
+    },
+    "signature_base": "\"@method\": GET\n\"@target-uri\": https://shelf.example.org/api/lantern/v1/apps?page_size=50\n\"authorization\": Bearer et_c8V1nQ0xYbExampleVectorToken0000000000\n\"@signature-params\": (\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"b3RoZXIta2V5LXNpZ25lZA\";keyid=\"E545QOZLVJFyIIjZoNdBYo_IJuCUddNBp4Cs3jxLgHA\";alg=\"ed25519\""
+   },
+   "code": "signature_invalid"
+  },
+  {
+   "name": "A body without its Content-Digest",
+   "request": {
+    "name": "POST with a JSON body: content-digest covered",
+    "method": "POST",
+    "uri": "https://shelf.example.org/api/lantern/v1/apps/missing?platform=switch",
+    "body": "{\"schema\":1,\"installed\":[{\"app_id\":\"0100ABCD00010000\",\"version_code\":0}],\"want\":[\"update\",\"dlc\"]}",
+    "headers": {
+     "Authorization": "Bearer et_c8V1nQ0xYbExampleVectorToken0000000000",
+     "Signature-Input": "lantern=(\"@method\" \"@target-uri\" \"authorization\" \"content-digest\");created=1793345400;nonce=\"Wm9nZ2xlLWZyb3N0bGluZQ\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\"",
+     "Signature": "lantern=:EhjpnOAIWX2eymFSC33YADeBtu64PWM+V8ftc5O6SIGOv2Yos91y+N1ttFbJMxwsNWIN+lh3DPtPVjPpT476Cg==:"
+    },
+    "signature_base": "\"@method\": POST\n\"@target-uri\": https://shelf.example.org/api/lantern/v1/apps/missing?platform=switch\n\"authorization\": Bearer et_c8V1nQ0xYbExampleVectorToken0000000000\n\"content-digest\": sha-256=:AiEqeKhcZ0pwUZhgfcD0XNrb5ZsGsXJ/3UlXI9xRjUo=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"authorization\" \"content-digest\");created=1793345400;nonce=\"Wm9nZ2xlLWZyb3N0bGluZQ\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\""
+   },
+   "code": "signature_invalid"
+  },
+  {
+   "name": "created 301 s before the server's clock",
+   "request": {
+    "method": "GET",
+    "uri": "https://shelf.example.org/api/lantern/v1/apps?page_size=50",
+    "body": "",
+    "headers": {
+     "Authorization": "Bearer et_c8V1nQ0xYbExampleVectorToken0000000000",
+     "Signature-Input": "lantern=(\"@method\" \"@target-uri\" \"authorization\");created=1793345099;nonce=\"b2xkLXNpZ25hdHVyZS0wMDAx\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\"",
+     "Signature": "lantern=:ckFBqpxWXfL9q9MYD8fRp/dMxS+EGyLot6Phj9WdeQdIFvEHak8JkUIhbXuLMaYMUGeDvEiJ4DGomaqMhF5GDw==:"
+    },
+    "signature_base": "\"@method\": GET\n\"@target-uri\": https://shelf.example.org/api/lantern/v1/apps?page_size=50\n\"authorization\": Bearer et_c8V1nQ0xYbExampleVectorToken0000000000\n\"@signature-params\": (\"@method\" \"@target-uri\" \"authorization\");created=1793345099;nonce=\"b2xkLXNpZ25hdHVyZS0wMDAx\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\""
+   },
+   "code": "signature_expired"
+  },
+  {
+   "name": "The first request again: its nonce was taken",
+   "request": {
+    "name": "GET without a body",
+    "method": "GET",
+    "uri": "https://shelf.example.org/api/lantern/v1/apps?page_size=50",
+    "body": "",
+    "headers": {
+     "Authorization": "Bearer et_c8V1nQ0xYbExampleVectorToken0000000000",
+     "Signature-Input": "lantern=(\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"tQ0Vb3Yt7sXx2c1mZ8kq4A\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\"",
+     "Signature": "lantern=:M8AuwRfGqDSUYUefbsIOlmFKxvi+6HnHv0pvbD22n/lrJqHvPcvYThUUCqK+6C63s9nTQPThdrTfM9yFwt6aBA==:"
+    },
+    "signature_base": "\"@method\": GET\n\"@target-uri\": https://shelf.example.org/api/lantern/v1/apps?page_size=50\n\"authorization\": Bearer et_c8V1nQ0xYbExampleVectorToken0000000000\n\"@signature-params\": (\"@method\" \"@target-uri\" \"authorization\");created=1793345400;nonce=\"tQ0Vb3Yt7sXx2c1mZ8kq4A\";keyid=\"If4x36FUomFia_hUBG_SJxt77UtqvkWqWId-9H-XIbk\";alg=\"ed25519\""
+   },
+   "code": "signature_replayed",
+   "after": [
+    "GET without a body"
+   ]
+  }
+ ]
+}

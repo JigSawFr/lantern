@@ -72,13 +72,27 @@ def same(a, b):
     return (a[0] * b[2] - b[0] * a[2]) % P == 0 and (a[1] * b[2] - b[1] * a[2]) % P == 0
 
 
+IDENTITY = (0, 1, 1, 0)
+
+
+def small_order(point):
+    """Whether a point is of small order: one of the 8 whose [8]P is the identity."""
+    return same(multiply(8, point), IDENTITY)
+
+
 def verify(public, message, signature):
-    """Whether `signature` (64 bytes) is `public`'s (32 bytes) over `message`."""
+    """Whether `signature` (64 bytes) is `public`'s (32 bytes) over `message`.
+
+    Refused before the equation (SPEC.md § 8.4): a key or an R that does not
+    decode, or not canonically (y >= p, or x = 0 with its sign bit set), a key
+    or an R of small order, and S >= L. Without that, a key of small order, an
+    R of small order and S = 0 satisfy the cofactorless equation for about one
+    message in 8: anyone could forge."""
     if len(public) != 32 or len(signature) != 64:
         return False
     a, r = decode(public), decode(signature[:32])
     s = int.from_bytes(signature[32:], "little")
-    if a is None or r is None or s >= L:
+    if a is None or r is None or s >= L or small_order(a) or small_order(r):
         return False
     h = int.from_bytes(hashlib.sha512(signature[:32] + public + message).digest(), "little") % L
     return same(multiply(s, G), add(r, multiply(h, a)))

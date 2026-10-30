@@ -27,8 +27,11 @@ asks for:
   that ignores it does.
 
 Once the proposal is agreed, the pull request changes SPEC.md, the schemas
-and examples, `openapi.yaml`, the suite and the reference server together,
-so that the suite never lags behind the text.
+and examples, `openapi.yaml`, the test vectors, the suite and the reference
+server together, so that the suite never lags behind the text (SPEC.md
+§ 3.5). A new MUST or SHOULD gets the next free id of its section
+(`[L-5.2-12]`), which a check of the suite names, or the suite's list of
+what it cannot see; `python3 tools/requirements.py` checks the ids.
 
 ## Pull requests
 
@@ -39,6 +42,7 @@ so that the suite never lags behind the text.
 
   ```sh
   pip install -r tools/requirements.txt
+  python3 tools/requirements.py
   python3 tools/check_schemas.py
   python3 -m unittest discover -s tests
   python3 tools/build_site.py build && python3 tools/check_site.py build
