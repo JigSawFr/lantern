@@ -1,16 +1,19 @@
 # Lantern's website (site/README.md) on GitHub Pages, its source GitHub
 # Actions (Settings › Pages): the protocol's page and the specification
-# rendered from SPEC.md, in the fifteen languages of Boréale's sites, and the
-# error types. Published at each push to main touching it, and on demand; a
-# pull request only builds and checks it.
+# rendered from SPEC.md, in the fifteen languages of Boréale's sites, its
+# drafts as they were published (read from git: the whole history is checked
+# out), its French translation, the error types, and the demo library, which
+# the conformance suite checks with its trapped variant. Published at each
+# push to main touching it, and on demand; a pull request only builds and
+# checks it.
 name: site
 
 on:
   push:
     branches: [ main ]
-    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "tools/site_layout.py", "tools/requirements.py", "conformance/run.py", ".github/workflows/site.yml" ]
+    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "tools/site_layout.py", "tools/requirements.py", "tools/make_demo.py", "tools/requirements.txt", "conformance/**", "server/**", "schemas/**", ".github/workflows/site.yml" ]
   pull_request:
-    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "tools/site_layout.py", "tools/requirements.py", "conformance/run.py", ".github/workflows/site.yml" ]
+    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "tools/site_layout.py", "tools/requirements.py", "tools/make_demo.py", "tools/requirements.txt", "conformance/**", "server/**", "schemas/**", ".github/workflows/site.yml" ]
   workflow_dispatch:
 
 permissions:
@@ -31,10 +34,29 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The specification's drafts are SPEC.md at their commits (git show): the whole history.
+          fetch-depth: 0
+          persist-credentials: false
       - name: The pages
         run: python3 tools/build_site.py build
       - name: Their links, catalogs and Content-Security-Policy
         run: python3 tools/check_site.py build
+      - name: The demo library at Lantern Static, and its trapped variant refused, by the conformance suite
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet -r tools/requirements.txt
+          "$RUNNER_TEMP/venv/bin/python" tools/make_demo.py check build/demo
+          # As a client reads it on GitHub Pages: over HTTP, from the site's own folder.
+          python3 -m http.server --bind 127.0.0.1 --directory build 8765 >/dev/null 2>&1 &
+          server=$!
+          for _ in $(seq 50); do
+            curl -fsS http://127.0.0.1:8765/demo/lantern.json >/dev/null && break
+            sleep 0.2
+          done
+          "$RUNNER_TEMP/venv/bin/python" conformance/run.py --static http://127.0.0.1:8765/demo/ | tee "$RUNNER_TEMP/demo.txt"
+          kill "$server"
+          grep -q "Lantern Static$" "$RUNNER_TEMP/demo.txt"
       # The runner in the key: the venv holds its Python (3.14 on 26.04)
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
