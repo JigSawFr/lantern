@@ -23,7 +23,7 @@ components:
     bearer: { type: http, scheme: bearer, description: "A token from pairing (SPEC.md § 5.2)." }
   responses:
     Problem:
-      description: An error (SPEC.md § 10).
+      description: "An error (SPEC.md § 10): any route may also answer 401, 405 (with Allow), 429, 500 or 503."
       content:
         application/problem+json:
           schema: { $ref: "schemas/v1/problem.json" }
@@ -53,12 +53,14 @@ paths:
       security: [ {}, { basic: [] }, { bearer: [] } ]
       responses:
         "200": { description: "The server and what it offers this caller.", content: { application/json: { schema: { $ref: "schemas/v1/handshake.json" } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /v1/:
     get:
       summary: The handshake (§ 4.2)
       security: [ {}, { basic: [] }, { bearer: [] } ]
       responses:
         "200": { description: "The server and what it offers this caller.", content: { application/json: { schema: { $ref: "schemas/v1/handshake.json" } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /v1/pairing:
     post:
       summary: Ask to pair a console (§ 5.2)
@@ -76,6 +78,7 @@ paths:
         "200": { description: "Approved.", content: { application/json: { schema: { $ref: "schemas/v1/pairing-token.json" } } } }
         "202": { description: "Still waiting for the user." }
         "410": { $ref: "#/components/responses/Problem" }
+        default: { $ref: "#/components/responses/Problem" }
   /v1/apps:
     get:
       summary: The library, a page at a time (§ 6.2)
@@ -105,11 +108,13 @@ paths:
       responses:
         "200": { description: "Added and removed apps, and the next token.", content: { application/json: { schema: { $ref: "schemas/v1/changes.json" } } } }
         "410": { $ref: "#/components/responses/Problem" }
+        default: { $ref: "#/components/responses/Problem" }
   /v1/sections:
     get:
       summary: The server's shelves (§ 6.5)
       responses:
         "200": { description: "Sections.", content: { application/json: { schema: { $ref: "schemas/v1/sections.json" } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /v1/titles/{title_id}:
     get:
       summary: A game's sheet and media (§ 6.6)
@@ -126,11 +131,13 @@ paths:
         "206": { description: "A range of it.", content: { application/octet-stream: {} } }
         "410": { $ref: "#/components/responses/Problem" }
         "416": { $ref: "#/components/responses/Problem" }
+        default: { $ref: "#/components/responses/Problem" }
   /v1/saves:
     get:
       summary: The account's save backups (§ 7)
       responses:
         "200": { description: "Save backups.", content: { application/json: { schema: { $ref: "schemas/v1/saves.json" } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /v1/saves/{title_id}:
     post:
       summary: Send a save backup (§ 7)
@@ -139,45 +146,54 @@ paths:
       responses:
         "201": { description: "The backup kept.", content: { application/json: { schema: { $ref: "schemas/v1/save.json" } } } }
         "413": { $ref: "#/components/responses/Problem" }
+        default: { $ref: "#/components/responses/Problem" }
   /v1/saves/{title_id}/{save_id}:
     parameters: [ { $ref: "#/components/parameters/TitleId" }, { name: save_id, in: path, required: true, schema: { type: string } } ]
     get:
       summary: Download a save backup (§ 7)
       responses:
         "200": { description: "The zip archive.", content: { application/zip: {} } }
+        default: { $ref: "#/components/responses/Problem" }
     delete:
       summary: Delete a save backup (§ 7)
       responses:
         "204": { description: "Deleted." }
+        default: { $ref: "#/components/responses/Problem" }
   /v1/cheats:
     get:
       summary: The cheats (§ 8)
       parameters: [ { name: title_id, in: query, schema: { type: string, pattern: "^[0-9A-F]{16}$" } } ]
       responses:
         "200": { description: "Cheats.", content: { application/json: { schema: { $ref: "schemas/v1/cheats.json" } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /v1/cheats/{title_id}/{build_id}:
     parameters: [ { $ref: "#/components/parameters/TitleId" }, { name: build_id, in: path, required: true, schema: { type: string, pattern: "^[0-9A-F]{1,64}$" } } ]
     get:
       summary: A cheat file (§ 8)
       responses:
         "200": { description: "Its text, as Atmosphère reads it.", content: { text/plain: {} } }
+        default: { $ref: "#/components/responses/Problem" }
     put:
       summary: Write a cheat file (§ 8, scope cheats.write)
       requestBody: { required: true, content: { text/plain: {} } }
       responses:
         "204": { description: "Written." }
+        default: { $ref: "#/components/responses/Problem" }
     delete:
       summary: Delete a cheat file (§ 8, scope cheats.write)
       responses:
         "204": { description: "Deleted." }
+        default: { $ref: "#/components/responses/Problem" }
   /v1/requests:
     get:
       summary: The account's requests (§ 9)
       responses:
         "200": { description: "Requests.", content: { application/json: { schema: { $ref: "schemas/v1/requests.json" } } } }
+        default: { $ref: "#/components/responses/Problem" }
     post:
       summary: Ask for a game (§ 9)
       requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/request-create.json" } } } }
       responses:
         "200": { description: "The open request for the same title." }
         "201": { description: "Asked." }
+        default: { $ref: "#/components/responses/Problem" }

@@ -208,6 +208,9 @@ An app is one installable package: a base game, an update or an add-on.
   ties are broken by `id`, so the order is stable.
 - `cursor` is opaque; `next` is `null` on the last page. Reading with a
   cursor while the library changes neither skips nor repeats an app.
+- An expired cursor gives `410`, and the client reads the list from its
+  start. One the server never gave, or gave for another listing, gives
+  `400`, or `410` when the server cannot tell it from an expired one.
 - `page_size` is at most `limits.page_size`; a larger one is lowered to it.
 
 ### 6.3 What the console is missing
@@ -231,7 +234,8 @@ query.
 `GET <base>/v1/changes?since=<token>` → `{"schema":1, "added":[App…],
 "removed":["a_…"], "since":"<next token>"}`. Without `since`, it returns no
 apps and the current token. A token too old for the server gives `410`: the
-client reads the whole library again.
+client reads the whole library again. One it never gave gives `400` (or
+`410`, as for a cursor, § 6.2).
 
 ### 6.5 Sections (feature `sections`)
 
@@ -262,7 +266,8 @@ client MAY show them next to its own.
 
 `GET <file>`:
 
-- MUST support `Range` (`206`, `416`) and send `Content-Length`,
+- MUST support `Range` (`206`; `416` with `Content-Range: bytes */<size>`)
+  and send `Content-Length`,
   `Accept-Ranges: bytes`, a strong `ETag` and `Repr-Digest:
   sha-256=:<base64>:` (RFC 9530) when the hash is known.
 - The id in the path is opaque and not enumerable. It MAY expire: the
@@ -313,7 +318,7 @@ code, never `200`:
 
 | Status | `code` | When |
 |---|---|---|
-| 400 | `bad_request` | A malformed query or body |
+| 400 | `bad_request` | A malformed query or body; a cursor or `since` token the server never gave |
 | 401 | `unauthorized` | No or wrong credentials (with `WWW-Authenticate`) |
 | 403 | `forbidden`, `account_frozen` | A scope missing; a frozen account |
 | 404 | `not_found` | |
@@ -324,10 +329,14 @@ code, never `200`:
 | 416 | `bad_request` | A range outside the file (with `Content-Range: bytes */<size>`) |
 | 422 | `unsupported_schema` | A request document of a schema the server cannot read |
 | 429 | `slow_down` | With `Retry-After` |
+| 500 | `internal` | A failure of the server itself; the client may try again later |
 | 503 | `unavailable` | Scanning, maintenance (with `Retry-After`) |
 
 `detail` is for people; a client shows it, bounded and without control
 characters.
+
+New codes MAY come with later versions of this text: a client that gets a
+`code` it does not know acts on the status alone.
 
 ## 11. Limits
 
@@ -372,3 +381,6 @@ of packages and passes the suite.
   on the handshake too, and so does an unknown token; a family at 0 answers
   404, 401 or 403; `sort` defaults to `name` and `release` is newest first;
   a `page_size` above the limit is lowered to it; codes for 405 and 416.
+- 0.1 (2026-10-30): an expired cursor or `since` token gives 410, one
+  the server never gave 400 (or 410 if it cannot tell); a 416 carries `Content-Range: bytes */<size>`; a
+  failure of the server answers 500 with the code `internal`.

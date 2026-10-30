@@ -155,6 +155,12 @@ class SuiteCatchesFaults(unittest.TestCase):
                 super().send_doc(200 if status == 404 else status, doc, headers, problem)
         self.fails(Errors200, "errors.never-200")
 
+    def test_416_without_content_range(self):
+        class NoContentRange(ls.Handler):
+            def send_doc(self, status, doc, headers=None, problem=False):
+                super().send_doc(status, doc, None if status == 416 else headers, problem)
+        self.fails(NoContentRange, "files.unsatisfiable")
+
     def test_schema_2_accepted(self):
         class Lenient(ls.Handler):
             def request_document(self, body):
@@ -272,6 +278,18 @@ class Server(unittest.TestCase):
         self.assertEqual((status, problem["code"]), (403, "account_frozen"))
         status, problem = srv.get_json("/api/lantern/v1/apps", auth=("ines", "paper-comet"))
         self.assertEqual((status, problem["code"]), (403, "forbidden"))
+
+    def test_a_bug_answers_500(self):
+        class Broken(ls.Handler):
+            def route(self, method, path, query, body):
+                raise RuntimeError("a bug")
+        srv = Running(handler=Broken)
+        self.addCleanup(srv.close)
+        Broken.log_error = lambda self, *args: None
+        status, headers, body = srv.get("/api/lantern/v1/apps")
+        problem = json.loads(body)
+        self.assertEqual((status, headers["Content-Type"], problem["code"], problem["schema"]),
+                         (500, "application/problem+json", "internal", 1))
 
     def test_newer_users_file_lets_nobody_in(self):
         srv = Running({"schema": 2, "public": True, "users": USERS["users"]})
