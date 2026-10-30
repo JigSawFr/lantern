@@ -856,7 +856,7 @@ contenu additionnel.
   du `links.json` d'Atlas, qui relie entre eux les identifiants d'un jeu sur
   chaque plateforme (un identifiant de titre Switch, un identifiant d'app
   Steam…). Un client MAY lire les données d'Atlas grâce à lui (la notoriété
-  d'un jeu, ses prix, des jeux similaires) ; les fichiers d'Atlas pour une
+  d'un jeu, des jeux similaires) ; les fichiers d'Atlas pour une
   plateforme sont indexés par les identifiants propres à cette plateforme,
   que donne `links.json`. C'est une indication sur le jeu, jamais son
   identité : un client MUST NOT installer ni apparier quoi que ce soit sur
