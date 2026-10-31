@@ -680,7 +680,8 @@ class Texts(unittest.TestCase):
     """SPEC.md § 2.2: the server's error texts in the fifteen languages of the site."""
 
     def test_every_language(self):
-        site = sorted(p.stem for p in (ROOT / "site" / "i18n").glob("*.json"))
+        # The site's English catalog is en-US.json (boreale-site's code); the server's English is "en".
+        site = sorted("en" if p.stem == "en-US" else p.stem for p in (ROOT / "site" / "i18n").glob("*.json"))
         self.assertEqual(sorted(texts.LANGUAGES), site)
         codes = set(texts.FR)
         for lang in texts.LANGUAGES[1:]:

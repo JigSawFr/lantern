@@ -11,9 +11,9 @@ name: site
 on:
   push:
     branches: [ main ]
-    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "tools/site_layout.py", "tools/requirements.py", "tools/make_demo.py", "tools/requirements.txt", "conformance/**", "server/**", "schemas/**", ".github/workflows/site.yml" ]
+    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "library/boreale-site", ".gitmodules", "tools/requirements.py", "tools/make_demo.py", "tools/requirements.txt", "conformance/**", "server/**", "schemas/**", ".github/workflows/site.yml" ]
   pull_request:
-    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "tools/site_layout.py", "tools/requirements.py", "tools/make_demo.py", "tools/requirements.txt", "conformance/**", "server/**", "schemas/**", ".github/workflows/site.yml" ]
+    paths: [ "site/**", "SPEC.md", "tools/build_site.py", "tools/check_site.py", "library/boreale-site", ".gitmodules", "tools/requirements.py", "tools/make_demo.py", "tools/requirements.txt", "conformance/**", "server/**", "schemas/**", ".github/workflows/site.yml" ]
   workflow_dispatch:
 
 permissions:
@@ -38,6 +38,7 @@ jobs:
           # The specification's drafts are SPEC.md at their commits (git show): the whole history.
           fetch-depth: 0
           persist-credentials: false
+          submodules: true   # library/boreale-site, what Boréale's sites share
       - name: The pages
         run: python3 tools/build_site.py build
       - name: Their links, catalogs and Content-Security-Policy
@@ -78,7 +79,7 @@ jobs:
           echo "$AXE_SHA256  $RUNNER_TEMP/axe.tgz" | sha256sum -c --quiet
           python3 -c 'import sys, tarfile; open(sys.argv[2], "wb").write(tarfile.open(sys.argv[1]).extractfile("package/axe.min.js").read())' \
             "$RUNNER_TEMP/axe.tgz" "$RUNNER_TEMP/axe.min.js"
-          SITE_AXE="$RUNNER_TEMP/axe.min.js" "$VENV/bin/python" -u tools/site_layout.py build
+          SITE_AXE="$RUNNER_TEMP/axe.min.js" "$VENV/bin/python" -u library/boreale-site/tools/site_layout.py build
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         if: github.event_name != 'pull_request'
         with:

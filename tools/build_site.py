@@ -28,8 +28,10 @@ variant (tools/make_demo.py), with its page in every language.
 
 SITE_URL is the site's address (https://lantern.boreale.dev/ by default);
 the links inside the site are relative, so it works at another one too.
-SITE_OFFLINE=1 builds without reading boreale.dev's versions.json. Python's
-standard library only.
+SITE_OFFLINE=1 builds without reading boreale.dev's versions.json. What
+Boréale's sites share (the languages, the header's two menus, the links out
+and their UTM tags, the audience, the fonts and marks) is boreale-site's, the
+submodule library/boreale-site. Python's standard library only.
 """
 import difflib
 import html
@@ -39,50 +41,29 @@ import re
 import shutil
 import subprocess
 import sys
-import urllib.request
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "conformance"))
+sys.path.insert(0, str(ROOT / "library" / "boreale-site"))
 import make_demo  # noqa: E402  (tools/make_demo.py)
 import requirements as spec_requirements  # noqa: E402  (tools/requirements.py)
+import boreale_site as boreale  # noqa: E402  (library/boreale-site)
+from boreale_site import CODES, LANGUAGES, OG_LOCALES, fill, folder  # noqa: E402
 
 SITE = ROOT / "site"
 SPEC = ROOT / "SPEC.md"
 REPO = "https://github.com/JigSawFr/lantern"
-SITE_URL = os.environ.get("SITE_URL", "https://lantern.boreale.dev/").rstrip("/") + "/"
-# The audience, counted by Umami Cloud (site/README.md): its tracker, served from
-# assets/, sends each page seen to gateway.umami.is, without cookie, and only from
-# the site's own address (not a preview or a local copy). Its site in Umami is
-# Boréale's, shared by its projects' sites: Umami's Hostname filter tells them apart.
-UMAMI_WEBSITE = "6410ffdd-ae2e-4ddb-8e18-0a77e9fa374e"
-UMAMI_DOMAIN = urlparse(SITE_URL).hostname
-# Boréale's sites' languages: the catalog's code, the folder ('' for the
-# root), the name in its own words, the html lang.
-LANGUAGES = [
-    ("en", "", "English", "en"),
-    ("fr", "fr", "Français", "fr"),
-    ("fr-CA", "fr-ca", "Français (Canada)", "fr-CA"),
-    ("de", "de", "Deutsch", "de"),
-    ("es", "es", "Español", "es"),
-    ("es-419", "es-419", "Español (Latinoamérica)", "es-419"),
-    ("it", "it", "Italiano", "it"),
-    ("nl", "nl", "Nederlands", "nl"),
-    ("pt", "pt", "Português", "pt-PT"),
-    ("pt-BR", "pt-br", "Português (Brasil)", "pt-BR"),
-    ("ru", "ru", "Русский", "ru"),
-    ("ja", "ja", "日本語", "ja"),
-    ("ko", "ko", "한국어", "ko"),
-    ("zh-Hans", "zh-hans", "简体中文", "zh-Hans"),
-    ("zh-Hant", "zh-hant", "繁體中文", "zh-Hant"),
-]
-FLAGS = {"en": "US", "fr": "FR", "fr-CA": "CA", "de": "DE", "es": "ES", "es-419": "MX", "it": "IT", "nl": "NL",
-         "pt": "PT", "pt-BR": "BR", "ru": "RU", "ja": "JP", "ko": "KR", "zh-Hans": "CN", "zh-Hant": "TW"}
-OG_LOCALES = {"en": "en_US", "fr": "fr_FR", "fr-CA": "fr_CA", "de": "de_DE", "es": "es_ES", "es-419": "es_LA",
-              "it": "it_IT", "nl": "nl_NL", "pt": "pt_PT", "pt-BR": "pt_BR", "ru": "ru_RU", "ja": "ja_JP",
-              "ko": "ko_KR", "zh-Hans": "zh_CN", "zh-Hant": "zh_TW"}
+# This site in boreale-site's sites.json: its address (SITE_URL), its
+# utm_source on the links to Boréale's other sites, its place in the menu of
+# Boréale's sites. The audience is counted by Umami Cloud, only from its own
+# host (site/README.md).
+LANTERN = boreale.Site("lantern", os.environ.get("SITE_URL"))
+SITE_URL = LANTERN.url
+# English, at the root: the reference catalog (site/i18n/en-US.json).
+ENGLISH = CODES[0]
 # The pages in every language, by their path under each language's folder.
 PAGES = {"": "home", "spec/": "spec", "demo/": "demo"}
 # The drafts of SPEC.md, each at spec/<draft>/: SPEC.md at the commit that
@@ -112,25 +93,6 @@ DRAFTS = [
 # translates (read_translation()).
 TRANSLATIONS = {"fr": "SPEC.fr.md", "fr-CA": "SPEC.fr.md"}
 
-# Boréale's sites, in the header's menu (switcher()): boreale.dev's
-# reference (boreale/tools/build_site.py), then the open data and protocols,
-# Atlas and this one.
-SITES = [(None, [("boreale", "Boréale", "https://boreale.dev/")]),
-         ("sites_homebrew", [("playguard", "PlayGuard", "https://guard.boreale.dev/"),
-                             ("playshelf", "PlayShelf", "https://shelf.boreale.dev/")]),
-         ("sites_libraries", [("aurore", "Aurore", "https://aurore.boreale.dev/")]),
-         ("sites_open", [("atlas", "Atlas", "https://atlas.boreale.dev/"),
-                         ("lantern", "Lantern", "https://lantern.boreale.dev/")])]
-HERE = "lantern"
-
-# Where a visit to another of Boréale's sites came from, for Umami (workbench's
-# "Mesure d'audience"): a link from this site to another *.boreale.dev site
-# carries utm_source=lantern and a utm_medium telling where on the page it
-# is: "nav" (the header, its sites menu), "footer", or "link" (the page's
-# text). A link to this site itself carries none.
-UTM_SOURCE = "lantern"
-
-KEY = re.compile(r"\{\{([a-z0-9_]+)\}\}")
 REQ = re.compile(r"\[(L-(?:\d+(?:\.\d+)?|[A-Z](?:\.\d+)?)-\d+)\]")
 DRAFT = "0.7"   # the draft the badges name (SPEC.md § 17)
 LEVELS = [("core", "Core"), ("titles", "+titles"), ("homebrew", "+homebrew"), ("saves", "+saves"),
@@ -139,64 +101,6 @@ LEVELS = [("core", "Core"), ("titles", "+titles"), ("homebrew", "+homebrew"), ("
           ("static", "Static")]
 # SPEC.md's section of errors, whatever its number: "## 12. Errors".
 ERRORS_HEADING = re.compile(r"## (\d+)\. Errors$")
-
-
-def folder(language: str) -> str:
-    return next(f for c, f, _, _ in LANGUAGES if c == language) + ("/" if language != "en" else "")
-
-
-def fill(text: str, values: dict) -> str:
-    def one(match):
-        key = match.group(1)
-        if key not in values:
-            sys.exit(f"build_site: no text for {{{{{key}}}}}")
-        return values[key]
-    return KEY.sub(one, KEY.sub(one, text))
-
-
-def own(url: str) -> bool:
-    """A link to Boréale's sites or to JigSawFr's GitHub: it keeps the origin."""
-    u = urlparse(url)
-    host = (u.hostname or "").lower()
-    if host == "boreale.dev" or host.endswith(".boreale.dev"):
-        return True
-    return host == "github.com" and u.path.lower().startswith("/jigsawfr/")
-
-
-def utm(url: str, medium: str) -> str:
-    """`url` (as written in the page's HTML) tagged for its medium, or as it is
-    when it leads out of Boréale's sites or to this site itself."""
-    u = urlsplit(html.unescape(url))
-    host = (u.hostname or "").lower()
-    if u.scheme != "https" or not (host == "boreale.dev" or host.endswith(".boreale.dev")):
-        return url
-    query = [(k, v) for k, v in parse_qsl(u.query, keep_blank_values=True) if not k.startswith("utm_")]
-    if host != (urlsplit(SITE_URL).hostname or ""):
-        query += [("utm_source", UTM_SOURCE), ("utm_medium", medium)]
-    tagged = urlunsplit(u._replace(query=urlencode(query)))
-    return url if tagged == html.unescape(url) else html.escape(tagged, quote=True)
-
-
-LINK = re.compile(r'<a\s[^>]*href="(https?://[^"]+)"[^>]*>')
-
-
-def links_out(text: str) -> str:
-    """Every link to another site, as workbench's "Liens sortants anonymes"
-    wants it: to Boréale's sites or JigSawFr's GitHub, referrerpolicy=
-    "strict-origin" (and UTM tags to the other sites); to anyone else,
-    rel="noreferrer", so they never learn the visit came from here."""
-    main, footer = text.find("<main"), text.find("<footer")
-
-    def one(m):
-        at = m.start()
-        medium = "footer" if 0 <= footer <= at else "nav" if main < 0 or at < main else "link"
-        url = utm(m.group(1), medium)
-        tag = m.group(0).replace(f'href="{m.group(1)}"', f'href="{url}"', 1)
-        if "rel=" in tag or "referrerpolicy=" in tag:
-            return tag
-        extra = ' referrerpolicy="strict-origin"' if own(html.unescape(url)) else ' rel="noreferrer"'
-        return tag[:-1] + extra + ">"
-    return LINK.sub(one, text)
 
 
 # ---- SPEC.md, rendered: the subset it is written in (headings, paragraphs,
@@ -405,106 +309,21 @@ def toc_html(spec: dict, label: str) -> str:
 
 # ---- The page around them.
 
-def flag(language: str) -> str:
-    emoji = "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in FLAGS[language])
-    return f'<span class="flag" aria-hidden="true">{emoji}</span>'
-
-
-def languages(language: str, catalog: dict, root: str, path: str) -> str:
-    """The header's languages: a button with the page's, and their menu (a
-    popover), this page in each. Choosing one keeps it (assets/lang.js)."""
-    name = next(n for c, _, n, _ in LANGUAGES if c == language)
-    current = ' aria-current="true"'
-    options = "\n".join(
-        f'        <li><a href="{root}{folder(c)}{path}" data-lang="{d or c}" lang="{hl}" hreflang="{hl}"'
-        f'{current if c == language else ""}>{flag(c)}{html.escape(n)}</a></li>'
-        for c, d, n, hl in LANGUAGES)
-    label = catalog["language"]
-    return (f'<div class="settings">\n'
-            f'      <button class="lang-button" type="button" popovertarget="languages" aria-label="{label} · {html.escape(name)}">'
-            f'{flag(language)}<span class="lang-name">{html.escape(name)}</span>'
-            f'<span class="lang-code">{language.split("-")[0].upper()}</span>'
-            f'<svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>\n'
-            f'      <ul id="languages" class="langs" popover aria-label="{label}">\n{options}\n      </ul>\n    </div>')
-
-
-# versions.json's schema this build reads ({"schema": 1, "projects": {...}});
-# the flat {project: "vX"} of before it had one is read too.
-VERSIONS_SCHEMA = 1
-
-
-def versions_of(data):
-    """The projects' versions in versions.json's `data`, as {project: "vX"}:
-    the flat shape of before, or {"schema": 1, "projects": {...}}. Another
-    schema or shape is none (the menu shows no versions), never an error."""
-    if not isinstance(data, dict):
-        return {}
-    if "schema" in data:
-        projects = data.get("projects")
-        if type(data["schema"]) is not int or data["schema"] != VERSIONS_SCHEMA or not isinstance(projects, dict):
-            return {}
-        data = projects
-    return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
-
-
-def boreale_versions() -> dict:
-    """The projects' latest releases as boreale.dev publishes them
-    (versions.json, versions_of()), for the menu; none when it cannot be read
-    (offline, SITE_OFFLINE=1), and the menu shows no versions."""
-    if os.environ.get("SITE_OFFLINE"):
-        return {}
-    try:
-        with urllib.request.urlopen("https://boreale.dev/versions.json", timeout=10) as r:
-            return versions_of(json.load(r))
-    except (OSError, ValueError):
-        return {}
-
-
-def switcher(language: str, catalog: dict, root: str, versions: dict) -> str:
-    """The header's name, a button that opens the menu of Boréale's sites
-    (site.css's and site.js's "site switcher" blocks, boreale.dev's), this
-    one marked and leading home, each with its latest release. A popover:
-    the browser closes it on Esc or a click elsewhere."""
-    label = catalog["sites_label"]
-    groups = []
-    for title, sites in SITES:
-        items = []
-        for key, name, url in sites:
-            href = f"{root}{folder(language)}" if key == HERE else url + folder(language)
-            soon = f'<em class="soon">{catalog["sites_soon"]}</em>' if key == "playshelf" else ""
-            version = f' <span class="sites-version">{html.escape(versions[key])}</span>' if key in versions else ""
-            current = ' aria-current="true"' if key == HERE else ""
-            items.append(f'<li><a href="{href}"{current}>'
-                         f'<img src="{root}assets/marks/{key}.svg" alt="" width="36" height="36">'
-                         f'<span><strong>{name}{version}</strong><small>{catalog[f"sites_{key}"]}</small></span>{soon}</a></li>')
-        heading = f'<p class="sites-title">{catalog[title]}</p>' if title else ""
-        groups.append(f'        {heading}<ul>\n          ' + "\n          ".join(items) + '\n        </ul>')
-    return (f'<div class="switcher">\n'
-            f'      <button class="brand switch" type="button" popovertarget="sites" aria-label="Lantern · {label}">'
-            f'<img src="{root}assets/mark.svg" alt="" width="34" height="34">Lantern'
-            f'<svg class="chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>\n'
-            f'      <div id="sites" class="sites" popover aria-label="{label}">\n'
-            + "\n".join(groups) + '\n      </div>\n    </div>')
-
-
 def indexing(language: str, path: str, alternate: bool, noindex: bool = False) -> str:
     """The canonical address and, for a page in every language, the others'; a page kept out of search
     engines (an earlier draft, the trapped libraries) says so."""
-    lines = [f'<link rel="canonical" href="{SITE_URL}{folder(language)}{path}">']
+    if not alternate:
+        lines = [f'<link rel="canonical" href="{LANTERN.address(language, path)}">']
+    else:
+        lines = LANTERN.indexing(language, path).split("\n")
     if noindex:
         lines.insert(0, '<meta name="robots" content="noindex">')
-    if alternate:
-        lines += [f'<link rel="alternate" hreflang="{hl}" href="{SITE_URL}{folder(c)}{path}">' for c, _, _, hl in LANGUAGES]
-        lines.append(f'<link rel="alternate" hreflang="x-default" href="{SITE_URL}{path}">')
     return "\n".join(lines)
 
 
 def hero(page: str, catalog: dict, root: str, language: str, spec: dict, extra: dict) -> str:
-    if page == "home":
-        return (f'<div class="wrap hero">\n    <span class="eyebrow">{catalog["hero_eyebrow"]}</span>\n'
-                f'    <h1>{catalog["hero_title"]}</h1>\n    <p class="lede">{catalog["hero_lede"]}</p>\n'
-                f'    <div class="actions"><a class="button primary" href="{root}{folder(language)}spec/">{catalog["cta_spec"]}</a>'
-                f'<a class="button ghost" href="{REPO}">{catalog["cta_github"]}</a></div>\n  </div>')
+    if page == "home":   # site/hero.html, filled with the page's values (page_html())
+        return (SITE / "hero.html").read_text(encoding="utf-8")
     if page == "demo" and "h1" not in extra:
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["demo_eyebrow"]}</span>\n'
                 f'    <h1>{catalog["demo_title"]}</h1>\n    <p class="lede">{catalog["demo_lede"]}</p>\n  </div>')
@@ -513,7 +332,7 @@ def hero(page: str, catalog: dict, root: str, language: str, spec: dict, extra: 
         if translated:
             note = (f'\n    <p class="banner" role="note" lang="{translated["lang"]}">{html.escape(translated["banner"])} '
                     f'<a href="{root}spec/" lang="en" hreflang="en">{html.escape(translated["english"])}</a></p>')
-        elif language != "en":
+        elif language != ENGLISH:
             note = f'\n    <p class="note-en">{catalog["spec_english"]}</p>'
         else:
             note = ""
@@ -1056,10 +875,10 @@ express the fault; a fault of TLS, of pairing or of a server's answers has no st
 
 def page_html(template: str, language: str, catalog: dict, path: str, page: str, spec: dict, versions: dict,
               body: str = "", extra: dict | None = None) -> str:
-    depth = path.count("/") + (1 if language != "en" else 0)
+    depth = path.count("/") + (1 if language != ENGLISH else 0)
     root = "../" * depth
     extra = extra or {}
-    hl = next(h for c, _, _, h in LANGUAGES if c == language)
+    hl = boreale.html_lang(language)
     values = dict(catalog)
     values.update({
         "lang": hl, "root": root, "home": folder(language), "site": SITE_URL, "page": page,
@@ -1067,15 +886,20 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         "title": extra.get("title") or catalog[f"title_{page}"],
         "description": html.escape(extra.get("description") or catalog[f"description_{page}"], quote=True),
         "og_locale": OG_LOCALES[language],
-        "first_visit": ' data-first-visit=""' if language == "en" and path == "" else "",
+        "first_visit": ' data-first-visit=""' if language == ENGLISH and path == "" else "",
         "indexing": indexing(language, path, extra.get("alternate", page in PAGES.values()), extra.get("noindex", False)),
-        "languages": languages(language, catalog, root, extra.get("lang_path", path)),
-        "switcher": switcher(language, catalog, root, versions),
-        "current_project": ' aria-current="page"' if page == "home" else "",
+        "languages": LANTERN.languages(language, catalog, root, extra.get("lang_path", path)),
+        "switcher": LANTERN.switcher(language, catalog, root, versions),
         "current_spec": ' aria-current="page"' if page == "spec" else "",
+        "current_demo": ' aria-current="page"' if page == "demo" else "",
+        "current_conformance": ' aria-current="page"' if path == "conformance/" else "",
+        # The aurora, drawn by site.js, behind the home page's header and hero; a quieter sky elsewhere.
+        "sky_class": " sky-home" if page == "home" else "",
+        "sky_canvas": '<canvas id="sky" aria-hidden="true"></canvas>' if page == "home" else "",
+        # The hero's line under the title, each of its parts kept whole ("SHA-256" never broken).
+        "hero_sub_parts": " · ".join(f'<span>{part}</span>' for part in catalog["hero_sub"].split(" · ")),
         "footer_translation": footer_translation(language, root),
-        "audience": f'<script src="{root}assets/umami.js" defer data-website-id="{UMAMI_WEBSITE}" '
-                    f'data-domains="{UMAMI_DOMAIN}"></script>',
+        "audience": LANTERN.audience(root),
         "hero": hero(page, catalog, root, language, spec, extra),
         "repo": REPO,
         "draft": DRAFT,
@@ -1086,7 +910,7 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
     elif page == "spec" and not body:
         body = spec_body(spec, catalog)
     values["body"] = fill(body, values)
-    return links_out(fill(template, values))
+    return LANTERN.links_out(fill(template, values))
 
 
 def copy_schemas(out: Path) -> int:
@@ -1113,11 +937,12 @@ def main() -> None:
         shutil.rmtree(out)
     out.mkdir(parents=True)
     shutil.copytree(SITE / "assets", out / "assets")
+    boreale.copy_assets(out)
     schemas = copy_schemas(out)
-    catalogs = {c: json.loads((SITE / "i18n" / f"{c}.json").read_text(encoding="utf-8")) for c, _, _, _ in LANGUAGES}
+    catalogs = boreale.catalogs(SITE / "i18n")
     template = (SITE / "template.html").read_text(encoding="utf-8")
     spec = read_spec()
-    versions = boreale_versions()
+    versions = boreale.latest_versions()
     urls = []
     written = 0
 
@@ -1152,7 +977,7 @@ def main() -> None:
                     body = french_spaces(body)
                 extra = {"translation": {"lang": t["language"], "banner": t["banner"], "english": t["english"]}}
             write(folder(language) + path, page_html(template, language, catalog, path, page, spec, versions, body, extra))
-    en = catalogs["en"]
+    en = catalogs[ENGLISH]
     # The drafts, each as it was published (DRAFTS), out of the sitemap and of search engines; and what changed.
     drafts = []
     if DRAFTS[-1][0] != DRAFT or any(commit is None for _, commit, _ in DRAFTS[:-1]):
@@ -1165,7 +990,7 @@ def main() -> None:
         ref = commit or "main"
         d = read_spec(text, ref=ref, errors_needed=False)
         drafts.append((v, commit, pr, d))
-        write(f"spec/{v}/", page_html(template, "en", en, f"spec/{v}/", "spec", d, versions, spec_body(
+        write(f"spec/{v}/", page_html(template, ENGLISH, en, f"spec/{v}/", "spec", d, versions, spec_body(
             d, en, source=f"{REPO}/blob/{ref}/SPEC.md",
             label=f"SPEC.md at {commit[:7]}, on GitHub" if commit else "SPEC.md on GitHub"), {
             "title": f"Draft {v} · Specification · Lantern", "eyebrow": f"Specification · draft {v}",
@@ -1174,21 +999,21 @@ def main() -> None:
                      f"SPEC.md of draft {v}, the current draft, as it is now: it is kept as it was once merged."),
             "description": f"The Lantern protocol's draft {v}, as it was published; superseded by later drafts.",
             "noindex": True, "alternate": False, "lang_path": "spec/",
-            "after": draft_banner(v, pr) + "\n    " + drafts_nav(en, "../../", "en", v)}), listed=False)
-    write("spec/changes/", page_html(template, "en", en, "spec/changes/", "spec", spec, versions, changes_body(drafts), {
+            "after": draft_banner(v, pr) + "\n    " + drafts_nav(en, "../../", ENGLISH, v)}), listed=False)
+    write("spec/changes/", page_html(template, ENGLISH, en, "spec/changes/", "spec", spec, versions, changes_body(drafts), {
         "title": "What changed, draft by draft · Lantern", "eyebrow": "Specification · its drafts",
         "h1": "What changed, draft by draft",
         "lede": "Each draft of the specification, what it says it changed, and its sections against the one before.",
         "description": "The Lantern protocol's drafts, from 0.1 to the current one, and what each one changed.",
-        "alternate": False, "lang_path": "spec/", "after": drafts_nav(en, "../../", "en", "changes")}))
+        "alternate": False, "lang_path": "spec/", "after": drafts_nav(en, "../../", ENGLISH, "changes")}))
     if demo is not None:
-        write("demo/trapped/", page_html(template, "en", en, "demo/trapped/", "demo", spec, versions, trapped_body(), {
+        write("demo/trapped/", page_html(template, ENGLISH, en, "demo/trapped/", "demo", spec, versions, trapped_body(), {
             "title": "Trapped libraries, for testing clients · Lantern", "eyebrow": "Demo · broken on purpose",
             "h1": "Trapped libraries", "lede": "Static libraries with one fault each, and what a client must do about it.",
             "description": "Lantern static libraries broken on purpose, for testing clients.",
             "noindex": True, "alternate": False, "lang_path": "demo/"}), listed=False)
     # The error types, in English: their addresses are the `type` of SPEC.md's section of errors.
-    write("errors/", page_html(template, "en", en, "errors/", "errors", spec, versions, errors_body(spec, "../"), {
+    write("errors/", page_html(template, ENGLISH, en, "errors/", "errors", spec, versions, errors_body(spec, "../"), {
         "title": "Error types · Lantern", "eyebrow": "Errors · RFC 9457", "h1": "Error types",
         "lede": f"The <code>type</code> of each error a Lantern server returns, from the specification's §&nbsp;{spec['errors_section']}.",
         "description": "The error types of the Lantern protocol: each one's status, code and when a server returns it.",
@@ -1211,7 +1036,7 @@ def main() -> None:
               "For an implementation that passes the suite, at the level it reaches.",
               "The Lantern compatible badges, one per conformance level, and how to show them.", badge_body("../"))]
     for path, h1, eyebrow, lede, description, body in pages:
-        write(path, page_html(template, "en", en, path, "conformance", spec, versions, body, {
+        write(path, page_html(template, ENGLISH, en, path, "conformance", spec, versions, body, {
             "title": f"{h1} · Lantern", "eyebrow": eyebrow, "h1": h1, "lede": lede, "description": description,
             "lang_path": ""}))
     (out / "assets" / "badges").mkdir(parents=True, exist_ok=True)
@@ -1219,7 +1044,7 @@ def main() -> None:
         (out / "assets" / "badges" / badge_file(key)).write_text(badge_svg(key, label), encoding="utf-8")
     for error in spec["errors"]:
         write(f"errors/{error['name']}/", page_html(
-            template, "en", en, f"errors/{error['name']}/", "errors", spec, versions, error_body(spec, error, "../../"), {
+            template, ENGLISH, en, f"errors/{error['name']}/", "errors", spec, versions, error_body(spec, error, "../../"), {
                 "title": f"{error['name']} · Lantern errors", "eyebrow": f"Error type · {error['status']}",
                 "h1": f"<code>{error['name']}</code>", "lede": inline(error["when"], {}) or f"HTTP {error['status']}.",
                 "description": f"The Lantern protocol's {error['code']} error: HTTP {error['status']}.",
