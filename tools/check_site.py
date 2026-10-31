@@ -4,7 +4,9 @@
     python3 tools/check_site.py <site-dir>
 
 - what every one of Boréale's sites passes (library/boreale-site,
-  boreale_site.check): no {{key}} left, links and #anchors that lead
+  boreale_site.check): the page chrome (one header with the menu of Boréale's
+  sites, the nav and its call to action, the languages, the footer linking
+  to every other site), no {{key}} left, links and #anchors that lead
   somewhere, links out by the rule "liens sortants anonymes" (no referrer;
   rel="noreferrer" to a third party, referrerpolicy="strict-origin" to
   boreale.dev, its subdomains and github.com/JigSawFr) and their UTM tags
@@ -228,7 +230,7 @@ def main() -> None:
         sys.exit(__doc__)
     site = Path(sys.argv[1])
     errors = boreale.check_catalogs(ROOT / "site" / "i18n")
-    found, pages = check.pages(site, boreale.Site("lantern", os.environ.get("SITE_URL")))
+    found, pages = check.pages(site, boreale.Site("lantern", os.environ.get("SITE_URL")), chrome=True)
     errors += found
 
     try:

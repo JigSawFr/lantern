@@ -873,12 +873,36 @@ def french_spaces(text: str) -> str:
     return "".join(out)
 
 
-def footer_translation(language: str, root: str) -> str:
-    """The footer's link to the specification in the other language: French, or English from French."""
+def footer_translation(language: str, root: str) -> tuple:
+    """The footer's link to the specification in the other language, as (text, href, attributes): French, or English from French."""
     if language in TRANSLATIONS:
-        return f'<a href="{root}spec/" lang="en" hreflang="en">Specification in English</a>'
+        return "Specification in English", f"{root}spec/", {"lang": "en", "hreflang": "en"}
     code = next(iter(TRANSLATIONS))
-    return f'<a href="{root}{folder(code)}spec/" lang="{code}" hreflang="{code}">Spécification en français</a>'
+    return "Spécification en français", f"{root}{folder(code)}spec/", {"lang": code, "hreflang": code}
+
+
+def page_header(language: str, catalog: dict, root: str, path: str, page: str, versions: dict) -> str:
+    """The page's header (boreale-site's chrome): the site's links, "Try it" as the call to action, GitHub."""
+    home = root + folder(language)
+    current = {"spec": "nav_spec", "demo": "nav_try"}.get(page)
+    if path == "conformance/":
+        current = "footer_conformance"
+    return LANTERN.header(language, catalog, root, path, links=[
+        ("nav_how", f"{home}#how"), ("nav_spec", f"{home}spec/"), ("footer_conformance", f"{root}conformance/"),
+    ], cta=("nav_try", f"{home}demo/"), github=REPO, current=current, label=catalog["nav_label"], latest=versions)
+
+
+def page_footer(language: str, catalog: dict, root: str) -> str:
+    """The page's footer: the protocol's pages, the rest of the project, the licences' line and the trademarks."""
+    home = root + folder(language)
+    translation = footer_translation(language, root)
+    return LANTERN.footer(language, catalog, root, columns=[
+        (catalog["nav_project"], [(catalog["nav_spec"], f"{home}spec/"), (catalog["footer_conformance"], f"{root}conformance/"),
+                                  (catalog["footer_errors"], f"{root}errors/"), (catalog["footer_drafts"], f"{root}spec/changes/"),
+                                  translation]),
+        (catalog["footer_label"], [(catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
+                                   ("GitHub", REPO), (catalog["footer_issues"], f"{REPO}/issues")]),
+    ], about=[catalog["footer_license"]], fine=catalog["footer_trademarks"])
 
 
 def outline(text: str) -> list:
@@ -1126,17 +1150,15 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         "og_locale": OG_LOCALES[language],
         "first_visit": ' data-first-visit=""' if language == ENGLISH and path == "" else "",
         "indexing": indexing(language, path, extra.get("alternate", page in PAGES.values()), extra.get("noindex", False)),
-        "languages": LANTERN.languages(language, catalog, root, extra.get("lang_path", path)),
-        "switcher": LANTERN.switcher(language, catalog, root, versions),
-        "current_spec": ' aria-current="page"' if page == "spec" else "",
-        "current_demo": ' aria-current="page"' if page == "demo" else "",
-        "current_conformance": ' aria-current="page"' if path == "conformance/" else "",
-        # The aurora, drawn by site.js, behind the home page's header and hero; a quieter sky elsewhere.
-        "sky_class": " sky-home" if page == "home" else "",
-        "sky_canvas": '<canvas id="sky" aria-hidden="true"></canvas>' if page == "home" else "",
+        # The page chrome (boreale-site's chrome.css and chrome.js): the aurora behind the home page's header and
+        # hero, a quieter sky elsewhere; the home's sections hold their own gutters, the other pages' main does.
+        "skip": LANTERN.skip(catalog),
+        "sky": LANTERN.sky(home=page == "home"),
+        "header": page_header(language, catalog, root, extra.get("lang_path", path), page, versions),
+        "main_class": "" if page == "home" else ' class="wrap"',
+        "footer": page_footer(language, catalog, root),
         # The hero's line under the title, each of its parts kept whole ("SHA-256" never broken).
         "hero_sub_parts": " · ".join(f'<span>{part}</span>' for part in catalog["hero_sub"].split(" · ")),
-        "footer_translation": footer_translation(language, root),
         "audience": LANTERN.audience(root),
         "crumbs": crumbs_html(catalog, root, language, extra["crumbs"] if "crumbs" in extra else default_crumbs(page, path, catalog)),
         "hero": hero(page, catalog, root, language, spec, extra),
