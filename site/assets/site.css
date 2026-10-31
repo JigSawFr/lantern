@@ -153,13 +153,17 @@ img { max-width: 100%; }
 .hero-home .source { margin-top: 18px; font-size: 15px; color: var(--dusk); max-width: 56ch; }
 .hero-home .source a { color: var(--mist); display: inline-flex; align-items: center; min-height: 24px; }
 /* The draft over the title: what changed in it. */
-.pill { margin: 0 0 18px; }
-.pill a {
+.pill { margin: 0 0 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.pill a:not(.pill-more) {
   display: inline-flex; align-items: center; min-height: 32px; padding: 4px 12px;
   border: 1px solid rgb(0 255 204 / 0.35); border-radius: 999px; background: rgb(0 255 204 / 0.08);
   color: var(--aurora); font: 500 13px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none;
 }
-@media (hover: hover) { .pill a:hover { border-color: var(--aurora); color: var(--aurora); } }
+@media (hover: hover) { .pill a:not(.pill-more):hover { border-color: var(--aurora); color: var(--aurora); } }
+/* ... and, beside it, the way to what changed since the last draft. */
+.pill .pill-more { display: inline-flex; align-items: center; min-height: 32px; color: var(--snow); font-size: 15px; text-decoration: underline; text-decoration-color: rgb(232 238 247 / 0.4); text-underline-offset: 3px; }
+.pill .pill-more::after { content: "\00a0→"; color: var(--aurora); }
+@media (hover: hover) { .pill .pill-more:hover { color: var(--aurora); } }
 
 /* The flow: the server, Lantern, the consoles, one under the other on a
    tile of the night, the drawings in snow, the wires in the aurora's
@@ -294,11 +298,10 @@ main section { padding-block: clamp(32px, 5vw, 56px); }
 .req-line { color: var(--aurora); }
 .exchange .note { margin-top: 2px; }
 
-/* What makes it solid: short points, those of the last drafts (li.new) with the aurora's dot. */
-.points { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
-.points li { position: relative; padding: 14px 18px 14px 42px; background: rgb(14 26 51 / 0.55); border: 1px solid var(--night-line); border-radius: 14px; color: var(--snow); font-size: 15.5px; min-width: 0; }
-.points li::before { content: ""; position: absolute; left: 18px; top: 22px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--dusk); box-sizing: border-box; }
-.points li.new::before { border: 0; background: var(--aurora-grad); box-shadow: 0 0 10px rgb(0 255 204 / 0.5); }
+/* What makes it solid: six cards for what the last drafts added (each says since which draft), then the points that were always so. */
+.features .since { justify-self: start; margin-top: 4px; padding: 2px 10px; border: 1px solid rgb(0 255 204 / 0.35); border-radius: 99px; color: var(--aurora); font: 500 12px var(--mono); letter-spacing: 0.04em; }
+.points { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 4px 32px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
+.points li { padding: 10px 0 10px 16px; border-left: 2px solid rgb(0 255 204 / 0.35); color: var(--mist); font-size: 15.5px; min-width: 0; }
 .points code, .prose code, .way code { color: var(--snow); }
 
 /* Bands: a call between the sections, on the aurora's light. */
@@ -631,3 +634,78 @@ a.req:hover, a.req:target, a.req:focus-visible { color: var(--aurora); border-co
 .delta .plus { color: var(--aurora); }
 .delta .minus { color: #ff8fa3; }
 .files { font-family: var(--mono); font-size: 0.8125rem; overflow-wrap: anywhere; }
+
+/* A proof of use under the hero: a request, its answer, and a button to copy the request. */
+.proof { padding-top: clamp(40px, 6vw, 72px) !important; }
+.proof-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+@media (min-width: 861px) { .proof-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: start; } }
+.codebox { display: grid; gap: 6px; min-width: 0; }
+.codebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
+.codebar .label { font: 500 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--mist); }
+.codebox pre { background: #081020; color: #d6deeb; font-size: 13px; line-height: 1.6; padding: 14px 16px; }
+.copy {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; min-width: 36px; padding: 0 14px; border: 1px solid var(--night-line); border-radius: 10px;
+  background: rgb(14 26 51 / 0.7); color: var(--snow); font: 500 15px var(--body); cursor: pointer;
+}
+.copy[hidden] { display: none; }
+.copy svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; color: var(--aurora); }
+.copy[data-done] { border-color: rgb(0 255 204 / 0.6); color: var(--aurora); }
+@media (hover: hover) { .copy:hover { border-color: var(--mist); } }
+
+/* The closing: the call, then three short columns (what it is not, the licences, privacy). */
+.closing-block { padding-bottom: 24px; }
+.closing-block .band { margin-top: 0; }
+.fine { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: clamp(40px, 6vw, 72px); }
+.fine h2 { font-size: 1.25rem; margin: 0 0 12px; letter-spacing: -0.015em; }
+.fine p:not(.eyebrow), .fine .keys span:not(.k) { color: var(--mist); font-size: 15px; }
+.fine .eyebrow { margin: 0 0 8px; }
+.fine > div { min-width: 0; display: grid; gap: 10px; align-content: start; }
+.fine h2, .fine .eyebrow, .fine p { margin: 0; }
+.fine .keys { margin: 0; }
+@media (max-width: 1000px) { .fine { grid-template-columns: minmax(0, 1fr); } }
+
+/* Breadcrumbs, on every page below the home page. */
+.crumbs { padding-block: 4px 0; margin-top: -4px; }
+.crumbs ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; font-size: 0.875rem; color: var(--mist); }
+.crumbs li { display: inline-flex; align-items: center; min-height: 28px; min-width: 0; }
+.crumbs li + li::before { content: "/"; margin-inline: 8px 4px; color: var(--dusk); }
+.crumbs a { display: inline-flex; align-items: center; min-height: 28px; color: var(--mist); text-decoration: underline; text-decoration-color: rgb(169 182 204 / 0.4); text-underline-offset: 3px; }
+.crumbs [aria-current] { color: var(--snow); overflow-wrap: anywhere; }
+@media (hover: hover) { .crumbs a:hover { color: var(--snow); } }
+
+/* The demo's address, to give a client first, and its QR code; what it holds, in three cards. */
+.address-row { display: grid; grid-template-columns: minmax(0, 62ch) auto; justify-content: start; gap: 24px 40px; align-items: start; }
+@media (max-width: 700px) { .address-row { grid-template-columns: minmax(0, 1fr); } }
+.address { display: grid; gap: 10px; min-width: 0; max-width: 62ch; }
+.address label { font: 500 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--mist); }
+.address p { color: var(--mist); }
+.field { display: flex; flex-wrap: wrap; gap: 8px; }
+.field input {
+  flex: 1 1 16rem; min-width: 0; min-height: 48px; padding: 8px 14px; border: 1px solid var(--night-line); border-radius: 12px;
+  background: #081020; color: var(--snow); font: 500 16px var(--mono);
+}
+.field input:focus-visible { outline: 2px solid var(--aurora); outline-offset: 2px; }
+.field .copy { min-height: 48px; }
+.qr-box { margin: 0; display: grid; gap: 8px; justify-items: start; max-width: 200px; }
+.qr-box svg { width: 180px; height: 180px; display: block; border-radius: 12px; }
+.qr-box figcaption { color: var(--mist); font-size: 0.875rem; }
+.stats .count { font: 600 2rem/1 var(--display); color: var(--snow); letter-spacing: -0.02em; }
+.stats .facts div { grid-template-columns: 6.5rem minmax(0, 1fr); }
+.stats .facts { margin-top: 4px; }
+.stats .facts dd { color: var(--snow); font-size: 0.9375rem; }
+#what .cards { margin-bottom: 28px; }
+
+/* Conformance: the badge of each level in its table, and the levels reached by each implementation. */
+.table td.badge { white-space: nowrap; }
+.table td.badge img { display: block; height: 28px; width: auto; max-width: none; }
+.table td.badge a { display: inline-flex; align-items: center; min-height: 28px; }
+.matrix th[scope="row"] { text-align: left; white-space: nowrap; }
+.matrix td { text-align: center; font-family: var(--mono); }
+.matrix td.reached { color: var(--aurora); }
+.matrix td.none { color: var(--dusk); }
+.matrix td { position: relative; }
+@media (max-width: 860px) {
+  .features .since { grid-column: 2; }
+  .stats .card { grid-template-columns: minmax(0, 1fr); }
+  .stats .card .icon { grid-row: auto; }
+}

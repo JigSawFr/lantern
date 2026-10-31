@@ -200,6 +200,29 @@ def check_schemas(site: Path) -> list:
     return errors
 
 
+def check_navigation(site: Path) -> list:
+    """The breadcrumb of every page below the home page (a nav with its label, the page itself as aria-current,
+    a link home first), and none on the home pages; the demo's address, its copy button and its QR code."""
+    errors = []
+    crumbs = re.compile(r'<nav class="wrap crumbs" aria-label="[^"]+"><ol><li><a href="[^"]*">[^<]+</a></li>.*?<li><span aria-current="page">[^<]+</span></li></ol></nav>', re.S)
+    for page in sorted(site.rglob("index.html")):
+        name = page.relative_to(site).as_posix()
+        text = page.read_text(encoding="utf-8")
+        home = name == "index.html" or re.fullmatch(r"[a-z]{2}(-[a-z0-9]{2,4})?/index\.html", name) is not None
+        if home and 'class="wrap crumbs"' in text:
+            errors.append(f"{name}: a breadcrumb on the home page")
+        elif not home and not crumbs.search(text):
+            errors.append(f"{name}: no (or a malformed) breadcrumb")
+    for page in sorted(site.glob("*/demo/index.html")) + [site / "demo" / "index.html"]:
+        text = page.read_text(encoding="utf-8") if page.exists() else ""
+        name = page.relative_to(site).as_posix()
+        if 'id="demo-address"' not in text or " readonly" not in text or "data-copy=\"demo-address\"" not in text:
+            errors.append(f"{name}: no read-only address with its copy button")
+        if not re.search(r'<svg class="qr"[^>]* role="img" aria-label="[^"]+"[^>]*><title>', text):
+            errors.append(f"{name}: no QR code with a text alternative")
+    return errors
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -238,6 +261,7 @@ def main() -> None:
     errors += check_translations(site, ids)
     errors += check_drafts_and_demo(site)
     errors += check_schemas(site)
+    errors += check_navigation(site)
     for level in ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
                   "encrypted_saves", "deltas", "static"):
         if not list((site / "assets" / "badges").glob(f"lantern-*-{level}.svg")):

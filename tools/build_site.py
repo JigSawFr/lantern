@@ -49,6 +49,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "conformance"))
 sys.path.insert(0, str(ROOT / "library" / "boreale-site"))
 import make_demo  # noqa: E402  (tools/make_demo.py)
+import qr  # noqa: E402  (tools/qr.py: the demo's QR code)
 import requirements as spec_requirements  # noqa: E402  (tools/requirements.py)
 import boreale_site as boreale  # noqa: E402  (library/boreale-site)
 from boreale_site import CODES, LANGUAGES, OG_LOCALES, fill, folder  # noqa: E402
@@ -585,7 +586,16 @@ def levels_table(spec: dict, root: str) -> str:
         if not line.startswith("|"):
             break
         rows.append(line)
-    return table(rows, spec["sections"], "Conformance levels").replace('href="#', f'href="{root}spec/#')
+    shown = table(rows, spec["sections"], "Conformance levels").replace('href="#', f'href="{root}spec/#')
+    # Each level with its badge (assets/badges/), in a last column: what a level looks like once it is reached.
+    head, body = shown.split("</tr></thead>")
+    cells = body.split("</tr>")
+    if len(cells) - 1 != len(LEVELS):   # the rows, then the closing tags
+        sys.exit(f"build_site: SPEC.md § 17's table has {len(cells) - 1} levels, LEVELS {len(LEVELS)}")
+    cells = [c + (f'<td class="badge"><a href="{root}badge/"><img src="{root}assets/badges/{badge_file(k)}" '
+                  f'alt="Lantern compatible {DRAFT} · {label}" height="28"></a></td>')
+             for c, (k, label) in zip(cells, LEVELS)] + [cells[-1]]
+    return head + '<th scope="col">Badge</th></tr></thead>' + "</tr>".join(cells)
 
 
 def to_spec(text: str, root: str) -> str:
@@ -755,6 +765,16 @@ def registry_body(root: str) -> str:
         f'<td>{" ".join(f"<span class=state>{html.escape(names.get(x, x))}</span>" for x in i.get("levels", []))}</td>'
         f'<td class="num">{html.escape(i.get("draft", ""))}</td><td>{html.escape(i.get("licence", ""))}</td>'
         f'<td class="num">{html.escape(i.get("checked", ""))}</td></tr>' for i in registry())
+    # Level by level (the levels in rows, so that more implementations are more columns): its name, and for each
+    # implementation a tick where the suite passed it, a dash where it has not been shown to.
+    heads = "".join(f'<th scope="col">{html.escape(i["name"])}</th>' for i in registry())
+    mrows = "\n".join(
+        f'<tr><th scope="row"><code>{label}</code></th>'
+        + "".join('<td class="reached"><span aria-hidden="true">✓</span><span class="sr">Reached</span></td>' if k in i.get("levels", [])
+                  else '<td class="none"><span aria-hidden="true">–</span><span class="sr">Not shown</span></td>' for i in registry())
+        + "</tr>" for k, label in LEVELS)
+    matrix = (f'<div class="table matrix" tabindex="0" role="region" aria-label="Levels reached, by implementation"><table>'
+              f'<thead><tr><th scope="col">Level</th>{heads}</tr></thead>\n<tbody>\n{mrows}\n</tbody></table></div>')
     return f"""<section class="prose wide" lang="en">
 <p>The implementations that pass the conformance suite, with the levels they reach and the draft they passed
 (<a href="{root}conformance/">conformance levels</a>). The reference server comes first: it is the text's own, and
@@ -765,6 +785,10 @@ it passes every level.</p>
 <tbody>
 {rows}
 </tbody></table></div>
+<h2 id="matrix">Levels reached</h2>
+<p>The same, level by level (the badges are on <a href="{root}conformance/">the levels' page</a>): a tick where the suite passes a level at the draft the row names, a dash where it has not been
+shown to.</p>
+{matrix}
 <h2 id="add">Add yours</h2>
 <ol>
 <li>Run the suite against your server, at this draft, with a token that holds every scope and its device key
@@ -1027,6 +1051,66 @@ express the fault; a fault of TLS, of pairing or of a server's answers has no st
 </section>"""
 
 
+def crumbs_html(catalog: dict, root: str, language: str, items: list) -> str:
+    """The breadcrumb of a page below the home page: `items` are (label, address) pairs, the address under the
+    language's folder, the last one the page itself (aria-current). Empty for the home page."""
+    if not items:
+        return ""
+    home = root + folder(language)
+    trail = [(catalog["nav_project"], home)] + [(label, root + folder(language) + href if href else None) for label, href in items]
+    parts = []
+    for label, href in trail:
+        inner = f'<a href="{href}">{html.escape(label)}</a>' if href else f'<span aria-current="page">{html.escape(label)}</span>'
+        parts.append(f"<li>{inner}</li>")
+    return (f'<nav class="wrap crumbs" aria-label="{html.escape(catalog["crumbs_label"], quote=True)}"><ol>'
+            + "".join(parts) + "</ol></nav>")
+
+
+def demo_stats() -> dict:
+    """What the demo library holds, counted from its source (site/demo/demo.json) at each build."""
+    data = json.loads(make_demo.SOURCE.read_text(encoding="utf-8"))
+    names = {"switch": "Nintendo Switch", "3ds": "New 3DS", "vita": "PS Vita", "android": "Android", "linux": "Linux"}
+
+    def platforms(codes):
+        return ", ".join(names.get(c, c) for c in dict.fromkeys(codes))
+    apps, homebrew, cheats = data["apps"], data["homebrew"], data["cheats"]
+    return {
+        "games": {"count": len(apps), "platforms": platforms(a["file"].split("/")[0] for a in apps)},
+        "homebrew": {"count": len(homebrew), "platforms": platforms(h["platform"] for h in homebrew),
+                     "signed": sum(1 for h in homebrew if h.get("signed_by"))},
+        "cheats": {"count": len(cheats), "platforms": platforms(c["platform"] for c in cheats),
+                   "codes": sum(len(re.findall(r"^\[", c["text"], re.M)) for c in cheats)},
+    }
+
+
+def demo_cards(catalog: dict) -> str:
+    """The demo library's three kinds of content, a card each, with the counts of demo_stats()."""
+    st = demo_stats()
+
+    def card(kind, icon, facts):
+        rows = "".join(f"<div><dt>{catalog[k]}</dt><dd>{html.escape(str(v))}</dd></div>" for k, v in facts)
+        return (f'<li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true">{icon}</svg>'
+                f'<h3>{catalog["demo_" + kind]}</h3><p class="count">{st[kind]["count"]}</p>'
+                f'<p>{catalog["demo_" + kind + "_text"]}</p><dl class="facts">{rows}</dl></li>')
+    return ('<ul class="cards cards-small stats">'
+            + card("games", '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+                   [("demo_k_platforms", st["games"]["platforms"])])
+            + card("homebrew", '<path d="M12 2.5 20.5 7v10L12 21.5 3.5 17V7z"/><path d="M3.5 7 12 11.5 20.5 7M12 11.5v10"/>',
+                   [("demo_k_platforms", st["homebrew"]["platforms"]),
+                    ("demo_k_signed", f'{st["homebrew"]["signed"]} / {st["homebrew"]["count"]}')])
+            + card("cheats", '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/>',
+                   [("demo_k_platforms", st["cheats"]["platforms"]), ("demo_k_cheats", st["cheats"]["codes"])])
+            + "</ul>")
+
+
+def default_crumbs(page: str, path: str, catalog: dict) -> list:
+    if page == "spec" and path == "spec/":
+        return [(catalog["nav_spec"], None)]
+    if page == "demo" and path == "demo/":
+        return [(catalog["footer_demo"], None)]
+    return []
+
+
 def page_html(template: str, language: str, catalog: dict, path: str, page: str, spec: dict, versions: dict,
               body: str = "", extra: dict | None = None) -> str:
     depth = path.count("/") + (1 if language != ENGLISH else 0)
@@ -1054,6 +1138,7 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         "hero_sub_parts": " · ".join(f'<span>{part}</span>' for part in catalog["hero_sub"].split(" · ")),
         "footer_translation": footer_translation(language, root),
         "audience": LANTERN.audience(root),
+        "crumbs": crumbs_html(catalog, root, language, extra["crumbs"] if "crumbs" in extra else default_crumbs(page, path, catalog)),
         "hero": hero(page, catalog, root, language, spec, extra),
         "repo": REPO,
         "draft": DRAFT,
@@ -1063,6 +1148,9 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
     if page in ("home", "demo") and not body:
         body = (SITE / f"{page}.html").read_text(encoding="utf-8")
         values["demo_url"] = SITE_URL + "demo/"
+        if page == "demo":
+            values["demo_qr"] = qr.svg(SITE_URL + "demo/", catalog["demo_qr_alt"])
+            values["demo_cards"] = demo_cards(catalog)
     elif page == "spec" and not body:
         body = spec_body(spec, catalog, ui=hl, root=root, search=True, cards=True)
     values["body"] = fill(body, values)
@@ -1155,6 +1243,7 @@ def main() -> None:
                      f"SPEC.md of draft {v}, the current draft, as it is now: it is kept as it was once merged."),
             "description": f"The Lantern protocol's draft {v}, as it was published; superseded by later drafts.",
             "noindex": True, "alternate": False, "lang_path": "spec/",
+            "crumbs": [(en["nav_spec"], "spec/"), (f"Draft {v}", None)],
             "after": (draft_banner(v, pr) + "\n    " + status_chips(d, en) + "\n    "
                       + drafts_nav(en, "../../", ENGLISH, v))}), listed=False)
     (out / "spec" / "search.json").write_text(json.dumps(search_index(spec), ensure_ascii=False, separators=(",", ":")) + "\n",
@@ -1164,19 +1253,21 @@ def main() -> None:
         "h1": "What changed, draft by draft",
         "lede": "Each draft of the specification, what it says it changed, and its sections against the one before.",
         "description": "The Lantern protocol's drafts, from 0.1 to the current one, and what each one changed.",
-        "alternate": False, "lang_path": "spec/", "after": drafts_nav(en, "../../", ENGLISH, "changes")}))
+        "alternate": False, "lang_path": "spec/", "crumbs": [(en["nav_spec"], "spec/"), (en["spec_changes"], None)],
+        "after": drafts_nav(en, "../../", ENGLISH, "changes")}))
     if demo is not None:
         write("demo/trapped/", page_html(template, ENGLISH, en, "demo/trapped/", "demo", spec, versions, trapped_body(), {
             "title": "Trapped libraries, for testing clients · Lantern", "eyebrow": "Demo · broken on purpose",
             "h1": "Trapped libraries", "lede": "Static libraries with one fault each, and what a client must do about it.",
             "description": "Lantern static libraries broken on purpose, for testing clients.",
-            "noindex": True, "alternate": False, "lang_path": "demo/"}), listed=False)
+            "noindex": True, "alternate": False, "lang_path": "demo/",
+            "crumbs": [(en["footer_demo"], "demo/"), ("Trapped libraries", None)]}), listed=False)
     # The error types, in English: their addresses are the `type` of SPEC.md's section of errors.
     write("errors/", page_html(template, ENGLISH, en, "errors/", "errors", spec, versions, errors_body(spec, "../"), {
         "title": "Error types · Lantern", "eyebrow": "Errors · RFC 9457", "h1": "Error types",
         "lede": f"The <code>type</code> of each error a Lantern server returns, from the specification's §&nbsp;{spec['errors_section']}.",
         "description": "The error types of the Lantern protocol: each one's status, code and when a server returns it.",
-        "lang_path": "spec/"}))
+        "lang_path": "spec/", "crumbs": [(en["footer_errors"], None)]}))
     pages = [("conformance/", "Conformance levels", "Conformance · SPEC.md § 17", "Who may say “Lantern compatible”, at which level, and how the suite decides.",
               "The conformance levels of the Lantern protocol, from Lantern Core to +deltas, Lantern Static, and how the suite decides.",
               conformance_body(spec, "../")),
@@ -1197,7 +1288,8 @@ def main() -> None:
     for path, h1, eyebrow, lede, description, body in pages:
         write(path, page_html(template, ENGLISH, en, path, "conformance", spec, versions, body, {
             "title": f"{h1} · Lantern", "eyebrow": eyebrow, "h1": h1, "lede": lede, "description": description,
-            "lang_path": ""}))
+            "lang_path": "", "crumbs": ([(en["footer_conformance"], None)] if path == "conformance/" else
+                                        [(en["footer_conformance"], "conformance/"), (h1, None)])}))
     (out / "assets" / "badges").mkdir(parents=True, exist_ok=True)
     for key, label in LEVELS:
         (out / "assets" / "badges" / badge_file(key)).write_text(badge_svg(key, label), encoding="utf-8")
@@ -1207,7 +1299,7 @@ def main() -> None:
                 "title": f"{error['name']} · Lantern errors", "eyebrow": f"Error type · {error['status']}",
                 "h1": f"<code>{error['name']}</code>", "lede": inline(error["when"], {}) or f"HTTP {error['status']}.",
                 "description": f"The Lantern protocol's {error['code']} error: HTTP {error['status']}.",
-                "lang_path": "spec/"}))
+                "lang_path": "spec/", "crumbs": [(en["footer_errors"], "errors/"), (error["name"], None)]}))
     (out / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
         + "".join(f"  <url><loc>{html.escape(u)}</loc></url>\n" for u in urls) + "</urlset>\n", encoding="utf-8")
