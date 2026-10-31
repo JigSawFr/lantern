@@ -1,24 +1,37 @@
-  <section id="what">
-    <div class="section-head">
-      <h2>{{demo_what_title}}</h2>
-    </div>
-    <div class="prose narrow">
-      <p>{{demo_what}}</p>
-      <p>{{demo_files}}</p>
-    </div>
-  </section>
-
   <section id="point">
     <div class="section-head">
       <h2>{{demo_point_title}}</h2>
-      <p>{{demo_point}}</p>
     </div>
-    <pre tabindex="0"><code>{{demo_url}}</code></pre>
+    <div class="address-row">
+      <div class="address">
+        <label for="demo-address">{{demo_address_label}}</label>
+        <div class="field">
+          <input id="demo-address" type="text" readonly data-select value="{{demo_url}}" spellcheck="false" autocomplete="off" autocapitalize="off">
+          <button type="button" class="copy" hidden data-copy="demo-address" data-label="{{demo_copy_label}}" data-copied="{{ui_copied}}" data-failed="{{ui_copy_failed}}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg><span class="copy-text">{{ui_copy}}</span></button>
+        </div>
+        <p>{{demo_point}}</p>
+      </div>
+      <figure class="qr-box">
+        {{demo_qr}}
+        <figcaption>{{demo_qr_note}}</figcaption>
+      </figure>
+    </div>
     <p class="note files"><a href="{{root}}demo/lantern.json">lantern.json</a> · <a href="{{root}}demo/v1/apps/switch/pages/1.json">v1/apps/switch/pages/1.json</a> · <a href="{{root}}demo/v1/titles/switch/0100ABCD00010000.json">v1/titles/switch/0100ABCD00010000.json</a></p>
     <p class="note">{{demo_suite}}</p>
     <pre tabindex="0"><code>python3 conformance/run.py --static {{demo_url}}
 …
 Levels reached (SPEC.md § 17, draft {{draft}}): Lantern Static</code></pre>
+  </section>
+
+  <section id="what">
+    <div class="section-head">
+      <h2>{{demo_what_title}}</h2>
+      <p>{{demo_what}}</p>
+    </div>
+    {{demo_cards}}
+    <div class="prose narrow">
+      <p>{{demo_files}}</p>
+    </div>
   </section>
 
   <section id="browser">

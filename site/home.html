@@ -1,3 +1,28 @@
+  <section id="proof" class="section proof">
+    <h2>{{proof_title}}</h2>
+    <p class="section-lede">{{proof_lede}}</p>
+    <div class="proof-grid">
+      <div class="codebox">
+        <div class="codebar"><span class="label">{{proof_cmd}}</span><button type="button" class="copy" hidden data-copy="proof-cmd" data-label="{{proof_copy}}" data-copied="{{ui_copied}}" data-failed="{{ui_copy_failed}}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg><span class="copy-text">{{ui_copy}}</span></button></div>
+        <pre id="proof-cmd" tabindex="0"><code><span class="req-line">curl</span> https://shelf.example.org/.well-known/lantern</code></pre>
+      </div>
+      <div class="codebox">
+        <div class="codebar"><span class="label">{{proof_reply}}</span></div>
+        <pre tabindex="0"><code>{
+  <span class="k">"schema"</span>: 1,
+  <span class="k">"uid"</span>: <span class="s">"6f1c2a8e-…"</span>,
+  <span class="k">"name"</span>: <span class="s">"Living room shelf"</span>,
+  <span class="k">"software"</span>: { <span class="k">"name"</span>: <span class="s">"ExampleShelf"</span>, <span class="k">"version"</span>: <span class="s">"2.7.0"</span> },
+  <span class="k">"base"</span>: <span class="s">"/api/lantern"</span>,
+  <span class="k">"versions"</span>: [1],
+  <span class="k">"platforms"</span>: [<span class="s">"switch"</span>, <span class="s">"android"</span>],
+  <span class="k">"features"</span>: { <span class="k">"library"</span>: 1, <span class="k">"titles"</span>: 1, <span class="k">"homebrew"</span>: 1, <span class="k">"saves"</span>: 1, … }
+}</code></pre>
+      </div>
+    </div>
+    <p class="note">{{proof_note}} <a href="{{root}}{{home}}spec/#42-handshake">{{nav_spec}}</a></p>
+  </section>
+
   <section id="what" class="section">
     <p class="eyebrow">{{what_eyebrow}}</p>
     <h2>{{what_title}}</h2>
@@ -48,14 +73,16 @@ Lantern-Platform: switch
   <section id="solid" class="section">
     <p class="eyebrow">{{solid_eyebrow}}</p>
     <h2>{{solid_title}}</h2>
-    <p class="section-lede">{{solid_lede}}</p>
+    <p class="section-lede">{{solid_lede}} <a href="{{root}}spec/changes/">{{solid_changes}}</a></p>
+    <ul class="cards cards-small features">
+      <li class="card feature"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2.5-7 5 14 2.5-7h4"/></svg><h3>{{feat_events_title}}</h3><p>{{feat_events}}</p><p class="since">{{since_05}}</p></li>
+      <li class="card feature"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="6" r="2.6"/><circle cx="18" cy="18" r="2.6"/><path d="M8.3 10.7l7.4-3.4M8.3 13.3l7.4 3.4"/></svg><h3>{{feat_sharing_title}}</h3><p>{{feat_sharing}}</p><p class="since">{{since_05}}</p></li>
+      <li class="card feature"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.5-5.8L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.5 5.8L4 15.5M4 20v-4.5h4.5"/></svg><h3>{{feat_sync_title}}</h3><p>{{feat_sync}}</p><p class="since">{{since_05}}</p></li>
+      <li class="card feature"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3M12 15v2"/></svg><h3>{{feat_e2e_title}}</h3><p>{{feat_e2e}}</p><p class="since">{{since_05}}</p></li>
+      <li class="card feature"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15.5" r="4"/><path d="M11 12.5 19.5 4M16 7.5l3 3"/></svg><h3>{{feat_keys_title}}</h3><p>{{feat_keys}}</p><p class="since">{{since_04}}</p></li>
+      <li class="card feature"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8" r="3.5"/><path d="M3.5 20a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6"/></svg><h3>{{feat_admin_title}}</h3><p>{{feat_admin}}</p><p class="since">{{since_04}}</p></li>
+    </ul>
     <ul class="points">
-      <li class="new">{{covers_events}}</li>
-      <li class="new">{{covers_sharing}}</li>
-      <li class="new">{{covers_sync}}</li>
-      <li class="new">{{covers_e2e}}</li>
-      <li>{{covers_keys}}</li>
-      <li>{{covers_admin}}</li>
       <li>{{covers_quality}}</li>
       <li>{{covers_more}}</li>
       <li>{{solid_versions}}</li>
@@ -127,40 +154,38 @@ Lantern-Platform: switch
     <a class="button primary" href="{{root}}{{home}}demo/">{{cta_demo}}</a>
   </section>
 
-  <section id="own" class="section columns">
-    <div>
-      <p class="eyebrow">{{own_eyebrow}}</p>
-      <h2>{{own_title}}</h2>
-      <p>{{own_text}}</p>
+  <section id="closing" class="section closing-block">
+    <div class="band closing">
+      <div>
+        <h2>{{closing_title}}</h2>
+        <p>{{closing_text}}</p>
+      </div>
+      <div class="band-actions">
+        <a class="button primary" href="{{root}}{{home}}spec/">{{cta_spec}}</a>
+        <a class="button" href="{{repo}}/issues">{{cta_issues}}</a>
+      </div>
     </div>
-    <div id="licences">
-      <p class="eyebrow">{{licences_eyebrow}}</p>
-      <h2>{{licences_title}}</h2>
-      <ul class="keys">
-        <li><span class="k"><a href="{{repo}}/blob/main/LICENSES/CC-BY-4.0.txt">CC BY 4.0</a></span><span>{{licence_text}}</span></li>
-        <li><span class="k"><a href="{{repo}}/blob/main/LICENSES/MIT.txt">MIT</a></span><span>{{licence_rest}}</span></li>
-      </ul>
-      <p class="note">{{licence_compatible}}</p>
-    </div>
-  </section>
-
-  <section id="privacy" class="section">
-    <p class="eyebrow">{{privacy_eyebrow}}</p>
-    <h2>{{privacy_title}}</h2>
-    <div class="prose narrow">
-      <p>{{privacy_1}}</p>
-      <p>{{privacy_2}}</p>
-      <p>{{privacy_more}} <a href="https://boreale.dev/{{home}}legal/">{{footer_legal}}</a></p>
-    </div>
-  </section>
-
-  <section class="band closing">
-    <div>
-      <h2>{{closing_title}}</h2>
-      <p>{{closing_text}}</p>
-    </div>
-    <div class="band-actions">
-      <a class="button primary" href="{{root}}{{home}}spec/">{{cta_spec}}</a>
-      <a class="button" href="{{repo}}/issues">{{cta_issues}}</a>
+    <div class="fine">
+      <div id="own">
+        <p class="eyebrow">{{own_eyebrow}}</p>
+        <h2>{{own_title}}</h2>
+        <p>{{own_text}}</p>
+      </div>
+      <div id="licences">
+        <p class="eyebrow">{{licences_eyebrow}}</p>
+        <h2>{{licences_title}}</h2>
+        <ul class="keys">
+          <li><span class="k"><a href="{{repo}}/blob/main/LICENSES/CC-BY-4.0.txt">CC BY 4.0</a></span><span>{{licence_text}}</span></li>
+          <li><span class="k"><a href="{{repo}}/blob/main/LICENSES/MIT.txt">MIT</a></span><span>{{licence_rest}}</span></li>
+        </ul>
+        <p class="note">{{licence_compatible}}</p>
+      </div>
+      <div id="privacy">
+        <p class="eyebrow">{{privacy_eyebrow}}</p>
+        <h2>{{privacy_title}}</h2>
+        <p>{{privacy_1}}</p>
+        <p>{{privacy_2}}</p>
+        <p>{{privacy_more}} <a href="https://boreale.dev/{{home}}legal/">{{footer_legal}}</a></p>
+      </div>
     </div>
   </section>
