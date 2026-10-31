@@ -123,7 +123,7 @@ main section { padding-block: clamp(32px, 5vw, 56px); }
 
 /* The cards: an icon on its tile, a title, a text; the small ones flatter. */
 /* Wider cards than chrome.css's: three to a row of 1180px, not four. */
-.cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+:root { --cards-min: 300px; }
 .card { min-width: 0; }
 .card h3 a { color: var(--snow); text-decoration: none; display: inline-flex; align-items: center; min-height: 24px; }
 .card h3 a::after { content: " →"; color: var(--aurora); white-space: pre; }
