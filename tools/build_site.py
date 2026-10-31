@@ -123,6 +123,11 @@ def plain(text: str) -> str:
 # French) or part ("A.1"); and an anchor of its own, "{#changes}" at its end,
 # which a translation gives an unnumbered heading to keep the English one's.
 HEADING = re.compile(r"((\d+(?:\.\d+)?)\.? .*?|Annexe? ([A-Z]) .*?|([A-Z]\.\d+) .*?|.*?)(?: \{#([a-z0-9-]+)\})?$")
+# The text's status line ("Draft 0.7, 2026-10-30. Status: ...", "Brouillon 0.7, ...") and its licence.
+STATUS = re.compile(r"(?:Draft|Brouillon) (\S+?), (\d{4}-\d{2}-\d{2})\.")
+LICENCE = re.compile(r"\[(CC BY [\d.]+)\]\(([^)\s]+)\)")
+# A route in a code span of the text ("GET <base>/v1/apps", "/.well-known/lantern"): what the search finds by it.
+ROUTE = re.compile(r"(?:(?:GET|PUT|POST|PATCH|DELETE|HEAD|OPTIONS) )?(?:<base>)?/[\w{}<>\-./:*~?=&]*")
 ANNEX = re.compile(r"\b(?:Annex|[Aa]nnexe) ([A-Z](?:\.\d+)?)\b")
 
 
@@ -294,17 +299,93 @@ def read_spec(text: str | None = None, ref: str = "main", anchors: dict | None =
                 errors.append({"status": int(status), "code": code, "name": code.replace("_", "-"), "when": case})
     if not errors and errors_needed:
         sys.exit("build_site: SPEC.md has no section of errors (## <n>. Errors) with its table")
+    # The body, a part per top-level section (its heading to the next one's), so that the page can end each
+    # with a link to its neighbours; the fenced code of a part may hold a line that looks like a heading.
+    body_lines = rest[first:]
+    starts, fenced = [], False
+    for n, line in enumerate(body_lines):
+        fenced = fenced != line.startswith("```")
+        if line.startswith("## ") and not fenced:
+            starts.append(n)
+    if len(starts) != len(toc):
+        sys.exit(f"build_site: {len(starts)} top-level headings in the text, {len(toc)} in its contents")
+    parts = [(anchor, text, blocks(body_lines[a:b], sections, ref=ref)) for (anchor, text, _), a, b
+             in zip(toc, starts, starts[1:] + [len(body_lines)])]
+    status = None
+    head = "\n".join(rest[:first])
+    if m := STATUS.search(head):
+        licence = LICENCE.search(head)
+        href = licence.group(2) if licence else ""
+        if href and not urlparse(href).scheme:
+            href = f"{REPO}/blob/{ref}/{href}"
+        status = {"draft": m.group(1), "date": m.group(2), "licence": licence.group(1) if licence else "",
+                  "licence_href": href}
     return {"title": title, "intro": blocks(rest[:first], sections, ref=ref),
-            "body": blocks(rest[first:], sections, ref=ref), "toc": toc, "sections": sections, "errors": errors,
-            "errors_section": errors_number, "text": "\n".join(lines)}
+            "body": "\n".join(html_ for _, _, html_ in parts), "parts": parts, "toc": toc, "sections": sections,
+            "errors": errors, "errors_section": errors_number, "text": "\n".join(lines), "status": status}
 
 
-def toc_html(spec: dict, label: str) -> str:
+def toc_html(spec: dict, label: str, lang: str = "en") -> str:
+    """The contents: a <details> (open without script; site/assets/spec.js folds it on a phone, and keeps it
+    open beside the text), its summary the current section once script runs. The titles are the text's own."""
     items = []
     for anchor, text, subs in spec["toc"]:
         inner = ("<ol>" + "".join(f'<li><a href="#{a}">{html.escape(t)}</a></li>' for a, t in subs) + "</ol>") if subs else ""
         items.append(f'<li><a href="#{anchor}">{html.escape(text)}</a>{inner}</li>')
-    return f'<nav class="toc" aria-label="{label}"><p class="toc-title">{label}</p><ol>' + "".join(items) + "</ol></nav>"
+    return (f'<nav class="toc" aria-label="{label}"><details class="toc-box" open>'
+            f'<summary><span class="toc-title">{label}</span><span class="toc-now" lang="{lang}"></span></summary>'
+            f'<div class="toc-list"><ol lang="{lang}">' + "".join(items) + "</ol></div></details></nav>")
+
+
+def search_form(catalog: dict, root: str) -> str:
+    """The search field above the contents, hidden until site/assets/spec.js runs; its index is
+    spec/search.json (search_index())."""
+    texts = " ".join(f'data-{k.replace("_", "-")}="{html.escape(catalog["spec_" + k], quote=True)}"'
+                     for k in ("search_none", "search_count", "search_error", "kind_section", "kind_req",
+                               "kind_route", "kind_error"))
+    return (f'<form class="spec-search" role="search" hidden data-index="{root}spec/search.json" {texts}>\n'
+            f'<label for="spec-q">{catalog["spec_search"]}</label>\n'
+            f'<input id="spec-q" type="search" name="q" autocomplete="off" spellcheck="false" enterkeyhint="search" '
+            f'aria-keyshortcuts="/" aria-describedby="spec-q-keys" placeholder="{html.escape(catalog["spec_search_hint"], quote=True)}">\n'
+            f'<p id="spec-q-keys" class="spec-keys">{catalog["spec_search_keys"]}</p>\n'
+            f'<p class="sr" role="status" aria-live="polite" id="spec-q-status"></p>\n'
+            f'<ul class="spec-results" id="spec-results" lang="en" hidden></ul>\n</form>')
+
+
+def status_chips(spec: dict, catalog: dict) -> str:
+    """The text's draft, date and licence as a row of chips, read from its status line (read_spec())."""
+    status = spec.get("status")
+    if not status:
+        return ""
+    items = [f'<li>{catalog["spec_chip_draft"]} {html.escape(status["draft"])}</li>',
+             f'<li><time datetime="{status["date"]}">{status["date"]}</time></li>']
+    if status["licence"]:
+        link = (f'<a href="{html.escape(status["licence_href"])}">{html.escape(status["licence"])}</a>'
+                if status["licence_href"] else html.escape(status["licence"]))
+        items.append(f'<li>{catalog["spec_chip_licence"]} {link}</li>')
+    return f'<ul class="chips" aria-label="{catalog["spec_status"]}">{"".join(items)}</ul>'
+
+
+def annex_cards(spec: dict, catalog: dict, lang: str) -> str:
+    """A card for each of the annexes the page's text has (A: platforms, B: client authors, C: the road to
+    1.0), under the page's header; their titles are the text's, their words the catalog's."""
+    cards = []
+    for anchor, text, _ in spec["toc"]:
+        m = re.match(r"Annexe? ([A-C]) — (.*)", text)
+        if m and f"spec_annex_{m.group(1).lower()}" in catalog:
+            cards.append(f'<li><a href="#{anchor}"><span class="annex-k" lang="{lang}">{html.escape(text.split(" — ")[0])}</span>'
+                         f'<strong lang="{lang}">{html.escape(m.group(2))}</strong>'
+                         f'<span class="annex-d">{catalog["spec_annex_" + m.group(1).lower()]}</span></a></li>')
+    return f'<nav class="annex-cards" aria-label="{catalog["spec_annexes"]}"><ul>{"".join(cards)}</ul></nav>\n' if cards else ""
+
+
+def section_nav(parts: list, i: int, catalog: dict, ui: str) -> str:
+    """The end of a top-level section: the sections around it and the way back to the top."""
+    def link(j, rel, key):
+        return (f'<a rel="{rel}" href="#{parts[j][0]}"><span class="sec-dir" lang="{ui}">{catalog[key]}</span> '
+                f'<span class="sec-name">{html.escape(parts[j][1])}</span></a>') if 0 <= j < len(parts) else ""
+    return (f'<div class="sec-nav">{link(i - 1, "prev", "spec_prev")}{link(i + 1, "next", "spec_next")}'
+            f'<a class="sec-top" href="#top" lang="{ui}">{catalog["spec_top"]}</a></div>')
 
 
 # ---- The page around them.
@@ -338,6 +419,7 @@ def hero(page: str, catalog: dict, root: str, language: str, spec: dict, extra: 
             note = ""
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["spec_eyebrow"]}</span>\n'
                 f'    <h1>{catalog["spec_title"]}</h1>\n    <p class="lede">{catalog["spec_lede"]}</p>{note}\n'
+                f'    {status_chips(spec, catalog)}\n'
                 f'    {drafts_nav(catalog, root, language, "current", translated is None)}\n  </div>')
     more = f'\n    {extra["after"]}' if extra.get("after") else ""
     return (f'<div class="wrap hero small">\n    <span class="eyebrow">{extra["eyebrow"]}</span>\n'
@@ -364,12 +446,84 @@ def drafts_nav(catalog: dict, root: str, language: str, here: str, translations:
 
 
 def spec_body(spec: dict, catalog: dict, lang: str = "en", source: str = f"{REPO}/blob/main/SPEC.md",
-              label: str | None = None) -> str:
-    return (f'<div class="spec-layout">\n{toc_html(spec, catalog["spec_toc"])}\n'
-            f'<article class="prose" lang="{lang}">\n<h2 class="spec-name">{html.escape(spec["title"])}</h2>\n'
-            f'{spec["intro"]}\n{spec["body"]}\n'
+              label: str | None = None, ui: str = "en", root: str = "", search: bool = False,
+              cards: bool = False) -> str:
+    """The specification's text with its contents beside it. `lang` is the text's, `ui` the page's language;
+    `search` puts the search field above the contents (the current English text, whose index search_index()
+    writes), `cards` the annexes' under the header (the current text's)."""
+    texts = " ".join(f'data-{k.replace("_", "-")}="{html.escape(catalog["spec_" + k], quote=True)}"'
+                     for k in ("copy", "copied", "copy_failed"))
+    side = (search_form(catalog, root) if search else "") + toc_html(spec, catalog["spec_toc"], lang)
+    text = "\n".join(html_ + "\n" + section_nav(spec["parts"], i, catalog, ui) for i, (_, _, html_) in enumerate(spec["parts"]))
+    return (f'{annex_cards(spec, catalog, lang) if cards else ""}'
+            f'<div class="spec-layout" data-ui="{ui}" {texts}>\n<div class="spec-side">\n{side}\n</div>\n'
+            f'<article class="prose" lang="{lang}">\n<h2 class="spec-name sr">{html.escape(spec["title"])}</h2>\n'
+            f'{spec["intro"]}\n{text}\n'
             f'<p class="source"><a href="{source}">{label or catalog["spec_source"]}</a></p>\n'
-            f'</article>\n</div>')
+            f'</article>\n<p class="sr" role="status" aria-live="polite" id="spec-live"></p>\n</div>')
+
+
+def search_index(spec: dict) -> dict:
+    """The current specification's search index (spec/search.json, schema 1, read by site/assets/spec.js): its
+    sections (number, title, the top-level section they are in), each requirement id with the sentence it ends
+    and the section it is in, and the routes (code spans such as `GET <base>/v1/apps`) and error codes with the
+    sections they appear in (at most three). English only, like the text. Built here, so that the page needs
+    no service."""
+    lines = spec["text"].split("\n")
+    sections, requirements, terms = [], [], {}
+    top, here, fenced = "", "", False
+    para: list = []
+
+    def add_term(term: str, kind: str, anchor: str) -> None:
+        found = terms.setdefault((term, kind), [])
+        if anchor and anchor not in found and len(found) < 3:
+            found.append(anchor)
+
+    def requirements_of(text: str) -> None:
+        # An id in a code span is an example, not an anchor (inline()): masked, but its words are kept.
+        text = re.sub(r"\s+", " ", text)
+        masked = re.sub(r"`[^`]*`", lambda m: "_" * len(m.group(0)), text)
+        for m in REQ.finditer(masked):
+            sentence = text[:m.start()].rstrip()
+            sentence = sentence[:-1] if sentence.endswith(".") else sentence
+            cut = max(sentence.rfind(". "), sentence.rfind("] "))
+            sentence = REQ.sub("", plain(sentence[cut + 2:] if cut >= 0 else sentence)).strip(" -;")
+            if here:
+                requirements.append({"id": m.group(1), "s": here, "t": sentence[-220:].strip()})
+
+    def flush() -> None:
+        if para:
+            requirements_of(" ".join(para))
+            para.clear()
+
+    for line in lines[1:]:
+        if line.startswith("```"):
+            flush()
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if m := re.match(r"(#{2,4}) (.*)", line):
+            flush()
+            shown, number, own = heading(m.group(2))
+            here = own or spec["sections"].get(number) or slug(shown)
+            if len(m.group(1)) == 2:
+                top = plain(shown)
+            sections.append({"id": here, "n": number or "", "t": plain(shown), "p": top if len(m.group(1)) > 2 else ""})
+            continue
+        if not line.strip() or re.match(r"(- |\d+\. )", line.lstrip()) or line.startswith("|"):
+            flush()
+        para.append(line.strip()) if line.strip() else None
+        for span in re.findall(r"`([^`]+)`", line):
+            if ROUTE.fullmatch(span) and len(span) > 1:
+                add_term(span, "route", here)
+    flush()
+    errors_at = next((x["id"] for x in sections if ERRORS_HEADING.match("## " + x["t"])), "")
+    for error in spec["errors"]:
+        add_term(error["code"], "error", errors_at)
+    return {"schema": 1, "draft": (spec.get("status") or {}).get("draft", ""), "sections": sections,
+            "requirements": requirements,
+            "terms": [{"t": t, "k": k, "s": a} for (t, k), a in terms.items() if a]}
 
 
 def problem(error: dict) -> str:
@@ -903,12 +1057,14 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         "hero": hero(page, catalog, root, language, spec, extra),
         "repo": REPO,
         "draft": DRAFT,
+        # The specification's script: its contents, search and links (site/assets/spec.js).
+        "spec_script": f'<script src="{root}assets/spec.js" defer></script>' if page == "spec" else "",
     })
     if page in ("home", "demo") and not body:
         body = (SITE / f"{page}.html").read_text(encoding="utf-8")
         values["demo_url"] = SITE_URL + "demo/"
     elif page == "spec" and not body:
-        body = spec_body(spec, catalog)
+        body = spec_body(spec, catalog, ui=hl, root=root, search=True, cards=True)
     values["body"] = fill(body, values)
     return LANTERN.links_out(fill(template, values))
 
@@ -972,7 +1128,7 @@ def main() -> None:
             if page == "spec" and language in TRANSLATIONS:
                 t, translated = translations[TRANSLATIONS[language]]
                 body = spec_body(translated, catalog, lang=t["language"], source=f"{REPO}/blob/main/site/translations/{t['name']}",
-                                 label=html.escape(t["source"]))
+                                 label=html.escape(t["source"]), ui=boreale.html_lang(language), cards=True)
                 if t["language"].split("-")[0] == "fr":
                     body = french_spaces(body)
                 extra = {"translation": {"lang": t["language"], "banner": t["banner"], "english": t["english"]}}
@@ -999,7 +1155,10 @@ def main() -> None:
                      f"SPEC.md of draft {v}, the current draft, as it is now: it is kept as it was once merged."),
             "description": f"The Lantern protocol's draft {v}, as it was published; superseded by later drafts.",
             "noindex": True, "alternate": False, "lang_path": "spec/",
-            "after": draft_banner(v, pr) + "\n    " + drafts_nav(en, "../../", ENGLISH, v)}), listed=False)
+            "after": (draft_banner(v, pr) + "\n    " + status_chips(d, en) + "\n    "
+                      + drafts_nav(en, "../../", ENGLISH, v))}), listed=False)
+    (out / "spec" / "search.json").write_text(json.dumps(search_index(spec), ensure_ascii=False, separators=(",", ":")) + "\n",
+                                              encoding="utf-8")
     write("spec/changes/", page_html(template, ENGLISH, en, "spec/changes/", "spec", spec, versions, changes_body(drafts), {
         "title": "What changed, draft by draft · Lantern", "eyebrow": "Specification · its drafts",
         "h1": "What changed, draft by draft",

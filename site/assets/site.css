@@ -450,7 +450,6 @@ main, .spec-layout > * { min-width: 0; }
 .prose.narrow p { color: var(--mist); }
 .prose h2 { margin-top: 48px; font-size: clamp(1.5rem, 3.5vw, 2rem); font-weight: 600; letter-spacing: -0.02em; scroll-margin-top: 16px; }
 .prose h3 { margin-top: 32px; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; scroll-margin-top: 16px; }
-.prose h2.spec-name { margin-top: 0; font-size: clamp(1.25rem, 3vw, 1.5rem); color: var(--mist); }
 .prose .anchor { color: inherit; text-decoration: none; }
 .prose .anchor:hover { color: var(--aurora); }
 .prose ul, .prose ol { padding-left: 1.4em; display: grid; gap: 8px; }
@@ -462,18 +461,119 @@ main, .spec-layout > * { min-width: 0; }
 .prose a { overflow-wrap: anywhere; }
 .note-en { font-family: var(--mono); font-size: 0.875rem; color: var(--aurora); }
 
-/* The specification: its contents beside it on a large screen, above it on a phone. */
-.spec-layout { display: grid; gap: 32px; padding-block: 8px 48px; grid-template-columns: minmax(0, 1fr); }
-.toc { padding: 18px 20px; border: 1px solid var(--night-line); border-radius: var(--radius); background: rgb(14 26 51 / 0.6); font-size: 0.9375rem; }
-.toc-title { font: 500 0.8125rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--aurora); margin-bottom: 8px; }
+/* The specification (spec.js). On a phone the contents are one sticky bar, a <details> whose summary says
+   the section being read and which opens the list; beside the text, on a large screen, they are a column
+   that stays in view, the search field above them, the section being read lit. Without script the contents
+   are open and in the flow, the search field hidden. */
+.spec-layout { padding-block: 8px 48px; }
+.spec-side { display: contents; }
+.spec-layout > .prose { margin-top: 24px; }
+.toc { position: sticky; top: 0; z-index: 30; border: 1px solid var(--night-line); border-radius: var(--radius); background: var(--night); font-size: 0.9375rem; }
+.toc summary { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px; cursor: pointer; list-style: none; border-radius: var(--radius); }
+.toc summary::-webkit-details-marker { display: none; }
+.toc summary::after { content: ""; flex: none; width: 8px; height: 8px; margin: -4px 2px 0 0; border: solid var(--mist); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.toc-box[open] > summary::after { margin-top: 4px; transform: rotate(-135deg); }
+.toc-title { flex: none; font: 500 0.8125rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--aurora); }
+.toc-now { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 0.875rem; color: var(--snow); }
+.toc-list { max-height: min(60vh, 30rem); overflow-y: auto; overscroll-behavior: contain; padding: 6px 16px 12px; border-top: 1px solid var(--night-line); }
 .toc ol { list-style: none; margin: 0; padding: 0; }
 .toc ol ol { padding-left: 14px; font-size: 0.875rem; }
-.toc a { display: flex; align-items: center; min-height: 32px; color: var(--mist); text-decoration: none; }
+.toc a { display: flex; align-items: center; min-height: 32px; padding-block: 2px; color: var(--mist); text-decoration: none; }
 .toc a:hover { color: var(--snow); }
-@media (min-width: 1024px) {
-  .spec-layout { grid-template-columns: 260px minmax(0, 1fr); align-items: start; }
-  .toc { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+.toc a[aria-current] { color: var(--snow); font-weight: 600; box-shadow: inset 2px 0 0 var(--aurora); padding-left: 10px; margin-left: -12px; }
+/* The headings land under the sticky bar. */
+@media (max-width: 1023.98px) {
+  html:has(.spec-layout) { scroll-padding-top: 72px; }
+  .spec-layout :is(h2, h3, h4), .spec-layout a.req { scroll-margin-top: 16px; }
 }
+@media (min-width: 1024px) {
+  .spec-layout { display: grid; gap: 32px; grid-template-columns: 260px minmax(0, 1fr); align-items: start; }
+  .spec-layout > .prose { margin-top: 0; }
+  .spec-side { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; position: sticky; top: 16px; max-height: calc(100vh - 32px); }
+  .toc { position: static; overflow-y: auto; overscroll-behavior: contain; min-height: 0; background: rgb(14 26 51 / 0.6); }
+  .toc summary { min-height: 0; padding: 16px 20px 6px; pointer-events: none; cursor: default; }
+  .toc summary::after, .toc-now { display: none; }
+  .toc-list { max-height: none; overflow: visible; border-top: 0; padding: 0 20px 16px; }
+  .toc a[aria-current] { margin-left: -12px; }
+}
+
+/* The search field above the contents (hidden until spec.js runs). */
+.spec-search { display: grid; gap: 6px; margin-bottom: 12px; }
+.spec-search[hidden] { display: none; }
+.spec-search label { font: 500 0.8125rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--aurora); }
+.spec-search input { width: 100%; min-height: 44px; padding: 0 14px; border: 1px solid var(--night-line); border-radius: 12px; background: var(--abyss); color: var(--snow); font: 16px var(--body); }
+.spec-search input::placeholder { color: var(--dusk); }
+.spec-search input:focus-visible { outline: 2px solid var(--aurora); outline-offset: 2px; border-color: transparent; }
+.spec-keys { font-size: 0.8125rem; color: var(--dusk); }
+@media (hover: none) { .spec-keys { display: none; } }
+.spec-results { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; }
+.spec-results[hidden] { display: none; }
+.spec-results a { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 10px; align-items: baseline; min-height: 44px; padding: 8px 10px; border: 1px solid var(--night-line); border-radius: 10px; background: rgb(14 26 51 / 0.6); color: var(--snow); text-decoration: none; }
+.spec-results a:hover, .spec-results a:focus-visible { border-color: rgb(0 255 204 / 0.5); }
+.spec-results .kind { font: 500 0.6875rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--aurora); white-space: nowrap; }
+.spec-results .name { font-weight: 600; overflow-wrap: anywhere; }
+.spec-results .ctx { grid-column: 2; font-size: 0.8125rem; color: var(--mist); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.spec-results li:not(:has(a)) { padding: 8px 10px; color: var(--mist); }
+.spec-side.searching .toc { display: none; }
+@media (min-width: 1024px) {
+  .spec-search { margin-bottom: 0; min-height: 0; grid-template-rows: auto auto auto minmax(0, 1fr); }
+  .spec-side.searching { grid-template-rows: minmax(0, 1fr); }
+  .spec-results { max-height: calc(100vh - 14rem); }
+}
+
+/* The text's status as chips, and the annexes' cards, under the page's header. */
+.chips { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.chips li { display: inline-flex; align-items: center; gap: 0.4em; min-height: 28px; padding: 0 12px; border: 1px solid var(--night-line); border-radius: 99px; background: rgb(14 26 51 / 0.6); font: 500 0.8125rem var(--mono); color: var(--mist); white-space: nowrap; }
+.chips a { display: inline-flex; align-items: center; min-height: 24px; color: var(--snow); }
+.annex-cards { padding-top: 28px; }
+.annex-cards ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); }
+.annex-cards a { display: grid; align-content: start; gap: 2px; height: 100%; padding: 12px 16px; border: 1px solid var(--night-line); border-radius: var(--radius); background: rgb(14 26 51 / 0.6); color: var(--snow); text-decoration: none; }
+.annex-cards a:hover { border-color: rgb(0 255 204 / 0.5); }
+.annex-k { font: 500 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--aurora); }
+.annex-cards strong { font: 600 1.0625rem/1.3 var(--display); letter-spacing: -0.01em; }
+.annex-d { font-size: 0.9375rem; color: var(--mist); }
+/* On a phone the cards are three short lines, the words read by a screen reader only: the text is what the page is for. */
+@media (max-width: 759.98px) {
+  .annex-d { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .annex-cards a { position: relative; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 0 12px; padding: 10px 16px; min-height: 48px; }
+  .annex-cards ul { gap: 8px; }
+  .annex-cards { padding-top: 20px; }
+}
+@media (min-width: 760px) { .annex-cards ul { grid-template-columns: repeat(3, minmax(0, 1fr)); } .annex-cards a { padding: 16px 18px; gap: 4px; } }
+
+/* The foot of each section: its neighbours and the way back up. */
+.prose .sec-nav { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px 12px; margin-top: 32px; padding-top: 12px; border-top: 1px solid var(--night-line); }
+.sec-nav a { display: grid; align-content: center; gap: 0; min-height: 48px; max-width: 100%; padding: 4px 14px; border: 1px solid var(--night-line); border-radius: 12px; color: var(--snow); text-decoration: none; }
+.sec-nav a:hover { border-color: rgb(0 255 204 / 0.5); }
+.sec-nav a[rel="next"] { margin-left: auto; text-align: right; }
+.sec-dir { font: 500 0.6875rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--aurora); }
+.sec-name { font-size: 0.9375rem; overflow-wrap: anywhere; }
+.sec-nav .sec-top { flex-basis: 100%; min-height: 32px; padding: 0; border: 0; justify-content: start; font: 500 0.8125rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--mist); }
+.sec-nav .sec-top:hover { color: var(--snow); }
+.prose .spec-name + * { margin-top: 0; }
+
+/* A requirement's id: an anchor, and the button that copies its link (spec.js), shown under it on hover and focus,
+   and, where there is no hover, once it is the one the address names. */
+.req-wrap { position: relative; white-space: nowrap; }
+.req-copy {
+  position: absolute; left: 0; top: calc(100% + 2px); z-index: 5; visibility: hidden; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: 1px solid rgb(0 255 204 / 0.5); border-radius: 8px; background: var(--night); color: var(--aurora); cursor: pointer;
+}
+.req-copy svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.req-copy .done, .req-copy[data-done] .copy { display: none; }
+.req-copy[data-done] .done { display: block; }
+.req-wrap:hover > .req-copy, .req-wrap:focus-within > .req-copy { visibility: visible; }
+@media (hover: none) { .req-wrap:has(> a:target) > .req-copy { visibility: visible; } }
+
+/* Tables and code scroll sideways in their box, never the page; an edge fades while there is more to scroll to. */
+.prose :is(.table, pre) { overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--dusk) transparent; max-width: 100%; }
+.prose :is(.table, pre):focus-visible { outline-offset: -3px; }
+/* In a table a name is not broken to fit a column: the column keeps its word and the table scrolls in its box. */
+.prose .table :is(code, a) { overflow-wrap: normal; }
+.prose .table th, .prose .table td { overflow-wrap: break-word; }
+.prose .more-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+.prose .more-left { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
+.prose .more-left.more-right { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
 
 /* An error type's facts. */
 .facts { margin: 0; display: grid; gap: 10px; }
