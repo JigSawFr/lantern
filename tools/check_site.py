@@ -22,6 +22,8 @@
   specification's page and has its entry on the traceability page
   (requirements/), and site/registry.json is of schema 1, each entry with
   its name, kind, url, draft and levels; the badges of every level are there;
+- the specification's search index (spec/search.json, schema 1) names every requirement id, and what it
+  leads to is an anchor of the page;
 - the drafts (spec/<draft>/) say noindex and stay out of the sitemap, which
   lists the current specification and spec/changes/;
 - the demo library (demo/) is a static library whose files carry no tracking
@@ -65,6 +67,32 @@ def git(*args: str) -> str | None:
                               encoding="utf-8").stdout
     except (OSError, subprocess.CalledProcessError):
         return None
+
+
+def check_search(site: Path, ids: list) -> list:
+    """The specification's search index (spec/search.json, schema 1): it has every requirement id of SPEC.md,
+    and each section it names is an anchor of the page, in English and in every language that shows the English
+    text; the page's chips, annex cards and links to each section's neighbours are there."""
+    try:
+        index = json.loads((site / "spec" / "search.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        return [f"spec/search.json: {error}"]
+    errors = []
+    if index.get("schema") != 1:
+        errors.append("spec/search.json: not of schema 1")
+    anchors = {s["id"] for s in index.get("sections", [])}
+    listed = {r["id"] for r in index.get("requirements", [])}
+    if missing := [i for i in ids if i not in listed]:
+        errors.append(f"spec/search.json: no entry for {len(missing)} requirement(s), {', '.join(missing[:5])}")
+    targets = anchors | listed | {a for t in index.get("terms", []) for a in t["s"]}
+    for path in ("spec/index.html", "de/spec/index.html", "ja/spec/index.html"):
+        page = (site / path).read_text(encoding="utf-8") if (site / path).exists() else ""
+        if lacking := sorted(t for t in targets if f'id="{t}"' not in page):
+            errors.append(f"{path}: the search index leads to {len(lacking)} anchor(s) it lacks, {', '.join(lacking[:5])}")
+        for need in ('class="spec-search"', 'class="chips"', 'class="annex-cards"', 'rel="next"', 'class="toc-box"'):
+            if need not in page:
+                errors.append(f"{path}: no {need}")
+    return errors
 
 
 def check_translations(site: Path, ids: list) -> list:
@@ -206,6 +234,7 @@ def main() -> None:
             errors.append(f"site/registry.json: {entry.get('name', '?')} lacks {', '.join(lacking)}")
         if "core" not in entry.get("levels", []):
             errors.append(f"site/registry.json: {entry.get('name', '?')} without Lantern Core, which every level needs")
+    errors += check_search(site, ids)
     errors += check_translations(site, ids)
     errors += check_drafts_and_demo(site)
     errors += check_schemas(site)
