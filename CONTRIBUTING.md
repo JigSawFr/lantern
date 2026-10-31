@@ -54,6 +54,7 @@ it is behind, is just as welcome.
 - Run the checks before pushing:
 
   ```sh
+  git submodule update --init   # library/boreale-site, which the site's build and its tests read
   pip install -r tools/requirements.txt
   python3 tools/requirements.py
   python3 tools/check_schemas.py

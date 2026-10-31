@@ -1,0 +1,13 @@
+# library/boreale-site: what Boréale's sites share (the languages, the
+# header's menus, the links out, the audience, the fonts and marks), followed
+# on its main. Each move is a pull request, which the site's workflow builds
+# and checks.
+version: 2
+updates:
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: daily
+    commit-message:
+      prefix: chore
+      include: scope
