@@ -1,105 +1,152 @@
-  <section id="status" class="status-card">
-    <span class="state">{{status_badge}}</span>
-    <p>{{status_text}}</p>
+  <section id="what" class="section">
+    <p class="eyebrow">{{what_eyebrow}}</p>
+    <h2>{{what_title}}</h2>
+    <p class="section-lede">{{what_lede}}</p>
+    <ul class="cards">
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4" width="13" height="9" rx="1.8"/><rect x="15.5" y="9" width="6" height="11" rx="1.5"/><path d="M6 17h6M9 13v4"/></svg><h3>{{what_platforms}}</h3><p>{{what_platforms_text}}</p></li>
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><h3>{{what_titles}}</h3><p>{{what_titles_text}}</p></li>
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 20.5 7v10L12 21.5 3.5 17V7z"/><path d="M3.5 7 12 11.5 20.5 7M12 11.5v10"/></svg><h3>{{what_homebrew}}</h3><p>{{what_homebrew_text}}</p></li>
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18.5a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.5 1.6 3.8 3.8 0 0 1-.4 7.4"/><path d="M12 20.5v-8M9 15.5l3-3 3 3"/></svg><h3>{{what_saves}}</h3><p>{{what_saves_text}}</p></li>
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg><h3>{{what_cheats}}</h3><p>{{what_cheats_text}}</p></li>
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M8 14h8"/></svg><h3>{{what_static}}</h3><p>{{what_static_text}}</p></li>
+    </ul>
   </section>
 
-  <section id="solid">
-    <div class="section-head">
-      <span class="eyebrow">{{solid_eyebrow}}</span>
-      <h2>{{solid_title}}</h2>
-      <p>{{solid_lede}}</p>
+  <section id="how" class="section how">
+    <div>
+      <p class="eyebrow">{{how_eyebrow}}</p>
+      <h2>{{how_title}}</h2>
+      <ol class="steps">
+        <li><strong>{{how_1_title}}</strong> {{how_1}}</li>
+        <li><strong>{{how_2_title}}</strong> {{how_2}}</li>
+        <li><strong>{{how_3_title}}</strong> {{how_3}}</li>
+        <li><strong>{{how_4_title}}</strong> {{how_4}}</li>
+      </ol>
     </div>
+    <div class="exchange">
+      <pre tabindex="0"><code><span class="req-line">GET /.well-known/lantern</span>
+{
+  <span class="k">"schema"</span>: 1,
+  <span class="k">"name"</span>: <span class="s">"Living room shelf"</span>,
+  <span class="k">"base"</span>: <span class="s">"/api/lantern"</span>,
+  <span class="k">"versions"</span>: [1],
+  <span class="k">"platforms"</span>: [<span class="s">"switch"</span>, <span class="s">"android"</span>],
+  <span class="k">"features"</span>: { <span class="k">"library"</span>: 1, <span class="k">"homebrew"</span>: 1, <span class="k">"saves"</span>: 1, … }
+}</code></pre>
+      <pre tabindex="0"><code><span class="req-line">GET /api/lantern/v1/apps?sort=added</span>
+User-Agent: ExampleClient/0.1
+Lantern-Platform: switch
+{
+  <span class="k">"schema"</span>: 1,
+  <span class="k">"items"</span>: [{ <span class="k">"name"</span>: <span class="s">"Frostline Tales"</span>, <span class="k">"format"</span>: <span class="s">"xci"</span>,
+    <span class="k">"sha256"</span>: <span class="s">"3a7bd3e2b4c1…"</span>, … }]
+}</code></pre>
+      <p class="note">{{how_more}} <a href="{{root}}{{home}}spec/">{{nav_spec}}</a></p>
+    </div>
+  </section>
+
+  <section id="solid" class="section">
+    <p class="eyebrow">{{solid_eyebrow}}</p>
+    <h2>{{solid_title}}</h2>
+    <p class="section-lede">{{solid_lede}}</p>
     <ul class="points">
       <li class="new">{{covers_events}}</li>
       <li class="new">{{covers_sharing}}</li>
       <li class="new">{{covers_sync}}</li>
       <li class="new">{{covers_e2e}}</li>
-      <li class="new">{{covers_static}}</li>
       <li>{{covers_keys}}</li>
       <li>{{covers_admin}}</li>
       <li>{{covers_quality}}</li>
       <li>{{covers_more}}</li>
-      <li>{{covers_platforms}}</li>
-      <li>{{covers_homebrew}}</li>
-      <li>{{covers_titles}}</li>
-      <li>{{covers_saves}}</li>
-      <li>{{covers_cheats}}</li>
       <li>{{solid_versions}}</li>
       <li>{{solid_tokens}}</li>
       <li>{{solid_https}}</li>
-      <li>{{solid_content}}</li>
       <li>{{solid_features}}</li>
-      <li>{{solid_pages}}</li>
       <li>{{solid_errors}}</li>
       <li>{{solid_nothing}}</li>
       <li>{{solid_suite}}</li>
     </ul>
   </section>
 
-  <section id="implement">
-    <div class="section-head">
-      <span class="eyebrow">{{implement_eyebrow}}</span>
-      <h2>{{implement_title}}</h2>
-      <p>{{implement_lede}}</p>
-    </div>
-    <div class="ways">
-      <article class="way">
-        <h3>{{server_title}}</h3>
-        <p>{{server_text}}</p>
-        <pre tabindex="0"><code>GET /.well-known/lantern
-GET /api/lantern/v1/apps?sort=added</code></pre>
-      </article>
-      <article class="way">
-        <h3>{{client_title}}</h3>
-        <p>{{client_text}}</p>
-        <pre tabindex="0"><code>User-Agent: ExampleClient/0.1
-Lantern-Platform: switch
-Range: bytes=0-1048575</code></pre>
-      </article>
-      <article class="way">
-        <h3>{{schemas_title}}</h3>
-        <p>{{schemas_text}}</p>
-        <p class="more"><a href="{{repo}}/tree/main/schemas/v1">schemas/v1</a> · <a href="{{repo}}/tree/main/examples/v1">examples/v1</a> · <a href="{{repo}}/blob/main/openapi.yaml">openapi.yaml</a></p>
-      </article>
-    </div>
-    <p class="note">{{implement_soon}}</p>
-    <p class="note">{{first_client}} <a href="https://shelf.boreale.dev/{{home}}">PlayShelf</a></p>
-    <p class="note">{{demo_home}} <a href="{{root}}{{home}}demo/">{{demo_home_link}}</a></p>
+  <section id="box" class="section">
+    <p class="eyebrow">{{box_eyebrow}}</p>
+    <h2>{{box_title}}</h2>
+    <ul class="cards cards-small">
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2.5h8.5L19 7v13.5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-17a1 1 0 0 1 1-1z"/><path d="M14 2.5V7h5M8.5 12h7M8.5 16h7"/></svg><h3><a href="{{root}}{{home}}spec/">{{box_spec}}</a></h3><p>{{box_spec_text}}</p></li>
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3.5c-2 0-3 1-3 3v2.5c0 1.5-.8 2.5-2 3 1.2.5 2 1.5 2 3v2.5c0 2 1 3 3 3M16 3.5c2 0 3 1 3 3v2.5c0 1.5.8 2.5 2 3-1.2.5-2 1.5-2 3v2.5c0 2-1 3-3 3"/></svg><h3><a href="{{repo}}/tree/main/schemas/v1">{{box_schemas}}</a></h3><p>{{box_schemas_text}}</p></li>
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5 6 8.5l3.5-4M4 15.5l2 2 3.5-4M13 7h7M13 16h7"/></svg><h3><a href="{{root}}conformance/">{{box_suite}}</a></h3><p>{{box_suite_text}}</p></li>
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></svg><h3><a href="{{repo}}/tree/main/vectors">{{box_vectors}}</a></h3><p>{{box_vectors_text}}</p></li>
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3.5" width="18" height="7" rx="2"/><rect x="3" y="13.5" width="18" height="7" rx="2"/><path d="M7 7h.01M7 17h.01M11 7h6M11 17h6"/></svg><h3><a href="{{repo}}/tree/main/server">{{box_server}}</a></h3><p>{{box_server_text}}</p></li>
+      <li class="card"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg><h3><a href="https://github.com/JigSawFr/lantern-sdk">{{box_sdk}}</a></h3><p>{{box_sdk_text}}</p></li>
+    </ul>
   </section>
 
-  <section id="conformance">
-    <div class="section-head">
-      <span class="eyebrow">{{conformance_eyebrow}}</span>
+  <section id="conformance" class="band">
+    <div>
+      <p class="eyebrow">{{conformance_eyebrow}}</p>
       <h2>{{conformance_title}}</h2>
       <p>{{conformance_text}}</p>
     </div>
-    <div class="actions"><a class="button primary" href="{{root}}conformance/">{{link_levels}}</a><a class="button ghost" href="{{root}}badge/">{{link_badge}}</a><a class="button ghost" href="{{root}}implementations/">{{link_registry}}</a><a class="button ghost" href="{{root}}requirements/">{{link_requirements}}</a></div>
+    <div class="band-actions">
+      <a class="button primary" href="{{root}}conformance/">{{link_levels}}</a>
+      <a class="button" href="{{root}}badge/">{{link_badge}}</a>
+      <a class="button" href="{{root}}requirements/">{{link_requirements}}</a>
+    </div>
   </section>
 
-  <section id="own">
-    <div class="cta">
+  <section id="implement" class="section">
+    <p class="eyebrow">{{implement_eyebrow}}</p>
+    <h2>{{implement_title}}</h2>
+    <p class="section-lede">{{implement_lede}}</p>
+    <ul class="cards ways">
+      <li class="card way">
+        <img class="icon mark" src="{{root}}assets/marks/playshelf.svg" alt="" width="44" height="44">
+        <h3><a href="https://shelf.boreale.dev/{{home}}">PlayShelf</a></h3>
+        <p>{{first_client}}</p>
+      </li>
+      <li class="card way">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3.5" width="18" height="7" rx="2"/><rect x="3" y="13.5" width="18" height="7" rx="2"/><path d="M7 7h.01M7 17h.01M11 7h6M11 17h6"/></svg>
+        <h3>{{server_title}}</h3>
+        <p>{{server_text}}</p>
+      </li>
+      <li class="card way">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="6.5" width="21" height="11" rx="3.5"/><rect x="6.5" y="8.5" width="11" height="7" rx="1"/><path d="M4 10.5h.01M20 13.5h.01"/></svg>
+        <h3>{{client_title}}</h3>
+        <p>{{client_text}}</p>
+      </li>
+    </ul>
+    <p class="note">{{implement_registry}} <a href="{{root}}implementations/">{{link_registry}}</a></p>
+  </section>
+
+  <section id="try" class="band">
+    <div>
+      <p class="eyebrow">{{demo_eyebrow}}</p>
+      <h2>{{demo_title}}</h2>
+      <p>{{demo_lede}}</p>
+    </div>
+    <a class="button primary" href="{{root}}{{home}}demo/">{{cta_demo}}</a>
+  </section>
+
+  <section id="own" class="section columns">
+    <div>
+      <p class="eyebrow">{{own_eyebrow}}</p>
       <h2>{{own_title}}</h2>
       <p>{{own_text}}</p>
     </div>
-  </section>
-
-  <section id="licences">
-    <div class="section-head">
-      <span class="eyebrow">{{licences_eyebrow}}</span>
+    <div id="licences">
+      <p class="eyebrow">{{licences_eyebrow}}</p>
       <h2>{{licences_title}}</h2>
+      <ul class="keys">
+        <li><span class="k"><a href="{{repo}}/blob/main/LICENSES/CC-BY-4.0.txt">CC BY 4.0</a></span><span>{{licence_text}}</span></li>
+        <li><span class="k"><a href="{{repo}}/blob/main/LICENSES/MIT.txt">MIT</a></span><span>{{licence_rest}}</span></li>
+      </ul>
+      <p class="note">{{licence_compatible}}</p>
     </div>
-    <ul class="keys">
-      <li><span class="k"><a href="{{repo}}/blob/main/LICENSES/CC-BY-4.0.txt">CC BY 4.0</a></span><span>{{licence_text}}</span></li>
-      <li><span class="k"><a href="{{repo}}/blob/main/LICENSES/MIT.txt">MIT</a></span><span>{{licence_rest}}</span></li>
-    </ul>
-    <p class="note">{{licence_compatible}}</p>
   </section>
 
-  <section id="privacy">
-    <div class="section-head">
-      <span class="eyebrow">{{privacy_eyebrow}}</span>
-      <h2>{{privacy_title}}</h2>
-    </div>
+  <section id="privacy" class="section">
+    <p class="eyebrow">{{privacy_eyebrow}}</p>
+    <h2>{{privacy_title}}</h2>
     <div class="prose narrow">
       <p>{{privacy_1}}</p>
       <p>{{privacy_2}}</p>
@@ -107,10 +154,13 @@ Range: bytes=0-1048575</code></pre>
     </div>
   </section>
 
-  <section class="closing">
-    <div class="cta">
+  <section class="band closing">
+    <div>
       <h2>{{closing_title}}</h2>
       <p>{{closing_text}}</p>
-      <div class="actions"><a class="button primary" href="{{root}}{{home}}spec/">{{cta_spec}}</a><a class="button ghost" href="{{repo}}/issues">{{cta_issues}}</a></div>
+    </div>
+    <div class="band-actions">
+      <a class="button primary" href="{{root}}{{home}}spec/">{{cta_spec}}</a>
+      <a class="button" href="{{repo}}/issues">{{cta_issues}}</a>
     </div>
   </section>

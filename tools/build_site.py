@@ -322,11 +322,8 @@ def indexing(language: str, path: str, alternate: bool, noindex: bool = False) -
 
 
 def hero(page: str, catalog: dict, root: str, language: str, spec: dict, extra: dict) -> str:
-    if page == "home":
-        return (f'<div class="wrap hero">\n    <span class="eyebrow">{catalog["hero_eyebrow"]}</span>\n'
-                f'    <h1>{catalog["hero_title"]}</h1>\n    <p class="lede">{catalog["hero_lede"]}</p>\n'
-                f'    <div class="actions"><a class="button primary" href="{root}{folder(language)}spec/">{catalog["cta_spec"]}</a>'
-                f'<a class="button ghost" href="{REPO}">{catalog["cta_github"]}</a></div>\n  </div>')
+    if page == "home":   # site/hero.html, filled with the page's values (page_html())
+        return (SITE / "hero.html").read_text(encoding="utf-8")
     if page == "demo" and "h1" not in extra:
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["demo_eyebrow"]}</span>\n'
                 f'    <h1>{catalog["demo_title"]}</h1>\n    <p class="lede">{catalog["demo_lede"]}</p>\n  </div>')
@@ -893,8 +890,14 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         "indexing": indexing(language, path, extra.get("alternate", page in PAGES.values()), extra.get("noindex", False)),
         "languages": LANTERN.languages(language, catalog, root, extra.get("lang_path", path)),
         "switcher": LANTERN.switcher(language, catalog, root, versions),
-        "current_project": ' aria-current="page"' if page == "home" else "",
         "current_spec": ' aria-current="page"' if page == "spec" else "",
+        "current_demo": ' aria-current="page"' if page == "demo" else "",
+        "current_conformance": ' aria-current="page"' if path == "conformance/" else "",
+        # The aurora, drawn by site.js, behind the home page's header and hero; a quieter sky elsewhere.
+        "sky_class": " sky-home" if page == "home" else "",
+        "sky_canvas": '<canvas id="sky" aria-hidden="true"></canvas>' if page == "home" else "",
+        # The hero's line under the title, each of its parts kept whole ("SHA-256" never broken).
+        "hero_sub_parts": " · ".join(f'<span>{part}</span>' for part in catalog["hero_sub"].split(" · ")),
         "footer_translation": footer_translation(language, root),
         "audience": LANTERN.audience(root),
         "hero": hero(page, catalog, root, language, spec, extra),

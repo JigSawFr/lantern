@@ -1,67 +1,130 @@
-/* Lantern's site (site/README.md): the night, an aurora once at the
-   top, Boréale's look (branding/README.md). One dark look: the brand stands
-   on the night. The brand's colours and fonts, the language menu and the
-   menu of Boréale's sites are boreale-site's (boreale.css, loaded first). */
+/* Lantern's site (site/README.md): Boréale's night, an aurora once at the
+   top of the home page (site.js), as PlayGuard's, PlayShelf's and
+   boreale.dev. One dark look: the brand stands on the night
+   (boreale/branding/README.md). The brand's colours and fonts, the language
+   menu and the menu of Boréale's sites are boreale-site's (boreale.css,
+   loaded first). */
+
+:root {
+  /* Beside Boréale's colours (boreale.css): a second night, a lighter dusk
+     and the links' blue, for their contrast on the night (PlayGuard's). */
+  --night-2: #12213f;
+  --dusk: #8593ae;
+  --link: #6fd0ff;
+}
 
 * { box-sizing: border-box; }
-html { background: var(--abyss); }
+/* iOS enlarges the text when the phone turns to landscape, unless told not to. */
+html { background: var(--abyss); scroll-behavior: smooth; scroll-padding-top: 24px; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   margin: 0; background: var(--abyss); color: var(--snow);
-  font-family: var(--body); font-size: 1.0625rem; line-height: 1.6;
-  -webkit-font-smoothing: antialiased; text-size-adjust: 100%;
+  font: 16.5px/1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
 }
 /* A long word (German's, Russian's) hyphenated where the browser can, else
    broken rather than wider than a phone. */
-h1, h2, h3 { font-family: var(--display); line-height: 1.12; margin: 0; text-wrap: balance; hyphens: auto; overflow-wrap: break-word; }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; line-height: 1.2; letter-spacing: -0.02em; margin: 0; text-wrap: balance; hyphens: auto; overflow-wrap: break-word; }
 p { margin: 0; }
-a { color: var(--ice); text-underline-offset: 3px; }
-a:hover { color: var(--aurora); }
+a { color: var(--link); text-underline-offset: 3px; }
 :focus-visible { outline: 2px solid var(--aurora); outline-offset: 3px; border-radius: 6px; }
 img { max-width: 100%; }
+/* For a screen reader only. */
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .skip { position: absolute; left: -9999px; }
 .skip:focus { left: 16px; top: 16px; z-index: 10; background: var(--night); padding: 8px 12px; border-radius: 8px; }
 
+/* 1180px of content between the gutters, as PlayGuard's: the header, the
+   hero and every page's text start at the same edge. */
 .wrap {
-  max-width: 1160px; margin: 0 auto;
-  padding-left: max(20px, env(safe-area-inset-left, 0px));
-  padding-right: max(20px, env(safe-area-inset-right, 0px));
+  max-width: 1212px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 
-/* The sky: the canvas (site.js) behind the header and the hero; at rest, or
-   without script, the same aurora as a gradient. */
+/* The sky: the canvas (site.js) behind the home page's header and hero;
+   without script, or with less motion asked, the same aurora as a gradient.
+   The other pages have a quieter one behind their header. */
 .sky { position: relative; isolation: isolate; overflow: hidden; }
 .sky::before {
   content: ""; position: absolute; inset: 0; z-index: -2;
   background:
-    radial-gradient(120% 60% at 30% -10%, rgba(0, 255, 204, 0.22), transparent 60%),
-    radial-gradient(90% 50% at 75% -5%, rgba(138, 92, 255, 0.22), transparent 60%),
-    radial-gradient(80% 40% at 55% 10%, rgba(51, 187, 255, 0.16), transparent 70%),
+    radial-gradient(70% 140% at 15% -60%, rgb(0 255 204 / 0.16), transparent 70%),
+    radial-gradient(60% 140% at 85% -60%, rgb(138 92 255 / 0.18), transparent 70%),
+    var(--abyss);
+}
+.sky:not(.sky-home) { border-bottom: 1px solid var(--night-line); }
+.sky-home::before {
+  background:
+    radial-gradient(120% 60% at 30% -10%, rgb(0 255 204 / 0.2), transparent 60%),
+    radial-gradient(90% 50% at 75% -5%, rgb(138 92 255 / 0.22), transparent 60%),
+    radial-gradient(80% 40% at 55% 10%, rgb(51 187 255 / 0.14), transparent 70%),
     var(--abyss);
 }
 .sky canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; display: block; }
-.sky::after {
-  content: ""; position: absolute; inset: auto 0 0 0; height: 45%; z-index: -1;
+.sky-home::after {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 40%; z-index: -1;
   background: linear-gradient(to top, var(--abyss), transparent);
 }
 
-.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-block: 20px; }
-.brand { display: flex; align-items: center; gap: 10px; color: var(--snow); text-decoration: none; font-family: var(--display); font-weight: 700; font-size: 1.25rem; letter-spacing: -0.02em; }
+/* The header, as PlayGuard's: the name and its menu of Boréale's sites, the
+   page's links and "Try it" lit by the aurora, then the languages. */
+.top { display: flex; align-items: center; gap: 20px; padding-block: 14px; }
+.brand { display: flex; align-items: center; gap: 10px; min-height: 44px; color: var(--snow); text-decoration: none; font: 700 20px var(--display); letter-spacing: -0.02em; }
 .brand img { width: 34px; height: 34px; }
-.top nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 6px; }
-.top nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--mist); text-decoration: none; font-size: 0.9375rem; border-radius: 10px; }
-.top nav a:hover { color: var(--snow); background: rgba(232, 238, 247, 0.06); }
-.top nav { margin-left: auto; }
+.nav { display: flex; gap: 4px; flex: 1; }
+.nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 10px; color: var(--mist); text-decoration: none; font-weight: 500; font-size: 15px; white-space: nowrap; }
+.nav a[aria-current] { color: var(--snow); }
+.nav .nav-try { color: var(--abyss); background: var(--aurora-grad); font-weight: 600; }
+.settings { gap: 8px; }
 
-/* On a phone, the header on one row: GitHub is in the hero and the footer. */
-@media (max-width: 640px) {
-  .top { gap: 8px; }
-  .top nav a { padding: 0 10px; }
-  .top nav li:has(a[href^="https://github.com"]) { display: none; }
+/* Eyebrows: a section's subject over its title, in the aurora's colour. */
+.eyebrow { margin: 0 0 10px; font: 400 13px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--aurora); overflow-wrap: anywhere; }
+
+/* Buttons. */
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 0 20px;
+  border-radius: 12px; border: 1px solid var(--night-line); background: rgb(11 20 36 / 0.4);
+  color: var(--snow); text-decoration: none; font-weight: 600; font-size: 1rem;
+}
+.button.primary { background: var(--snow); border-color: var(--snow); color: var(--abyss); }
+/* Hover only where there is a pointer: a finger's tap would leave it on. */
+@media (hover: hover) {
+  a:hover { color: var(--aurora); }
+  .nav a:hover { color: var(--snow); background: rgb(232 238 247 / 0.06); }
+  .nav .nav-try:hover { color: var(--abyss); background: var(--aurora); }
+  .button:hover { border-color: var(--mist); color: var(--snow); }
+  .button.primary:hover { background: var(--aurora); border-color: var(--aurora); color: var(--abyss); }
 }
 
-.hero { padding-block: clamp(56px, 11vw, 128px) clamp(40px, 7vw, 80px); display: grid; gap: 22px; }
-.hero h1 { font-weight: 600; font-size: clamp(2.5rem, 7.5vw, 5rem); letter-spacing: -0.035em; max-width: 13ch; }
+/* The header on two rows until its links, menus and name fit on one: the
+   links on a row of their own, "Try it" first, a row to scroll whose edge
+   fades while there is more (site.js); GitHub is in the hero and the footer. */
+@media (max-width: 1080px) {
+  .top { flex-wrap: wrap; gap: 10px 16px; }
+  .nav { order: 3; flex-basis: 100%; overflow-x: auto; gap: 4px; scrollbar-width: none; margin: -6px 0 -4px; }
+  .nav.more { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+              mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
+  .nav a { padding: 0 10px; }
+  .nav a:first-child:not(.nav-try) { padding-left: 0; }
+  .nav .nav-try { order: -1; padding: 0 14px; margin-right: 6px; }
+  .nav .nav-gh { display: none; }
+  .settings { margin-left: auto; gap: 6px; }
+  .lang-name { display: none; }
+  .lang-code { display: inline; }
+}
+@media (max-width: 860px) {
+  .brand { font-size: 18px; gap: 8px; }
+  .brand img, .switch img { width: 28px; height: 28px; }
+}
+.switch img { width: 34px; height: 34px; }
+
+/* The other pages' heading, under their header. */
+.hero { padding-block: clamp(32px, 6vw, 64px) clamp(24px, 4vw, 40px); display: grid; gap: 14px; }
+.hero h1 { font-size: clamp(2rem, 5.5vw, 3.25rem); letter-spacing: -0.035em; line-height: 1.1; max-width: 18ch; }
 .hero h1 em { font-style: normal; background: var(--aurora-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero .eyebrow { margin: 0; }
+.hero .lede { color: var(--mist); font-size: clamp(1.0625rem, 1.6vw, 1.15rem); max-width: 60ch; }
 /* Chinese, Japanese and Korean: their letters are a square em, not a ch
    wide. Line breaks as each script wants them (PlayGuard's rules): Japanese
    between phrases, never inside a word (headings and short lines; the
@@ -69,35 +132,265 @@ img { max-width: 100%; }
    say, Chinese without a punctuation mark opening a line, its titles kept
    whole between their spaces, punctuation and <wbr> (the catalogs'), broken
    elsewhere only when a run is wider than its line. */
-:lang(ja) .hero h1, :lang(ko) .hero h1, :lang(zh) .hero h1 { max-width: 11em; }
-:lang(ja) :is(h1, h2, h3, .eyebrow, .lede, .section-head p, .button, .state, .points li, .way p, .links a) { word-break: auto-phrase; }
+:lang(ja) .hero h1, :lang(ko) .hero h1, :lang(zh) .hero h1 { max-width: 13em; }
+:lang(ja) :is(h1, h2, h3, .eyebrow, .lede, .sub, .section-head p, .section-lede, .button, .state, .points li, .card p, .steps li, .flow-text, .links a) { word-break: auto-phrase; }
 :lang(ko) body { word-break: keep-all; }
 :is(:lang(zh-Hans), :lang(zh-Hant)) body { line-break: strict; }
 :is(:lang(zh-Hans), :lang(zh-Hant)) :is(h1, h2, h3) { word-break: keep-all; overflow-wrap: anywhere; }
-.hero .lede { color: var(--mist); font-size: clamp(1.0625rem, 2.2vw, 1.25rem); max-width: 52ch; }
-.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
-.button {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 20px;
-  border-radius: 12px; font-weight: 600; text-decoration: none; font-size: 1rem;
+/* Japanese: a long katakana word (プラットフォーム) breaks rather than widen a small phone. */
+:lang(ja) :is(h1, h2, h3, .eyebrow, .lede, .section-head p, .points li, .flow-text) { overflow-wrap: anywhere; }
+
+/* ---- The home page: the hero beside the flow it carries, then its
+   sections in PlayGuard's rhythm and cards. */
+.hero-home {
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: clamp(28px, 5vw, 64px); align-items: center;
+  padding-block: clamp(32px, 6vw, 80px) clamp(40px, 6vw, 72px);
 }
-.button.primary { background: var(--snow); color: var(--abyss); }
-.button.primary:hover { background: var(--aurora); color: var(--abyss); }
-.button.ghost { border: 1px solid var(--night-line); color: var(--snow); }
-.button.ghost:hover { border-color: var(--mist); color: var(--snow); }
+.hero-home h1 { font-size: clamp(2.1rem, 4.2vw, 3.15rem); max-width: none; margin: 0 0 16px; }
+.hero-home .sub { font: 500 14px/1.6 var(--mono); color: var(--snow); margin: 0 0 14px; max-width: 60ch; text-wrap: balance; }
+.hero-home .sub span { white-space: nowrap; }
+.hero-home .lede { max-width: 56ch; }
+.hero-home .source { margin-top: 18px; font-size: 15px; color: var(--dusk); max-width: 56ch; }
+.hero-home .source a { color: var(--mist); display: inline-flex; align-items: center; min-height: 24px; }
+/* The draft over the title: what changed in it. */
+.pill { margin: 0 0 18px; }
+.pill a {
+  display: inline-flex; align-items: center; min-height: 32px; padding: 4px 12px;
+  border: 1px solid rgb(0 255 204 / 0.35); border-radius: 999px; background: rgb(0 255 204 / 0.08);
+  color: var(--aurora); font: 500 13px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none;
+}
+@media (hover: hover) { .pill a:hover { border-color: var(--aurora); color: var(--aurora); } }
 
+/* The flow: the server, Lantern, the consoles, one under the other on a
+   tile of the night, the drawings in snow, the wires in the aurora's
+   colours; a glow under it, as PlayGuard's console. */
+.flow {
+  position: relative; isolation: isolate; margin: 0; padding: clamp(18px, 3vw, 28px);
+  display: grid; justify-items: center; border-radius: 28px;
+  background: linear-gradient(160deg, #1b2c52 0%, #0f1b35 50%, #0a1428 100%);
+  box-shadow: inset 0 1px 0 rgb(232 238 247 / 0.14), 0 0 0 1px var(--night-line),
+              0 50px 90px -40px rgb(0 0 0 / 0.9), 0 0 140px -40px rgb(51 187 255 / 0.4);
+}
+.flow::after {
+  content: ""; position: absolute; z-index: -1; left: 10%; right: 10%; bottom: -10%; height: 28%;
+  background: radial-gradient(closest-side, rgb(51 187 255 / 0.32), rgb(138 92 255 / 0.14) 60%, transparent);
+  filter: blur(28px);
+}
+.flow-node {
+  width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; padding: 14px 16px;
+  border: 1px solid var(--night-line); border-radius: 18px; background: rgb(11 20 36 / 0.72);
+}
+.flow-icon {
+  flex: none; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px;
+  background: var(--night); box-shadow: inset 0 0 0 1px rgb(232 238 247 / 0.12); color: var(--snow);
+}
+.flow-icon svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.flow-text { display: grid; gap: 2px; min-width: 0; flex: 1 1 12ch; }
+.flow-text strong { font: 600 16px/1.3 var(--display); letter-spacing: -0.01em; color: var(--snow); }
+.flow-text small { font-size: 14px; line-height: 1.4; color: var(--mist); }
+/* Lantern itself, in its frame of aurora, the document it serves beside it. */
+.flow-core { border-color: rgb(0 255 204 / 0.3); background: radial-gradient(120% 140% at 0% 0%, rgb(0 255 204 / 0.1), transparent 60%), rgb(11 20 36 / 0.8); }
+.flow-core img { flex: none; width: 56px; height: 56px; filter: drop-shadow(0 0 18px rgb(0 255 204 / 0.35)); }
+.flow-core .flow-text strong { font-size: 20px; }
+.flow-json {
+  flex: 1 1 100%; margin: 2px 0 0; padding: 10px 12px; border-radius: 12px; overflow: hidden;
+  background: #081020; border: 1px solid var(--night-line); font-size: 12.5px; line-height: 1.55; color: #d6deeb; white-space: pre;
+}
+.k { color: var(--link); }
+.s { color: #9fe8c8; }
+/* The wires between them: a line of aurora, a light running down it, and
+   what goes over it. */
+.flow-link { position: relative; display: flex; align-items: center; gap: 12px; height: 46px; width: 100%; padding-left: calc(16px + 23px); }
+.flow-wire { position: relative; flex: none; width: 2px; height: 100%; border-radius: 2px; overflow: hidden;
+  background: linear-gradient(to bottom, rgb(0 255 204 / 0.65), rgb(138 92 255 / 0.45)); }
+.flow-link code { font: 500 12.5px var(--mono); color: var(--mist); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flow-devices { display: flex; gap: 8px; flex-wrap: wrap; }
+.flow-devices .flow-icon { width: 44px; height: 44px; border-radius: 12px; }
+.flow-devices .flow-icon svg { width: 24px; height: 24px; }
+.flow-clients { gap: 12px 16px; }
+.flow-clients .flow-text { flex-basis: 100%; }
+@media (prefers-reduced-motion: no-preference) {
+  .flow-wire::after {
+    content: ""; position: absolute; left: -2px; top: -12px; width: 6px; height: 12px; border-radius: 3px;
+    background: linear-gradient(to bottom, transparent, var(--snow)); box-shadow: 0 0 10px var(--aurora);
+    animation: down 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
+  .flow-link + .flow-node + .flow-link .flow-wire::after { animation-delay: 1.2s; }
+  .flow-core img { animation: glow 4s ease-in-out infinite; }
+}
+@keyframes down { from { transform: translateY(0); } to { transform: translateY(58px); } }
+@keyframes glow {
+  0%, 100% { filter: drop-shadow(0 0 14px rgb(0 255 204 / 0.25)); }
+  50% { filter: drop-shadow(0 0 24px rgb(0 255 204 / 0.5)); }
+}
+
+/* The sections: 88px apart on a large screen, as PlayGuard's. */
 main section { padding-block: clamp(32px, 5vw, 56px); }
-main section.closing { padding-top: 0; }
-.section-head { display: grid; gap: 10px; margin-bottom: 32px; max-width: 60ch; }
-.eyebrow { font-family: var(--mono); font-size: 0.8125rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--aurora); }
-.section-head h2 { font-size: clamp(1.75rem, 4vw, 2.5rem); font-weight: 600; letter-spacing: -0.025em; }
-.section-head p { color: var(--mist); }
+.home main section.section { padding-block: clamp(48px, 7vw, 88px) 0; }
+.home main > .section:first-child { padding-top: clamp(32px, 5vw, 56px); }
+.section > h2, .columns h2, .how h2 { font-size: clamp(1.75rem, 4vw, 2.5rem); letter-spacing: -0.025em; margin: 0 0 28px; }
+.section > h2:has(+ .section-lede) { margin-bottom: 12px; }
+.section-lede { color: var(--mist); max-width: 64ch; margin-bottom: 28px; }
+.columns { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+.columns p:not(.eyebrow) { color: var(--mist); }
 
+/* The cards: an icon on its tile, a title, a text; the small ones flatter. */
+.cards { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.card {
+  position: relative; display: grid; gap: 10px; align-content: start; min-width: 0;
+  background: var(--night); border: 1px solid var(--night-line); border-radius: var(--radius); padding: 22px;
+  transition: transform 0.3s, border-color 0.3s;
+}
+.card h3 { font-size: 18px; letter-spacing: -0.01em; }
+.card h3 a { color: var(--snow); text-decoration: none; display: inline-flex; align-items: center; min-height: 24px; }
+.card h3 a::after { content: " →"; color: var(--aurora); white-space: pre; }
+.card p { color: var(--mist); font-size: 15.5px; }
+.card .icon {
+  display: block; box-sizing: border-box; width: 44px; height: 44px; padding: 10px; border-radius: 12px; color: var(--aurora);
+  fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+  background: linear-gradient(135deg, rgb(0 255 204 / 0.16), rgb(138 92 255 / 0.14)); box-shadow: inset 0 0 0 1px rgb(0 255 204 / 0.22);
+}
+.card img.icon { padding: 0; background: none; box-shadow: none; }
+.cards-small { grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); }
+/* Six in two rows of three where they fit, none alone on its row. */
+@media (min-width: 861px) { .cards-small { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.cards-small .card { padding: 18px; gap: 8px; background: rgb(14 26 51 / 0.55); }
+.cards-small .card h3 { font-size: 16.5px; }
+.cards-small .card .icon { width: 40px; height: 40px; padding: 9px; color: var(--ice); background: rgb(51 187 255 / 0.1); box-shadow: inset 0 0 0 1px rgb(51 187 255 / 0.22); }
+/* Under the pointer, the card's edge lights up in the aurora where the pointer is (site.js). */
+.card::before {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 0%), rgb(0 255 204 / 0.85), rgb(138 92 255 / 0.4) 45%, transparent 75%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+@media (hover: hover) {
+  .card:hover { transform: translateY(-3px); }
+  .card:hover::before { opacity: 1; }
+  .card h3 a:hover { color: var(--aurora); }
+}
+/* A card's link covers the whole card. */
+.card h3 a::before { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.card:has(h3 a:focus-visible) { outline: 2px solid var(--aurora); outline-offset: 3px; }
+.card h3 a:focus-visible { outline: 0; }
 
-.sky::before { opacity: 1; }
-.hero.small { padding-block: clamp(32px, 6vw, 64px) clamp(16px, 3vw, 28px); gap: 14px; }
-.hero.small h1 { font-size: clamp(2rem, 5.5vw, 3.25rem); max-width: 18ch; }
-.top nav a[aria-current] { color: var(--snow); box-shadow: inset 0 -2px 0 var(--aurora); border-radius: 10px 10px 0 0; }
+/* How it works: numbered steps joined by a line of aurora, beside what goes over the wire. */
+.how { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px 48px; align-items: start; }
+.steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: 22px; }
+.steps > li { counter-increment: step; position: relative; padding-left: 48px; color: var(--mist); min-width: 0; }
+.steps > li strong { display: block; margin-bottom: 2px; color: var(--snow); font: 600 17px/1.4 var(--display); letter-spacing: -0.01em; }
+.steps > li::before {
+  content: counter(step); position: absolute; left: 0; top: -1px; width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center; font: 600 14px var(--display); color: var(--abyss); background: var(--aurora-grad);
+  box-shadow: 0 0 0 4px rgb(0 255 204 / 0.1), 0 0 20px -2px rgb(0 255 204 / 0.5);
+}
+.steps > li:not(:last-child)::after {
+  content: ""; position: absolute; left: 15px; top: 38px; bottom: -18px; width: 2px; border-radius: 2px;
+  background: linear-gradient(to bottom, rgb(0 255 204 / 0.5), rgb(138 92 255 / 0.25));
+}
+.steps code, .card code { color: var(--snow); }
+.exchange { display: grid; gap: 12px; min-width: 0; }
+.exchange pre { background: #081020; color: #d6deeb; font-size: 13px; line-height: 1.6; padding: 14px 16px; }
+.req-line { color: var(--aurora); }
+.exchange .note { margin-top: 2px; }
+
+/* What makes it solid: short points, those of the last drafts (li.new) with the aurora's dot. */
+.points { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
+.points li { position: relative; padding: 14px 18px 14px 42px; background: rgb(14 26 51 / 0.55); border: 1px solid var(--night-line); border-radius: 14px; color: var(--snow); font-size: 15.5px; min-width: 0; }
+.points li::before { content: ""; position: absolute; left: 18px; top: 22px; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--dusk); box-sizing: border-box; }
+.points li.new::before { border: 0; background: var(--aurora-grad); box-shadow: 0 0 10px rgb(0 255 204 / 0.5); }
+.points code, .prose code, .way code { color: var(--snow); }
+
+/* Bands: a call between the sections, on the aurora's light. */
+.band {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px 32px;
+  margin-top: clamp(48px, 7vw, 88px); padding: clamp(22px, 4vw, 40px) !important;
+  border: 1px solid var(--night-line); border-radius: var(--radius);
+  background: radial-gradient(80% 140% at 0% 0%, rgb(0 255 204 / 0.14), transparent 60%),
+              radial-gradient(70% 140% at 100% 100%, rgb(138 92 255 / 0.18), transparent 60%), var(--night);
+}
+.band > div:first-child { max-width: 62ch; }
+.band h2 { margin: 0 0 10px; font-size: clamp(1.5rem, 3.4vw, 2.1rem); letter-spacing: -0.025em; }
+.band p:not(.eyebrow) { color: var(--mist); }
+.band-actions { display: flex; flex-direction: column; gap: 10px; flex: none; }
+.band.closing { margin-bottom: 24px; }
+.ways .card { gap: 10px; }
 .note { color: var(--dusk); font-size: 0.9375rem; margin-top: 14px; max-width: 72ch; }
+.note a { display: inline-flex; align-items: center; min-height: 24px; }
+
+/* The night goes on under the hero: veils of aurora down the page and faint
+   stars (PlayGuard's showcase). */
+.home main { position: relative; isolation: isolate; }
+.home main::before, .home main::after { content: ""; position: absolute; inset: 0 calc(50% - 50vw); z-index: -1; pointer-events: none; }
+.home main::before {
+  background:
+    radial-gradient(45% 22% at -5% 22%, rgb(0 255 204 / 0.07), transparent 70%),
+    radial-gradient(45% 22% at 105% 45%, rgb(138 92 255 / 0.09), transparent 70%),
+    radial-gradient(50% 20% at -5% 72%, rgb(51 187 255 / 0.07), transparent 70%),
+    radial-gradient(45% 18% at 105% 92%, rgb(0 255 204 / 0.06), transparent 70%);
+}
+.home main::after {
+  opacity: 0.55;
+  background-image:
+    radial-gradient(1px 1px at 24px 36px, #e8eef7, transparent), radial-gradient(1px 1px at 132px 92px, #e8eef7, transparent),
+    radial-gradient(1.4px 1.4px at 210px 18px, #e8eef7, transparent), radial-gradient(1px 1px at 300px 160px, #e8eef7, transparent),
+    radial-gradient(1px 1px at 70px 210px, #a9b6cc, transparent), radial-gradient(1.2px 1.2px at 380px 260px, #a9b6cc, transparent);
+  background-size: 420px 300px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 75%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 75%, transparent);
+}
+body { overflow-x: clip; }
+
+/* The sections rise into view once (site.js; not with less motion asked). */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1); }
+  .reveal.in { opacity: 1; transform: none; }
+  .reveal .card { opacity: 0; transform: translateY(14px); transition: opacity 0.6s ease calc(var(--i, 0) * 70ms), transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) calc(var(--i, 0) * 70ms), border-color 0.3s; }
+  .reveal.in .card { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .card, .card::before { transition: none; }
+}
+
+/* A phone, a small tablet: the hero's text, then the flow, the buttons a
+   finger's width; one column. */
+@media (max-width: 860px) {
+  .hero-home { display: flex; flex-direction: column; align-items: stretch; gap: 0; padding-top: 24px; padding-bottom: 40px; }
+  .hero-text { display: contents; }
+  .flow { order: 1; margin: 8px 0 28px; }
+  .hero-home .lede, .hero-home .actions, .hero-home .source { order: 2; }
+  .hero-home .sub { margin-bottom: 0; }
+  .hero-home .actions { margin-top: 20px; }
+  .hero-home .actions .button { flex: 1 1 100%; text-align: center; }
+  .how, .columns { grid-template-columns: minmax(0, 1fr); }
+  .band { flex-direction: column; align-items: stretch; padding: 24px 20px !important; }
+  .band > .button, .band-actions .button { text-align: center; }
+  .card { grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; padding: 16px; }
+  .card .icon { grid-row: span 2; }
+  .cards { gap: 12px; }
+}
+/* On a phone, the flow without its document, short enough to leave the
+   buttons near. */
+@media (max-width: 600px) {
+  .flow-json { display: none; }
+  .flow-link { height: 34px; }
+}
+@media (max-width: 420px) {
+  .flow { padding: 14px; border-radius: 22px; }
+  .flow-core img { width: 44px; height: 44px; }
+  .flow-text small { font-size: 13.5px; }
+  .flow-node { padding: 12px; }
+  .flow-link { padding-left: calc(12px + 23px); }
+  .flow-devices .flow-icon { width: 40px; height: 40px; }
+}
+
+/* The other pages' blocks. */
+.section-head { display: grid; gap: 10px; margin-bottom: 32px; max-width: 60ch; }
+.section-head .eyebrow { margin: 0; }
+.section-head h2 { font-size: clamp(1.75rem, 4vw, 2.5rem); letter-spacing: -0.025em; }
+.section-head p { color: var(--mist); }
+.button.ghost { background: transparent; }
 code, pre { font-family: var(--mono); }
 code { font-size: 0.875em; }
 
@@ -109,14 +402,9 @@ tbody tr:last-child > * { border-bottom: 0; }
 /* A long word of a heading ("ÉVÉNEMENT") breaks rather than push a narrow table sideways. */
 thead th { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mist); font-weight: 500; hyphens: auto; }
 td.num, th.num { text-align: right; white-space: nowrap; }
-/* The ways in: server, client, schemas. */
-.ways { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
-.way { display: grid; gap: 10px; align-content: start; padding: 22px; background: var(--night); border: 1px solid var(--night-line); border-radius: 20px; min-width: 0; }
-.way h3 { font-size: 1.125rem; font-weight: 600; }
-.way p { color: var(--mist); font-size: 0.9375rem; }
 pre { margin: 0; padding: 12px 14px; overflow-x: auto; background: var(--abyss); border: 1px solid var(--night-line); border-radius: 12px; font-size: 0.8125rem; line-height: 1.5; color: var(--snow); }
 
-.keys { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border: 1px solid var(--night-line); border-radius: var(--radius); }
+.keys { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border: 1px solid var(--night-line); border-radius: var(--radius); background: rgb(14 26 51 / 0.55); }
 .keys li { display: grid; grid-template-columns: minmax(7rem, 9rem) minmax(0, 1fr); gap: 4px 16px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--night-line); }
 .keys li:last-child { border-bottom: 0; }
 .keys .k a { display: inline-flex; align-items: center; min-height: 32px; font-weight: 600; font-family: var(--mono); font-size: 0.9375rem; }
@@ -124,45 +412,37 @@ pre { margin: 0; padding: 12px 14px; overflow-x: auto; background: var(--abyss);
 @media (max-width: 520px) { .keys li { grid-template-columns: minmax(0, 1fr); } }
 .cta { display: grid; gap: 12px; justify-items: start; padding: clamp(22px, 4vw, 36px); border: 1px solid var(--night-line); border-radius: 20px;
   background: radial-gradient(80% 120% at 0% 0%, rgb(0 255 204 / 0.08), transparent 60%), radial-gradient(80% 120% at 100% 100%, rgb(138 92 255 / 0.1), transparent 60%), var(--night); }
-.cta h2 { font-size: clamp(1.5rem, 3.5vw, 2rem); font-weight: 600; letter-spacing: -0.02em; }
+.cta h2 { font-size: clamp(1.5rem, 3.5vw, 2rem); letter-spacing: -0.02em; }
 .cta p { color: var(--mist); max-width: 60ch; }
 
+/* The footer, under a horizon of aurora. */
+footer.site { position: relative; padding-block: 40px 40px; margin-top: clamp(48px, 7vw, 88px); color: var(--dusk); font-size: 0.875rem; }
+footer.site::before {
+  content: ""; position: absolute; left: 50%; top: 0; width: min(1180px, 100%); height: 140px; transform: translateX(-50%); pointer-events: none;
+  background: radial-gradient(50% 100% at 50% 0%, rgb(0 255 204 / 0.12), rgb(51 187 255 / 0.05) 45%, transparent 75%);
+}
+footer.site::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--aurora-grad); opacity: 0.6;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 30%, #000 70%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 30%, #000 70%, transparent);
+}
 footer.site .by { display: inline-flex; align-items: center; gap: 8px; }
-
-footer.site { position: relative; padding-block: 32px 40px; color: var(--dusk); font-size: 0.875rem; }
 footer.site .links ul { list-style: none; margin: 0 0 20px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 20px; }
 footer.site .links a { display: inline-flex; align-items: center; min-height: 32px; }
 footer.site .row { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
 footer.site a { color: var(--mist); }
 
-
 /* Grid items keep to their column: a wide table scrolls in its box. */
-main, .ways > *, .spec-layout > * { min-width: 0; }
-/* Japanese: a long katakana word (プラットフォーム) breaks rather than widen a small phone. */
-:lang(ja) :is(h1, h2, h3, .eyebrow, .lede, .section-head p, .points li) { overflow-wrap: anywhere; }
-.eyebrow { overflow-wrap: anywhere; }
-.switch img { width: 34px; height: 34px; }
-@media (max-width: 640px) { .switch { font-size: 1.125rem; gap: 8px; } }
-
+main, .spec-layout > * { min-width: 0; }
 .state { font-family: var(--mono); font-size: 0.75rem; border-radius: 99px; padding: 3px 10px; border: 1px solid var(--night-line); color: var(--mist); white-space: nowrap; }
 
-/* The status, under the hero. */
-main section.status-card {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 16px; margin-top: 8px; padding: 16px 20px;
-  border: 1px solid var(--night-line); border-radius: var(--radius); background: rgb(14 26 51 / 0.6);
+/* From one page of the site to the next: a short cross-fade, the header
+   staying where it is (where the browser can; not with less motion asked). */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+  .top { view-transition-name: top; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.25s; }
 }
-.status-card .state { color: var(--aurora); border-color: rgb(0 255 204 / 0.4); }
-.status-card p { color: var(--mist); flex: 1 1 30ch; }
-
-/* What it covers and what makes it solid: a list of short points, those 0.3 adds (li.new) with the aurora's dot. */
-.points { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
-.points li { position: relative; padding: 16px 18px 16px 44px; background: var(--night); border: 1px solid var(--night-line); border-radius: var(--radius); color: var(--snow); min-width: 0; }
-.points li::before { content: ""; position: absolute; left: 18px; top: 24px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--mist); }
-.points li.new::before { border: 0; background: var(--aurora-grad); }
-.points code, .prose code, .way code { color: var(--snow); }
-.way .more { font-family: var(--mono); font-size: 0.875rem; }
-.way .more a { display: inline-flex; align-items: center; min-height: 32px; }
-.note a { display: inline-flex; align-items: center; min-height: 24px; }
 
 /* Running text: the specification, the error types, the privacy notice. */
 .prose { max-width: 76ch; }

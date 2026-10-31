@@ -27,19 +27,21 @@
 <script src="{{root}}assets/lang-key.js"></script>
 <script src="{{root}}assets/lang.js"></script>
 <script src="{{root}}assets/boreale.js" defer></script>
+<script src="{{root}}assets/site.js" defer></script>
 {{audience}}
 </head>
 <body class="{{page}}" data-root="{{root}}" data-lang="{{lang}}">
 <a class="skip" href="#main">{{skip}}</a>
-<div class="sky">
+<div class="sky{{sky_class}}">
+  {{sky_canvas}}
   <header class="wrap top">
     {{switcher}}
-    <nav aria-label="{{nav_label}}">
-      <ul>
-        <li><a href="{{root}}{{home}}"{{current_project}}>{{nav_project}}</a></li>
-        <li><a href="{{root}}{{home}}spec/"{{current_spec}}>{{nav_spec}}</a></li>
-        <li><a href="{{repo}}">GitHub</a></li>
-      </ul>
+    <nav class="nav" aria-label="{{nav_label}}">
+      <a href="{{root}}{{home}}#how">{{nav_how}}</a>
+      <a href="{{root}}{{home}}spec/"{{current_spec}}>{{nav_spec}}</a>
+      <a href="{{root}}conformance/"{{current_conformance}}>{{footer_conformance}}</a>
+      <a href="{{root}}{{home}}demo/" class="nav-try"{{current_demo}}>{{nav_try}}</a>
+      <a href="{{repo}}" class="nav-gh">GitHub</a>
     </nav>
     {{languages}}
   </header>
