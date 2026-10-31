@@ -4,6 +4,13 @@
 # and checks.
 version: 2
 updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+    commit-message:
+      prefix: chore
+      include: scope
   - package-ecosystem: gitsubmodule
     directory: /
     schedule:
