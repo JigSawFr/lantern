@@ -1,123 +1,17 @@
 /* Lantern's site (site/README.md): Boréale's night, an aurora once at the
-   top of the home page (site.js), as PlayGuard's, PlayShelf's and
-   boreale.dev. One dark look: the brand stands on the night
-   (boreale/branding/README.md). The brand's colours and fonts, the language
-   menu and the menu of Boréale's sites are boreale-site's (boreale.css,
-   loaded first). */
+   top of the home page, as PlayGuard's, PlayShelf's and boreale.dev. One
+   dark look: the brand stands on the night (boreale/branding/README.md). The
+   brand's colours and fonts, the language menu and the menu of Boréale's
+   sites are boreale-site's (boreale.css), the page chrome (header, sky,
+   buttons, sections, cards, bands, footer, the aurora, the cards' glow and
+   the reveal) its chrome.css and chrome.js, both loaded first; what is
+   here is Lantern's own. */
 
-:root {
-  /* Beside Boréale's colours (boreale.css): a second night, a lighter dusk
-     and the links' blue, for their contrast on the night (PlayGuard's). */
-  --night-2: #12213f;
-  --dusk: #8593ae;
-  --link: #6fd0ff;
-}
-
-* { box-sizing: border-box; }
-/* iOS enlarges the text when the phone turns to landscape, unless told not to. */
-html { background: var(--abyss); scroll-behavior: smooth; scroll-padding-top: 24px; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-body {
-  margin: 0; background: var(--abyss); color: var(--snow);
-  font: 16.5px/1.6 var(--body);
-  -webkit-font-smoothing: antialiased;
-}
-/* A long word (German's, Russian's) hyphenated where the browser can, else
-   broken rather than wider than a phone. */
-h1, h2, h3 { font-family: var(--display); font-weight: 600; line-height: 1.2; letter-spacing: -0.02em; margin: 0; text-wrap: balance; hyphens: auto; overflow-wrap: break-word; }
-p { margin: 0; }
-a { color: var(--link); text-underline-offset: 3px; }
-:focus-visible { outline: 2px solid var(--aurora); outline-offset: 3px; border-radius: 6px; }
-img { max-width: 100%; }
-/* For a screen reader only. */
-.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.skip { position: absolute; left: -9999px; }
-.skip:focus { left: 16px; top: 16px; z-index: 10; background: var(--night); padding: 8px 12px; border-radius: 8px; }
-
-/* 1180px of content between the gutters, as PlayGuard's: the header, the
-   hero and every page's text start at the same edge. */
-.wrap {
-  max-width: 1212px; margin: 0 auto;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-}
-
-/* The sky: the canvas (site.js) behind the home page's header and hero;
-   without script, or with less motion asked, the same aurora as a gradient.
-   The other pages have a quieter one behind their header. */
-.sky { position: relative; isolation: isolate; overflow: hidden; }
-.sky::before {
-  content: ""; position: absolute; inset: 0; z-index: -2;
-  background:
-    radial-gradient(70% 140% at 15% -60%, rgb(0 255 204 / 0.16), transparent 70%),
-    radial-gradient(60% 140% at 85% -60%, rgb(138 92 255 / 0.18), transparent 70%),
-    var(--abyss);
-}
-.sky:not(.sky-home) { border-bottom: 1px solid var(--night-line); }
-.sky-home::before {
-  background:
-    radial-gradient(120% 60% at 30% -10%, rgb(0 255 204 / 0.2), transparent 60%),
-    radial-gradient(90% 50% at 75% -5%, rgb(138 92 255 / 0.22), transparent 60%),
-    radial-gradient(80% 40% at 55% 10%, rgb(51 187 255 / 0.14), transparent 70%),
-    var(--abyss);
-}
-.sky canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; display: block; }
-.sky-home::after {
-  content: ""; position: absolute; inset: auto 0 0 0; height: 40%; z-index: -1;
-  background: linear-gradient(to top, var(--abyss), transparent);
-}
-
-/* The header, as PlayGuard's: the name and its menu of Boréale's sites, the
-   page's links and "Try it" lit by the aurora, then the languages. */
-.top { display: flex; align-items: center; gap: 20px; padding-block: 14px; }
-.brand { display: flex; align-items: center; gap: 10px; min-height: 44px; color: var(--snow); text-decoration: none; font: 700 20px var(--display); letter-spacing: -0.02em; }
-.brand img { width: 34px; height: 34px; }
-.nav { display: flex; gap: 4px; flex: 1; }
-.nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 10px; color: var(--mist); text-decoration: none; font-weight: 500; font-size: 15px; white-space: nowrap; }
-.nav a[aria-current] { color: var(--snow); }
-.nav .nav-try { color: var(--abyss); background: var(--aurora-grad); font-weight: 600; }
-.settings { gap: 8px; }
-
-/* Eyebrows: a section's subject over its title, in the aurora's colour. */
-.eyebrow { margin: 0 0 10px; font: 400 13px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--aurora); overflow-wrap: anywhere; }
-
-/* Buttons. */
-.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
-.button {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 0 20px;
-  border-radius: 12px; border: 1px solid var(--night-line); background: rgb(11 20 36 / 0.4);
-  color: var(--snow); text-decoration: none; font-weight: 600; font-size: 1rem;
-}
-.button.primary { background: var(--snow); border-color: var(--snow); color: var(--abyss); }
-/* Hover only where there is a pointer: a finger's tap would leave it on. */
-@media (hover: hover) {
-  a:hover { color: var(--aurora); }
-  .nav a:hover { color: var(--snow); background: rgb(232 238 247 / 0.06); }
-  .nav .nav-try:hover { color: var(--abyss); background: var(--aurora); }
-  .button:hover { border-color: var(--mist); color: var(--snow); }
-  .button.primary:hover { background: var(--aurora); border-color: var(--aurora); color: var(--abyss); }
-}
-
-/* The header on two rows until its links, menus and name fit on one: the
-   links on a row of their own, "Try it" first, a row to scroll whose edge
-   fades while there is more (site.js); GitHub is in the hero and the footer. */
-@media (max-width: 1080px) {
-  .top { flex-wrap: wrap; gap: 10px 16px; }
-  .nav { order: 3; flex-basis: 100%; overflow-x: auto; gap: 4px; scrollbar-width: none; margin: -6px 0 -4px; }
-  .nav.more { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
-              mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
-  .nav a { padding: 0 10px; }
-  .nav a:first-child:not(.nav-try) { padding-left: 0; }
-  .nav .nav-try { order: -1; padding: 0 14px; margin-right: 6px; }
-  .nav .nav-gh { display: none; }
-  .settings { margin-left: auto; gap: 6px; }
-  .lang-name { display: none; }
-  .lang-code { display: inline; }
-}
-@media (max-width: 860px) {
-  .brand { font-size: 18px; gap: 8px; }
-  .brand img, .switch img { width: 28px; height: 28px; }
-}
-.switch img { width: 34px; height: 34px; }
+/* The reset is chrome.css's (and body.reset-margins takes the browser's margins off paragraphs and
+   headings); a long word (German's, Russian's) is hyphenated where the browser can, else broken
+   rather than wider than a phone. */
+:root { --button-size: 1rem; --cta-gap: 6px; }
+h1, h2, h3 { hyphens: auto; overflow-wrap: break-word; }
 
 /* The other pages' heading, under their header. */
 .hero { padding-block: clamp(32px, 6vw, 64px) clamp(24px, 4vw, 40px); display: grid; gap: 14px; }
@@ -133,7 +27,7 @@ img { max-width: 100%; }
    whole between their spaces, punctuation and <wbr> (the catalogs'), broken
    elsewhere only when a run is wider than its line. */
 :lang(ja) .hero h1, :lang(ko) .hero h1, :lang(zh) .hero h1 { max-width: 13em; }
-:lang(ja) :is(h1, h2, h3, .eyebrow, .lede, .sub, .section-head p, .section-lede, .button, .state, .points li, .card p, .steps li, .flow-text, .links a) { word-break: auto-phrase; }
+:lang(ja) :is(h1, h2, h3, .eyebrow, .lede, .sub, .section-head p, .section-lede, .button, .state, .points li, .card p, .steps li, .flow-text) { word-break: auto-phrase; }
 :lang(ko) body { word-break: keep-all; }
 :is(:lang(zh-Hans), :lang(zh-Hant)) body { line-break: strict; }
 :is(:lang(zh-Hans), :lang(zh-Hant)) :is(h1, h2, h3) { word-break: keep-all; overflow-wrap: anywhere; }
@@ -152,18 +46,8 @@ img { max-width: 100%; }
 .hero-home .lede { max-width: 56ch; }
 .hero-home .source { margin-top: 18px; font-size: 15px; color: var(--dusk); max-width: 56ch; }
 .hero-home .source a { color: var(--mist); display: inline-flex; align-items: center; min-height: 24px; }
-/* The draft over the title: what changed in it. */
-.pill { margin: 0 0 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
-.pill a:not(.pill-more) {
-  display: inline-flex; align-items: center; min-height: 32px; padding: 4px 12px;
-  border: 1px solid rgb(0 255 204 / 0.35); border-radius: 999px; background: rgb(0 255 204 / 0.08);
-  color: var(--aurora); font: 500 13px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; text-decoration: none;
-}
-@media (hover: hover) { .pill a:not(.pill-more):hover { border-color: var(--aurora); color: var(--aurora); } }
-/* ... and, beside it, the way to what changed since the last draft. */
-.pill .pill-more { display: inline-flex; align-items: center; min-height: 32px; color: var(--snow); font-size: 15px; text-decoration: underline; text-decoration-color: rgb(232 238 247 / 0.4); text-underline-offset: 3px; }
-.pill .pill-more::after { content: "\00a0→"; color: var(--aurora); }
-@media (hover: hover) { .pill .pill-more:hover { color: var(--aurora); } }
+/* The draft over the title (chrome.css's pill, in capitals: .caps), and beside it the way to what changed. */
+@media (hover: hover) { .pill-eyebrow .pill-more:hover { color: var(--aurora); } }
 
 /* The flow: the server, Lantern, the consoles, one under the other on a
    tile of the night, the drawings in snow, the wires in the aurora's
@@ -228,32 +112,21 @@ img { max-width: 100%; }
   50% { filter: drop-shadow(0 0 24px rgb(0 255 204 / 0.5)); }
 }
 
-/* The sections: 88px apart on a large screen, as PlayGuard's. */
+/* The sections: the home's are chrome.css's (.section, 88px apart); the other pages' are bare <section>s. */
 main section { padding-block: clamp(32px, 5vw, 56px); }
-.home main section.section { padding-block: clamp(48px, 7vw, 88px) 0; }
 .home main > .section:first-child { padding-top: clamp(32px, 5vw, 56px); }
-.section > h2, .columns h2, .how h2 { font-size: clamp(1.75rem, 4vw, 2.5rem); letter-spacing: -0.025em; margin: 0 0 28px; }
+.columns h2, .how h2 { font-size: clamp(1.75rem, 4vw, 2.5rem); letter-spacing: -0.025em; margin: 0 0 28px; }
 .section > h2:has(+ .section-lede) { margin-bottom: 12px; }
 .section-lede { color: var(--mist); max-width: 64ch; margin-bottom: 28px; }
 .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
 .columns p:not(.eyebrow) { color: var(--mist); }
 
 /* The cards: an icon on its tile, a title, a text; the small ones flatter. */
-.cards { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; }
-.card {
-  position: relative; display: grid; gap: 10px; align-content: start; min-width: 0;
-  background: var(--night); border: 1px solid var(--night-line); border-radius: var(--radius); padding: 22px;
-  transition: transform 0.3s, border-color 0.3s;
-}
-.card h3 { font-size: 18px; letter-spacing: -0.01em; }
+/* Wider cards than chrome.css's: three to a row of 1180px, not four. */
+.cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.card { min-width: 0; }
 .card h3 a { color: var(--snow); text-decoration: none; display: inline-flex; align-items: center; min-height: 24px; }
 .card h3 a::after { content: " →"; color: var(--aurora); white-space: pre; }
-.card p { color: var(--mist); font-size: 15.5px; }
-.card .icon {
-  display: block; box-sizing: border-box; width: 44px; height: 44px; padding: 10px; border-radius: 12px; color: var(--aurora);
-  fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
-  background: linear-gradient(135deg, rgb(0 255 204 / 0.16), rgb(138 92 255 / 0.14)); box-shadow: inset 0 0 0 1px rgb(0 255 204 / 0.22);
-}
 .card img.icon { padding: 0; background: none; box-shadow: none; }
 .cards-small { grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); }
 /* Six in two rows of three where they fit, none alone on its row. */
@@ -261,18 +134,7 @@ main section { padding-block: clamp(32px, 5vw, 56px); }
 .cards-small .card { padding: 18px; gap: 8px; background: rgb(14 26 51 / 0.55); }
 .cards-small .card h3 { font-size: 16.5px; }
 .cards-small .card .icon { width: 40px; height: 40px; padding: 9px; color: var(--ice); background: rgb(51 187 255 / 0.1); box-shadow: inset 0 0 0 1px rgb(51 187 255 / 0.22); }
-/* Under the pointer, the card's edge lights up in the aurora where the pointer is (site.js). */
-.card::before {
-  content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none; opacity: 0; transition: opacity 0.3s;
-  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 0%), rgb(0 255 204 / 0.85), rgb(138 92 255 / 0.4) 45%, transparent 75%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-}
-@media (hover: hover) {
-  .card:hover { transform: translateY(-3px); }
-  .card:hover::before { opacity: 1; }
-  .card h3 a:hover { color: var(--aurora); }
-}
+@media (hover: hover) { .card h3 a:hover { color: var(--aurora); } }
 /* A card's link covers the whole card. */
 .card h3 a::before { content: ""; position: absolute; inset: 0; border-radius: inherit; }
 .card:has(h3 a:focus-visible) { outline: 2px solid var(--aurora); outline-offset: 3px; }
@@ -304,57 +166,11 @@ main section { padding-block: clamp(32px, 5vw, 56px); }
 .points li { padding: 10px 0 10px 16px; border-left: 2px solid rgb(0 255 204 / 0.35); color: var(--mist); font-size: 15.5px; min-width: 0; }
 .points code, .prose code, .way code { color: var(--snow); }
 
-/* Bands: a call between the sections, on the aurora's light. */
-.band {
-  display: flex; align-items: center; justify-content: space-between; gap: 20px 32px;
-  margin-top: clamp(48px, 7vw, 88px); padding: clamp(22px, 4vw, 40px) !important;
-  border: 1px solid var(--night-line); border-radius: var(--radius);
-  background: radial-gradient(80% 140% at 0% 0%, rgb(0 255 204 / 0.14), transparent 60%),
-              radial-gradient(70% 140% at 100% 100%, rgb(138 92 255 / 0.18), transparent 60%), var(--night);
-}
-.band > div:first-child { max-width: 62ch; }
-.band h2 { margin: 0 0 10px; font-size: clamp(1.5rem, 3.4vw, 2.1rem); letter-spacing: -0.025em; }
-.band p:not(.eyebrow) { color: var(--mist); }
-.band-actions { display: flex; flex-direction: column; gap: 10px; flex: none; }
-.band.closing { margin-bottom: 24px; }
 .ways .card { gap: 10px; }
 .note { color: var(--dusk); font-size: 0.9375rem; margin-top: 14px; max-width: 72ch; }
 .note a { display: inline-flex; align-items: center; min-height: 24px; }
 
-/* The night goes on under the hero: veils of aurora down the page and faint
-   stars (PlayGuard's showcase). */
-.home main { position: relative; isolation: isolate; }
-.home main::before, .home main::after { content: ""; position: absolute; inset: 0 calc(50% - 50vw); z-index: -1; pointer-events: none; }
-.home main::before {
-  background:
-    radial-gradient(45% 22% at -5% 22%, rgb(0 255 204 / 0.07), transparent 70%),
-    radial-gradient(45% 22% at 105% 45%, rgb(138 92 255 / 0.09), transparent 70%),
-    radial-gradient(50% 20% at -5% 72%, rgb(51 187 255 / 0.07), transparent 70%),
-    radial-gradient(45% 18% at 105% 92%, rgb(0 255 204 / 0.06), transparent 70%);
-}
-.home main::after {
-  opacity: 0.55;
-  background-image:
-    radial-gradient(1px 1px at 24px 36px, #e8eef7, transparent), radial-gradient(1px 1px at 132px 92px, #e8eef7, transparent),
-    radial-gradient(1.4px 1.4px at 210px 18px, #e8eef7, transparent), radial-gradient(1px 1px at 300px 160px, #e8eef7, transparent),
-    radial-gradient(1px 1px at 70px 210px, #a9b6cc, transparent), radial-gradient(1.2px 1.2px at 380px 260px, #a9b6cc, transparent);
-  background-size: 420px 300px;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 75%, transparent);
-  mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 75%, transparent);
-}
 body { overflow-x: clip; }
-
-/* The sections rise into view once (site.js; not with less motion asked). */
-@media (prefers-reduced-motion: no-preference) {
-  .reveal { opacity: 0; transform: translateY(26px); transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1); }
-  .reveal.in { opacity: 1; transform: none; }
-  .reveal .card { opacity: 0; transform: translateY(14px); transition: opacity 0.6s ease calc(var(--i, 0) * 70ms), transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) calc(var(--i, 0) * 70ms), border-color 0.3s; }
-  .reveal.in .card { opacity: 1; transform: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  .card, .card::before { transition: none; }
-}
 
 /* A phone, a small tablet: the hero's text, then the flow, the buttons a
    finger's width; one column. */
@@ -367,11 +183,6 @@ body { overflow-x: clip; }
   .hero-home .actions { margin-top: 20px; }
   .hero-home .actions .button { flex: 1 1 100%; text-align: center; }
   .how, .columns { grid-template-columns: minmax(0, 1fr); }
-  .band { flex-direction: column; align-items: stretch; padding: 24px 20px !important; }
-  .band > .button, .band-actions .button { text-align: center; }
-  .card { grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; padding: 16px; }
-  .card .icon { grid-row: span 2; }
-  .cards { gap: 12px; }
 }
 /* On a phone, the flow without its document, short enough to leave the
    buttons near. */
@@ -389,10 +200,6 @@ body { overflow-x: clip; }
 }
 
 /* The other pages' blocks. */
-.section-head { display: grid; gap: 10px; margin-bottom: 32px; max-width: 60ch; }
-.section-head .eyebrow { margin: 0; }
-.section-head h2 { font-size: clamp(1.75rem, 4vw, 2.5rem); letter-spacing: -0.025em; }
-.section-head p { color: var(--mist); }
 .button.ghost { background: transparent; }
 code, pre { font-family: var(--mono); }
 code { font-size: 0.875em; }
@@ -418,34 +225,9 @@ pre { margin: 0; padding: 12px 14px; overflow-x: auto; background: var(--abyss);
 .cta h2 { font-size: clamp(1.5rem, 3.5vw, 2rem); letter-spacing: -0.02em; }
 .cta p { color: var(--mist); max-width: 60ch; }
 
-/* The footer, under a horizon of aurora. */
-footer.site { position: relative; padding-block: 40px 40px; margin-top: clamp(48px, 7vw, 88px); color: var(--dusk); font-size: 0.875rem; }
-footer.site::before {
-  content: ""; position: absolute; left: 50%; top: 0; width: min(1180px, 100%); height: 140px; transform: translateX(-50%); pointer-events: none;
-  background: radial-gradient(50% 100% at 50% 0%, rgb(0 255 204 / 0.12), rgb(51 187 255 / 0.05) 45%, transparent 75%);
-}
-footer.site::after {
-  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--aurora-grad); opacity: 0.6;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 30%, #000 70%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 30%, #000 70%, transparent);
-}
-footer.site .by { display: inline-flex; align-items: center; gap: 8px; }
-footer.site .links ul { list-style: none; margin: 0 0 20px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 20px; }
-footer.site .links a { display: inline-flex; align-items: center; min-height: 32px; }
-footer.site .row { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
-footer.site a { color: var(--mist); }
-
 /* Grid items keep to their column: a wide table scrolls in its box. */
 main, .spec-layout > * { min-width: 0; }
 .state { font-family: var(--mono); font-size: 0.75rem; border-radius: 99px; padding: 3px 10px; border: 1px solid var(--night-line); color: var(--mist); white-space: nowrap; }
-
-/* From one page of the site to the next: a short cross-fade, the header
-   staying where it is (where the browser can; not with less motion asked). */
-@media (prefers-reduced-motion: no-preference) {
-  @view-transition { navigation: auto; }
-  .top { view-transition-name: top; }
-  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.25s; }
-}
 
 /* Running text: the specification, the error types, the privacy notice. */
 .prose { max-width: 76ch; }
@@ -610,7 +392,6 @@ a.req:hover, a.req:target, a.req:focus-visible { color: var(--aurora); border-co
 .badges img { display: block; height: 28px; width: auto; max-width: 100%; }
 .badges code { color: var(--mist); font-size: 0.8125rem; }
 .conformance td .state { display: inline-block; margin: 2px 4px 2px 0; }
-#conformance .actions { flex-wrap: wrap; }
 
 /* The specification's drafts (spec/<draft>/, spec/changes/) and translations:
    the drafts as a row of chips, the current one lit; a banner on an earlier
@@ -654,15 +435,15 @@ a.req:hover, a.req:target, a.req:focus-visible { color: var(--aurora); border-co
 
 /* The closing: the call, then three short columns (what it is not, the licences, privacy). */
 .closing-block { padding-bottom: 24px; }
-.closing-block .band { margin-top: 0; }
-.fine { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: clamp(40px, 6vw, 72px); }
-.fine h2 { font-size: 1.25rem; margin: 0 0 12px; letter-spacing: -0.015em; }
-.fine p:not(.eyebrow), .fine .keys span:not(.k) { color: var(--mist); font-size: 15px; }
-.fine .eyebrow { margin: 0 0 8px; }
-.fine > div { min-width: 0; display: grid; gap: 10px; align-content: start; }
-.fine h2, .fine .eyebrow, .fine p { margin: 0; }
-.fine .keys { margin: 0; }
-@media (max-width: 1000px) { .fine { grid-template-columns: minmax(0, 1fr); } }
+.closing-block .band { margin-top: 0; margin-bottom: 24px; }
+.closing-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: clamp(40px, 6vw, 72px); }
+.closing-cols h2 { font-size: 1.25rem; margin: 0 0 12px; letter-spacing: -0.015em; }
+.closing-cols p:not(.eyebrow), .closing-cols .keys span:not(.k) { color: var(--mist); font-size: 15px; }
+.closing-cols .eyebrow { margin: 0 0 8px; }
+.closing-cols > div { min-width: 0; display: grid; gap: 10px; align-content: start; }
+.closing-cols h2, .closing-cols .eyebrow, .closing-cols p { margin: 0; }
+.closing-cols .keys { margin: 0; }
+@media (max-width: 1000px) { .closing-cols { grid-template-columns: minmax(0, 1fr); } }
 
 /* Breadcrumbs, on every page below the home page. */
 .crumbs { padding-block: 4px 0; margin-top: -4px; }
