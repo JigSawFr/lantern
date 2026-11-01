@@ -524,3 +524,32 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 .dg text.dg-zonetext { fill: var(--aurora); font-family: var(--display); font-weight: 600; }
 .dg text.dg-ref { fill: var(--dusk); font-size: 11px; }
 .dg a:hover .dg-node, .dg a:focus-visible .dg-node { fill: var(--night); stroke: var(--ice); }
+
+/* A phone: a figure wider than the page is a list of its steps, which every figure carries for screen
+   readers (the drawing leaves the page, so no one reads both). */
+@media (max-width: 680px) {
+  .diagram .dg-scroll { display: none; }
+  .diagram ol.sr { position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: normal;
+    margin: 0; padding: 0.75rem 1rem 0.75rem 2rem; border: 1px solid var(--night-line); border-radius: var(--radius); background: var(--night); }
+  .diagram ol.sr li { margin: 0.35rem 0; }
+}
+
+/* On paper: the drawing on white, in ink, whole (never cut across two pages), and not the list. */
+@media print {
+  .diagram { break-inside: avoid; }
+  .dg-scroll { overflow: visible; padding: 0; border-color: #888; background: #fff; }
+  svg.dg { min-width: 0; }
+  .diagram ol.sr { display: none; }
+  .diagram figcaption { color: #333; }
+  .dg text, .dg text.dg-notetext, .dg text.dg-septext, .dg text.dg-zonetext, .dg text.dg-ref { fill: #000; }
+  .dg-halo { stroke: #fff; }
+  .dg-head { fill: #333; }
+  .dg-life, .dg-sep, .dg-zone { stroke: #999; }
+  .dg-msg { stroke: #333; }
+  .dg-badline { stroke: #b00020; }
+  .dg-actor, .dg-sepbg, .dg-note, .dg-node { fill: #fff; stroke: #333; }
+  .dg-dev { stroke: #007a62; }
+  .dg-srv { stroke: #0b6aa6; }
+  .dg-key { stroke: #5b34c4; }
+  .dg-bad { stroke: #b00020; }
+}
