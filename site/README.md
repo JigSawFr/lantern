@@ -51,3 +51,7 @@ SITE_AXE=axe.min.js python3 library/boreale-site/tools/site_layout.py build   # 
 
 `/check/` (`site/check.html`, `site/assets/check.js`): paste a document and its kind (a schema of `schemas/v1/`), and the page says what does not match, in the browser, against the schemas the site serves (nothing leaves it; its text is the catalog's, the problems are the keywords' own). The validator reads the subset of JSON Schema 2020-12 that the schemas use; `tests/test_check.py` runs it under Node against every example and every refused one, so that it agrees with the Python `jsonschema` of `tools/check_schemas.py` (skipped where Node is not installed; the CI's runners have it).
 
+## The worked examples
+
+`/examples/` (`site/examples.html`): a signed request byte by byte (its request, its signature base, the key and the same request refused for want of a signature), a pairing from its code to its token, and a grant for a peer. Nothing is written by hand: `example_blocks()` in `tools/build_site.py` reads the test vectors (`vectors/signatures.json`, `vectors/grants.json`) and the examples the schemas check (`examples/v1/pairing-*.json`), and `tests/test_examples.py` verifies the signature and the grant again with the reference Ed25519, so that an example cannot drift from the text.
+

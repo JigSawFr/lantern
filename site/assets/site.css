@@ -625,3 +625,6 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 .check-result ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
 .check-result li { margin: 0.25rem 0; word-break: break-word; }
 .check-result code { color: var(--ice); }
+
+/* The worked examples (site/examples.html): a small heading above each block of code. */
+.section > h3 { margin: 1.4rem 0 0.5rem; color: var(--snow); font: 600 17px/1.4 var(--display); letter-spacing: -0.01em; }
