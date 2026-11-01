@@ -71,7 +71,7 @@ ENGLISH = CODES[0]
 # The file of the demo library the quick start downloads and hashes (its app's `sha256`, vita's first):
 # check_site.py's tests and the page's commands read it from here.
 DEMO_FILE = "fa75492f7b78cad7ca4044e8fb548ac67bfd7fbf05242ceecb29ebe492218a0d"
-PAGES = {"": "home", "spec/": "spec", "start/": "start", "check/": "check", "demo/": "demo"}
+PAGES = {"": "home", "spec/": "spec", "start/": "start", "check/": "check", "examples/": "examples", "demo/": "demo"}
 # The drafts of SPEC.md, each at spec/<draft>/: SPEC.md at the commit that
 # finished it, read from git at each build (git show <commit>:SPEC.md), so
 # that a published draft never changes; the site's workflow checks out the
@@ -417,6 +417,9 @@ def indexing(language: str, path: str, alternate: bool, noindex: bool = False) -
 def hero(page: str, catalog: dict, root: str, language: str, spec: dict, extra: dict) -> str:
     if page == "home":   # site/hero.html, filled with the page's values (page_html())
         return (SITE / "hero.html").read_text(encoding="utf-8")
+    if page == "examples" and "h1" not in extra:
+        return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["examples_eyebrow"]}</span>\n'
+                f'    <h1>{catalog["examples_title"]}</h1>\n    <p class="lede">{catalog["examples_lede"]}</p>\n  </div>')
     if page == "check" and "h1" not in extra:
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["check_eyebrow"]}</span>\n'
                 f'    <h1>{catalog["check_title"]}</h1>\n    <p class="lede">{catalog["check_lede"]}</p>\n  </div>')
@@ -986,7 +989,7 @@ def page_footer(language: str, catalog: dict, root: str) -> str:
         (catalog["nav_project"], [(catalog["nav_spec"], f"{home}spec/"), (catalog["footer_conformance"], f"{root}conformance/"),
                                   (catalog["footer_errors"], f"{root}errors/"), (catalog["footer_drafts"], f"{root}spec/changes/"),
                                   translation]),
-        (catalog["footer_label"], [(catalog["footer_start"], f"{home}start/"), (catalog["footer_check"], f"{home}check/"), (catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
+        (catalog["footer_label"], [(catalog["footer_start"], f"{home}start/"), (catalog["footer_check"], f"{home}check/"), (catalog["footer_examples"], f"{home}examples/"), (catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
                                    ("GitHub", REPO), (catalog["footer_issues"], f"{REPO}/issues")]),
     ], about=[catalog["footer_license"]], fine=catalog["footer_trademarks"])
 
@@ -1255,6 +1258,8 @@ def default_crumbs(page: str, path: str, catalog: dict) -> list:
         return [(catalog["footer_start"], None)]
     if page == "check" and path == "check/":
         return [(catalog["footer_check"], None)]
+    if page == "examples" and path == "examples/":
+        return [(catalog["footer_examples"], None)]
     return []
 
 
@@ -1292,12 +1297,13 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
                        + (f'<script src="{root}assets/figures.js" defer></script>' if page in ("spec", "start") else "")
         + (f'<script src="{root}assets/check.js" defer></script>' if page == "check" else ""),
     })
-    if page in ("home", "demo", "start", "check") and not body:
+    if page in ("home", "demo", "start", "check", "examples") and not body:
         body = (SITE / f"{page}.html").read_text(encoding="utf-8")
         values["demo_url"] = SITE_URL + "demo/"
         values["diagram_overview"] = diagrams.render("overview", catalog)
         values["diagram_connect"] = diagrams.render("connect", catalog, None, None, stepper=True)
         values["demo_hash"] = DEMO_FILE
+        values.update({f"ex_{k}": html.escape(v) for k, v in example_blocks().items()})
         values["check_options"] = "".join(
             f'<option value="{n}"{" selected" if n == "handshake" else ""}>{n}</option>' for n in schema_names())
         if page == "demo":
@@ -1307,6 +1313,41 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         body = spec_body(spec, catalog, ui=hl, root=root, search=True, cards=True, drawn=True, meta=AIDS)
     values["body"] = fill(body, values)
     return LANTERN.links_out(fill(template, values))
+
+
+def example_blocks() -> dict:
+    """The worked examples' code (site/examples.html, /examples/), built from what the repository already checks:
+    the signed request of vectors/signatures.json and its refused twin, the pairing documents of examples/v1/
+    (their schemas check them) and the grant of vectors/grants.json. Nothing is written by hand, so that an
+    example cannot drift from the text; tests/test_examples.py verifies the signatures and grants again."""
+    def read(path):
+        return json.loads((ROOT / path).read_text(encoding="utf-8"))
+    sig = read("vectors/signatures.json")
+    ok, refused = sig["accepted"][0], sig["refused"][0]
+    url = urlparse(ok["uri"])
+    request = (f"{ok['method']} {url.path}{'?' + url.query if url.query else ''} HTTP/1.1\nHost: {url.netloc}\n"
+               + "\n".join(f"{k}: {v}" for k, v in ok["headers"].items()))
+    key = sig["key"]
+    pairing = read("examples/v1/pairing-request.json")
+    code, token = read("examples/v1/pairing-code.json"), read("examples/v1/pairing-token.json")
+    host = urlparse(code["verify"]).netloc
+    dumps = lambda d: json.dumps(d, indent=2, ensure_ascii=False)   # noqa: E731
+    grants = read("vectors/grants.json")
+    return {
+        "sign_request": request,
+        "sign_base": ok["signature_base"],
+        "sign_key": (f"private key (seed): {key['seed']}\npublic key:         {key['public_key']}\n"
+                     f"keyid:              {key['keyid']}\nshort fingerprint:  {key['short_fingerprint']}"),
+        "sign_refused_headers": "\n".join(f"{k}: {v}" for k, v in refused["request"]["headers"].items()),
+        "sign_refused_code": f"401 · {refused['code']}",
+        "pair_1": f"POST /api/lantern/v1/pairing HTTP/1.1\nHost: {host}\nContent-Type: application/json\n\n{dumps(pairing)}",
+        "pair_2": f"HTTP/1.1 200 OK\nContent-Type: application/json\n\n{dumps(code)}",
+        "pair_3": f"GET {code['poll']} HTTP/1.1\nHost: {host}\nSignature-Input: lantern=(\"@method\" \"@target-uri\");created=…;nonce=\"…\";keyid=\"…\";alg=\"ed25519\"\nSignature: lantern=:…:",
+        "pair_4": f"HTTP/1.1 200 OK\nContent-Type: application/json\n\n{dumps(token)}",
+        "grant_payload": grants["payload"],
+        "grant": grants["grant"],
+        "grant_key": f"public key (peers.key): {grants['key']['public_key']}",
+    }
 
 
 def schema_names() -> list:
