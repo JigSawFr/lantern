@@ -238,6 +238,8 @@
   "dg_dl_other": "blocs introuvables",
   "dg_dl_seed": "Sources locales\noctets d'une version plus ancienne",
   "dg_dl_verify": "Vérifie chaque bloc,\npuis le sha256 entier",
+  "dg_download_png": "Télécharger cette figure en PNG",
+  "dg_download_svg": "Télécharger cette figure en SVG",
   "dg_e2e_archive": "Archive\n(zip)",
   "dg_e2e_carry": "phrase de récupération\nou QR code",
   "dg_e2e_decrypt": "Déchiffre sur l'appareil\nchaque bloc vérifié",

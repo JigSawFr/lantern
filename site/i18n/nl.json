@@ -238,6 +238,8 @@
   "dg_dl_other": "blokken niet gevonden",
   "dg_dl_seed": "Zaden\nbytes van een oudere versie",
   "dg_dl_verify": "Controleert elk blok,\ndaarna de hele sha256",
+  "dg_download_png": "Deze figuur downloaden als PNG",
+  "dg_download_svg": "Deze figuur downloaden als SVG",
   "dg_e2e_archive": "Archief\n(zip)",
   "dg_e2e_carry": "herstelzin\nof QR-code",
   "dg_e2e_decrypt": "Ontsleutelt op het apparaat\nelk blok gecontroleerd",

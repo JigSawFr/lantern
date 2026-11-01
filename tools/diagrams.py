@@ -14,7 +14,12 @@ the site's, put under a section's heading (WHERE) when the page is built.
 """
 
 import html
+import json
 import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 
 # The section a figure goes under: the heading's number in SPEC.md (and in its translations).
 WHERE = {
@@ -362,12 +367,21 @@ def lines_of(text: str) -> int:
     return text.count("\n") + 1
 
 
-def figure(name: str, svg: str, steps: list, catalog: dict) -> str:
+def figure(name: str, svg: str, steps: list, catalog: dict, src: str | None = None) -> str:
+    """The figure: its drawing, its caption and its steps. `src` is where the standalone SVG of the figure is
+    served, relative to the site's root (the build writes it, standalone()): with it, the figure offers to
+    download it as SVG, or as PNG drawn from it (site/assets/spec.js sets the links, so that without script
+    there are none)."""
     caption = esc(catalog[f"dg_{name}_caption"])
     items = "".join(f"<li>{esc(s)}</li>" for s in steps)
+    tools = ""
+    if src:
+        tools = (f'<p class="dg-tools" hidden data-src="{esc(src)}">'
+                 f'<a data-kind="svg" title="{esc(catalog["dg_download_svg"])}">SVG</a>'
+                 f'<button type="button" data-kind="png" title="{esc(catalog["dg_download_png"])}">PNG</button></p>')
     return (f'<figure class="diagram" id="diagram-{name.replace("_", "-")}">'
             f'<div class="dg-scroll" tabindex="0" role="region" aria-label="{caption}">{svg}</div>'
-            f'<figcaption>{caption}</figcaption>'
+            f'<figcaption>{caption}</figcaption>{tools}'
             f'<ol class="sr">{items}</ol></figure>')
 
 
@@ -553,20 +567,71 @@ def columns(name: str, spec: dict, catalog: dict, sections: dict) -> tuple:
     return svg_open(width, y, name, catalog, links=True) + "".join(body) + "</svg>", alt
 
 
-def render(name: str, catalog: dict, sections: dict | None = None) -> str:
+def draw(name: str, catalog: dict, sections: dict | None = None) -> tuple:
+    """(the SVG, the steps) of a figure."""
     spec = DIAGRAMS[name]
     if spec["kind"] == SEQUENCE:
-        svg, alt = sequence(name, spec, catalog)
-    elif spec["kind"] == GRAPH:
-        svg, alt = graph(name, spec, catalog)
-    else:
-        svg, alt = columns(name, spec, catalog, sections or {})
-    return figure(name, svg, alt, catalog)
+        return sequence(name, spec, catalog)
+    if spec["kind"] == GRAPH:
+        return graph(name, spec, catalog)
+    return columns(name, spec, catalog, sections or {})
+
+
+def render(name: str, catalog: dict, sections: dict | None = None, src: str | None = None) -> str:
+    svg, alt = draw(name, catalog, sections)
+    return figure(name, svg, alt, catalog, src)
+
+
+# The figures' colours and fonts outside the site, where there is no site.css (a README, a slide, a PNG):
+# the brand's (library/boreale-site/assets/boreale.css), and the system's fonts, since a file loaded as an
+# image loads no font.
+STANDALONE_CSS = (
+    "svg{font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12.5px}"
+    ".mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}"
+    ".dg-bg{fill:#0e1a33}text{fill:#e8eef7}.dg-head{fill:#a9b6cc}"
+    ".dg-life{stroke:#22324f;stroke-width:1.5;stroke-dasharray:3 5}"
+    ".dg-actor{fill:#0b1424;stroke:#00ffcc;stroke-width:1.5}.dg-actortext{font-weight:600}"
+    ".dg-msg{stroke:#a9b6cc;stroke-width:1.5;fill:none}.dg-dash{stroke-dasharray:5 4}.dg-badline{stroke:#ff6b81}"
+    ".dg-halo{paint-order:stroke;stroke:#0e1a33;stroke-width:4px;stroke-linejoin:round}"
+    ".dg-note{fill:#0b1424;stroke:#6f7e9c;stroke-width:1}text.dg-notetext{fill:#a9b6cc}"
+    ".dg-sep{stroke:#22324f;stroke-width:1;stroke-dasharray:2 4}.dg-sepbg{fill:#0b1424;stroke:#33bbff;stroke-width:1}"
+    "text.dg-septext{fill:#33bbff;font-weight:600}"
+    ".dg-node{fill:#0b1424;stroke:#22324f;stroke-width:1.5}.dg-dev{stroke:#00ffcc}.dg-srv{stroke:#33bbff}"
+    ".dg-key{stroke:#8a5cff}.dg-bad{stroke:#ff6b81}.dg-zone{fill:none;stroke:#22324f;stroke-width:1.5}"
+    "text.dg-zonetext{fill:#00ffcc;font-weight:600}text.dg-ref{fill:#6f7e9c;font-size:11px}"
+)
+
+
+def standalone(name: str, catalog: dict) -> str:
+    """The figure as a file of its own: its SVG with its style, a title and the night behind it. Without the
+    links of its boxes (they lead to a page of the site)."""
+    svg, _ = draw(name, catalog)
+    caption = esc(catalog[f"dg_{name}_caption"])
+    width, height = re.search(r'viewBox="0 0 (\d+) (\d+)"', svg).groups()
+    svg = svg.replace("<defs>", f"<title>{caption}</title><style>{STANDALONE_CSS}</style><defs>", 1)
+    svg = svg.replace("</defs>", f'</defs><rect class="dg-bg" width="{width}" height="{height}" rx="12"/>', 1)
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + svg + "\n"
+
+
+def export(directory: Path, check: bool = False) -> list:
+    """Writes, or with `check` only compares, the English figures as files in `directory` (figures/ of the
+    repository, which the README shows); the names of those out of date."""
+    catalog = json.loads((ROOT / "site" / "i18n" / "en-US.json").read_text(encoding="utf-8"))
+    stale = []
+    for name in DIAGRAMS:
+        target = directory / f"{name}.svg"
+        text = standalone(name, catalog)
+        if not target.exists() or target.read_text(encoding="utf-8") != text:
+            stale.append(target.name)
+            if not check:
+                directory.mkdir(parents=True, exist_ok=True)
+                target.write_text(text, encoding="utf-8")
+    return stale
 
 
 def keys() -> set:
     """Every catalog key the diagrams use."""
-    found = set()
+    found = {"dg_download_svg", "dg_download_png"}
     for name, spec in DIAGRAMS.items():
         found |= {f"dg_{name}_caption"}
         items = list(spec.get("actors", []))
@@ -579,3 +644,16 @@ def keys() -> set:
         for item in items:
             found |= {"dg_" + k for k in KEY.findall(item)}
     return found
+
+
+if __name__ == "__main__":
+    if len(sys.argv) not in (2, 3) or sys.argv[1] not in ("write", "check"):
+        sys.exit("usage: python3 tools/diagrams.py write|check [directory]   (default: figures/)")
+    where = Path(sys.argv[2]) if len(sys.argv) == 3 else ROOT / "figures"
+    out_of_date = export(where, check=sys.argv[1] == "check")
+    if sys.argv[1] == "check":
+        if out_of_date:
+            sys.exit(f"diagrams: {', '.join(out_of_date)} out of date: python3 tools/diagrams.py write")
+        print(f"diagrams: {len(DIAGRAMS)} figures in {where.name}/, up to date")
+    else:
+        print(f"diagrams: {len(out_of_date)} of {len(DIAGRAMS)} figures written in {where.name}/")

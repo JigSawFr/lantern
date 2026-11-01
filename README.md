@@ -120,6 +120,27 @@ welcome, from client and server authors especially.
 a homebrew package manager for the Nintendo Switch, will be the first
 client.
 
+## Figures
+
+The specification's flows are drawn on [the site](https://lantern.boreale.dev/spec/?utm_source=github&utm_medium=readme); the same drawings are here, as files to reuse (MIT, like the code), generated from `tools/diagrams.py` (`python3 tools/diagrams.py write`).
+
+![From finding a server to the first signed call: discovery, handshake, pairing with a QR code, key pinning, then signed calls.](figures/connect.svg)
+
+[The features and their scopes](figures/features.svg) ·
+[signed requests](figures/signed.svg) ·
+[invitations](figures/invitation.svg) ·
+[homebrew signatures](figures/homebrew.svg) ·
+[requests](figures/requests.svg) ·
+[status codes](figures/errors.svg) ·
+[backing up and restoring a save](figures/saves.svg) ·
+[end-to-end encrypted saves](figures/saves_e2e.svg) ·
+[events](figures/events.svg) ·
+[peers](figures/peers.svg) ·
+[differential updates](figures/deltas.svg) ·
+[sync](figures/sync.svg) ·
+[static libraries](figures/static.svg) ·
+[the threat model](figures/threats.svg)
+
 ## Conformance suite and reference server
 
 The **[conformance suite](conformance/run.py)** checks a server from

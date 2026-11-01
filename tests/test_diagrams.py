@@ -52,6 +52,23 @@ class DiagramsTest(unittest.TestCase):
                 self.assertIn('class="sr"', html, "a list for screen readers")
                 self.assertNotRegex(re.sub(r"<[^>]+>", "", html), r"@[a-z_]+", f"{code} {name}: a key left unreplaced")
 
+    def test_the_figures_of_the_repository_are_up_to_date(self):
+        self.assertEqual(diagrams.export(ROOT / "figures", check=True), [], "python3 tools/diagrams.py write")
+
+    def test_a_standalone_figure_is_a_file_of_its_own(self):
+        for name in diagrams.DIAGRAMS:
+            text = diagrams.standalone(name, CATALOGS["fr"])
+            self.assertTrue(text.startswith("<?xml"), name)
+            self.assertIn("<style>", text)
+            self.assertIn("<title>", text)
+            self.assertNotIn("<a ", text, "a file of its own has no link to a page of the site")
+            self.assertNotIn("var(", text, "no variable of the site's css")
+
+    def test_a_figure_offers_its_downloads_where_it_is_given_a_file(self):
+        with_file = diagrams.render("connect", CATALOGS["en-US"], None, "figures/connect.en.svg")
+        self.assertIn('data-src="figures/connect.en.svg"', with_file)
+        self.assertNotIn("dg-tools", diagrams.render("connect", CATALOGS["en-US"]))
+
     def test_a_figure_is_a_list_of_its_steps_for_a_screen_reader(self):
         html = diagrams.render("connect", CATALOGS["en-US"])
         self.assertIn("<li>Device → Server: GET /.well-known/lantern</li>", html)

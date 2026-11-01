@@ -238,6 +238,8 @@
   "dg_dl_other": "찾지 못한 청크",
   "dg_dl_seed": "시드\n이전 버전의 바이트",
   "dg_dl_verify": "모든 청크,\n이어서 전체 sha256 검증",
+  "dg_download_png": "이 그림을 PNG로 다운로드",
+  "dg_download_svg": "이 그림을 SVG로 다운로드",
   "dg_e2e_archive": "아카이브\n(zip)",
   "dg_e2e_carry": "복구 문구\n또는 QR 코드",
   "dg_e2e_decrypt": "기기에서 복호화\n모든 청크 검증",

@@ -238,6 +238,8 @@
   "dg_dl_other": "未找到的块",
   "dg_dl_seed": "种子\n旧版本的字节",
   "dg_dl_verify": "校验每个块,\n再校验整体 sha256",
+  "dg_download_png": "将此图下载为 PNG",
+  "dg_download_svg": "将此图下载为 SVG",
   "dg_e2e_archive": "归档文件\n(zip)",
   "dg_e2e_carry": "恢复短语\n或二维码",
   "dg_e2e_decrypt": "在设备上解密\n逐块校验",

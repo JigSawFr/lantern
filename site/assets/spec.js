@@ -138,6 +138,34 @@
     });
   }
 
+  // ---- Figures: each can be downloaded as the SVG the build wrote for it (diagrams.standalone), or as a PNG
+  // drawn from that file at twice its size. The buttons are hidden until here: without script there are none.
+  const siteRoot = document.body.dataset.root || '';
+  for (const tools of article.querySelectorAll('.dg-tools')) {
+    const url = siteRoot + tools.dataset.src;
+    const name = tools.dataset.src.split('/').pop();
+    const link = tools.querySelector('[data-kind="svg"]');
+    link.href = url;
+    link.download = name;
+    tools.querySelector('[data-kind="png"]').addEventListener('click', async () => {
+      try {
+        const text = await (await fetch(url, { credentials: 'omit' })).text();
+        const image = new Image();
+        image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(text);
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth * 2;
+        canvas.height = image.naturalHeight * 2;
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        const a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = name.replace(/\.svg$/, '.png');
+        a.click();
+      } catch (e) { /* the SVG link stays */ }
+    });
+    tools.hidden = false;
+  }
+
   // ---- Scrolling tables and code: an edge fades while there is more to scroll to.
   function edges(el) {
     el.classList.toggle('more-left', el.scrollLeft > 2);
