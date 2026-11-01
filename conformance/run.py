@@ -102,7 +102,7 @@ except ImportError:
 # alone say what the server would send.
 READABLE = "zstd, gzip" if zstd is not None else "gzip"
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
             "signatures", "admin", "events", "peers", "sync", "encrypted_saves", "deltas")
 LEVELS = ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
