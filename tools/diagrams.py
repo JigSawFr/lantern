@@ -17,6 +17,7 @@ import html
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -337,8 +338,19 @@ FONT = 12.5
 LINE = 15
 
 
+def char_width(c: str, mono: bool) -> float:
+    """What a character takes at 12.5 px: a letter of the Latin or Cyrillic alphabets, a wide character of
+    the East Asian scripts (about twice), a monospaced one."""
+    if unicodedata.east_asian_width(c) in ("W", "F"):
+        return 13.2
+    if mono:
+        return 7.4
+    return 7.6 if "\u0400" <= c <= "\u04ff" else 6.9
+
+
 def tw(text: str, mono: bool = True) -> float:
-    return max((len(line) for line in text.split("\n")), default=0) * (7.4 if mono else 6.9)
+    """The width of the longest line of `text`."""
+    return max((sum(char_width(c, mono) for c in line) for line in text.split("\n")), default=0)
 
 
 def esc(text: str) -> str:
@@ -420,13 +432,18 @@ def sequence(name: str, spec: dict, catalog: dict) -> tuple:
         elif step[0] == "note" and step[2] > step[1]:
             gap = max(gap, (tw(text, mono) + 30) / (step[2] - step[1]) * 0.7)
     gap = min(gap, 380)
-    margin = max(80.0, tw(max(actors, key=len), False) / 2 + 20)
+    margin = max(80.0, tw(max(actors, key=lambda a: tw(a, False)), False) / 2 + 20)
+    # the figure holds its widest note or separator, whatever the language
+    widest = max([tw(t, m) + 28 for step, (t, m) in zip(spec["steps"], texts) if step[0] in ("note", "sep")] + [0])
     width = margin * 2 + gap * (n - 1)
+    if width < widest + 16:
+        margin += (widest + 16 - width) / 2
+        width = widest + 16
     xs = [margin + i * gap for i in range(n)]
-    out, alt = [], []
+    alt = []
     y = 56.0
     body = []
-    for n, (step, (text, mono)) in enumerate(zip(spec["steps"], texts)):
+    for index, (step, (text, mono)) in enumerate(zip(spec["steps"], texts)):
         k = lines_of(text)
         cls = "mono" if mono else ""
         opened = len(body)
@@ -458,7 +475,7 @@ def sequence(name: str, spec: dict, catalog: dict) -> tuple:
             alt.append(text.replace("\n", " "))
             y += h + 10
         # the step's drawing in a group of its own: the figure's stepper lights them one by one
-        body[opened:] = [f'<g class="dg-step" data-step="{n}">', *body[opened:], "</g>"]
+        body[opened:] = [f'<g class="dg-step" data-step="{index}">', *body[opened:], "</g>"]
     height = y + 8
     head = [svg_open(width, height, name, catalog)]
     for x, label in zip(xs, actors):
@@ -479,10 +496,9 @@ def graph(name: str, spec: dict, catalog: dict) -> tuple:
         text, mono = words(item, catalog)
         nodes[key] = (c, r, text, mono, tone)
     longest = max(tw(text, mono) for _, _, text, mono, _ in nodes.values())
-    nw = min(max(160.0, longest + 24), 250.0)
+    nw = max(160.0, longest + 24)
     labels = [words(e[2], catalog) for e in spec["edges"] if e[2]]
-    gap = max([60.0] + [tw(t, m) + 24 for t, m in labels])
-    gap = min(gap, 150.0)
+    gap = min(max([60.0] + [tw(t, m) + 24 for t, m in labels]), 170.0)
     cw = nw + gap
     heights = {k: lines_of(v[2]) * LINE + 22 for k, v in nodes.items()}
     rh = max(heights.values()) + 46
@@ -539,8 +555,12 @@ def graph(name: str, spec: dict, catalog: dict) -> tuple:
 # ---- Columns: groups of boxes, each linking to its section.
 
 def columns(name: str, spec: dict, catalog: dict, sections: dict) -> tuple:
-    per_row, cw = spec["per_row"], float(spec.get("cw", 196))
     tall = spec.get("tall", False)
+    per_row = spec["per_row"]
+    # a column is as wide as its widest label (and its reference, beside it unless the box is tall)
+    labels = [(words(item, catalog), ref) for _, group in spec["cols"] for item, ref in group]
+    cw = max(float(spec.get("cw", 196)), *(tw(t, m) + (40 if tall else 80) + 28 for (t, m), _ in labels),
+             *(tw(words(title, catalog)[0].replace("\n", " "), True) + 40 for title, _ in spec["cols"]))
     bh, step = (46.0, 52.0) if tall else (32.0, 38.0)
     groups = spec["cols"]
     rows = [groups[i:i + per_row] for i in range(0, len(groups), per_row)]

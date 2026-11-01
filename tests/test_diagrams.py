@@ -7,6 +7,7 @@ import json
 import re
 import sys
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -22,6 +23,29 @@ def references(spec):
     if spec["kind"] != diagrams.COLUMNS:
         return set()
     return {ref for _, items in spec["cols"] for _, ref in items}
+
+
+SVG = "{http://www.w3.org/2000/svg}"
+
+
+def boxes(svg_text):
+    """The figure's texts, each with its extent as the drawing's own estimate gives it, and the rectangle
+    drawn just before it (a node, a note, an actor): [(text, x0, x1, y_first_baseline, rect or None)]."""
+    root = ET.fromstring(svg_text)
+    width = float(root.get("viewBox").split()[2])
+    found, last = [], None
+    for el in root.iter():
+        if el.tag == SVG + "rect":
+            last = (float(el.get("x", 0)), float(el.get("y", 0)), float(el.get("width")), float(el.get("height")))
+        elif el.tag == SVG + "text":
+            lines = ["".join(t.itertext()) for t in el.findall(SVG + "tspan")]
+            x = float(el.get("x"))
+            mono = "mono" in el.get("class", "")
+            w = diagrams.tw("\n".join(lines), mono)
+            anchor = el.get("text-anchor")
+            x0 = x - w / 2 if anchor == "middle" else x - w if anchor == "end" else x
+            found.append((" ".join(lines), x0, x0 + w, float(el.get("y")), last if "nodetext" in el.get("class", "") or "notetext" in el.get("class", "") else None))
+    return width, found
 
 
 class DiagramsTest(unittest.TestCase):
@@ -78,6 +102,21 @@ class DiagramsTest(unittest.TestCase):
         self.assertEqual(sequence.count("<li>"), len(diagrams.DIAGRAMS["connect"]["steps"]))
         self.assertNotIn("dg-stepper", diagrams.render("sync", catalog, None, None, stepper=True))
         self.assertNotIn("dg-stepper", diagrams.render("connect", catalog))
+
+    def test_every_text_fits_its_figure_and_its_box_in_every_language(self):
+        """The estimate the layout is made with (wide characters of the East Asian scripts, the Cyrillic
+        alphabet) leaves no text outside the figure or outside the box it is written in."""
+        for code, catalog in CATALOGS.items():
+            for name in diagrams.DIAGRAMS:
+                svg, _ = diagrams.draw(name, catalog)
+                width, texts = boxes(svg)
+                for text, x0, x1, _, rect in texts:
+                    self.assertGreaterEqual(x0, -1, f"{code} {name}: {text!r} leaves the figure on the left")
+                    self.assertLessEqual(x1, width + 1, f"{code} {name}: {text!r} leaves the figure on the right")
+                    if rect:
+                        rx, _, rw, _ = rect
+                        self.assertGreaterEqual(x0, rx - 1, f"{code} {name}: {text!r} leaves its box on the left")
+                        self.assertLessEqual(x1, rx + rw + 1, f"{code} {name}: {text!r} leaves its box on the right")
 
     def test_a_figure_is_a_list_of_its_steps_for_a_screen_reader(self):
         html = diagrams.render("connect", CATALOGS["en-US"])
