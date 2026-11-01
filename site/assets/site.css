@@ -490,3 +490,37 @@ a.req:hover, a.req:target, a.req:focus-visible { color: var(--aurora); border-co
   .stats .card { grid-template-columns: minmax(0, 1fr); }
   .stats .card .icon { grid-row: auto; }
 }
+
+/* ---- Diagrams (tools/diagrams.py): inline SVG in the specification's text and on the home page. The
+   colours are the brand's; nothing is inline, the CSP forbids it. A drawing wider than the page scrolls
+   inside its frame, never the page. */
+.diagram { margin: 1.5rem 0; }
+.dg-scroll { overflow-x: auto; padding: 0.75rem; border: 1px solid var(--night-line); border-radius: var(--radius); background: var(--night); }
+.dg-scroll:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
+.diagram figcaption { margin-top: 0.5rem; color: var(--mist); font-size: 0.875rem; }
+svg.dg { display: block; margin: 0 auto; max-width: 100%; min-width: 600px; height: auto; font-family: var(--body); font-size: 12.5px; }
+svg.dg .mono { font-family: var(--mono); font-size: 12px; }
+.dg text { fill: var(--snow); }
+.dg-head { fill: var(--mist); }
+.dg-life { stroke: var(--night-line); stroke-width: 1.5; stroke-dasharray: 3 5; }
+.dg-actor { fill: var(--abyss); stroke: var(--aurora); stroke-width: 1.5; }
+.dg-actortext { font-family: var(--display); font-weight: 600; }
+.dg-msg { stroke: var(--mist); stroke-width: 1.5; fill: none; }
+.dg-dash { stroke-dasharray: 5 4; }
+.dg-badline { stroke: #ff6b81; }
+.dg-label { fill: var(--snow); }
+.dg-halo { paint-order: stroke; stroke: var(--night); stroke-width: 4px; stroke-linejoin: round; }
+.dg-note { fill: var(--abyss); stroke: var(--dusk); stroke-width: 1; }
+.dg text.dg-notetext { fill: var(--mist); }
+.dg-sep { stroke: var(--night-line); stroke-width: 1; stroke-dasharray: 2 4; }
+.dg-sepbg { fill: var(--abyss); stroke: var(--ice); stroke-width: 1; }
+.dg text.dg-septext { fill: var(--ice); font-weight: 600; }
+.dg-node { fill: var(--abyss); stroke: var(--night-line); stroke-width: 1.5; }
+.dg-dev { stroke: var(--aurora); }
+.dg-srv { stroke: var(--ice); }
+.dg-key { stroke: var(--violet); }
+.dg-bad { stroke: #ff6b81; }
+.dg-zone { fill: none; stroke: var(--night-line); stroke-width: 1.5; }
+.dg text.dg-zonetext { fill: var(--aurora); font-family: var(--display); font-weight: 600; }
+.dg text.dg-ref { fill: var(--dusk); font-size: 11px; }
+.dg a:hover .dg-node, .dg a:focus-visible .dg-node { fill: var(--night); stroke: var(--ice); }

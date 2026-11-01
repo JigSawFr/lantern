@@ -143,7 +143,7 @@
     el.classList.toggle('more-left', el.scrollLeft > 2);
     el.classList.toggle('more-right', el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
   }
-  const scrollers = [...article.querySelectorAll('.table, pre')];
+  const scrollers = [...article.querySelectorAll('.table, pre, .dg-scroll')];
   for (const el of scrollers) {
     el.addEventListener('scroll', () => edges(el), { passive: true });
     edges(el);
