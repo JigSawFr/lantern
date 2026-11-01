@@ -361,5 +361,22 @@
   "spec_ask": "このセクションについて質問",
   "spec_ask_title": "このセクションを名指しするGitHubのissueを開きます",
   "spec_since": "ドラフト{v}から",
-  "spec_print": "印刷またはPDFで保存"
+  "spec_print": "印刷またはPDFで保存",
+  "footer_check": "文書を検証",
+  "title_check": "Lanternの文書を検証",
+  "description_check": "Lanternサーバーのハンドシェイクなどの文書を貼り付け、このサイトが公開するスキーマでブラウザ内で検証します。",
+  "check_eyebrow": "検証",
+  "check_title": "文書を検証する",
+  "check_lede": "サーバーの応答を貼り付け、期待されるスキーマに合うか確認します。仕様、例、適合性スイートと同じスキーマです。",
+  "check_note": "ブラウザの外には何も送られません。文書はここで、このサイトが配信するスキーマに照らして検証されます。",
+  "check_kind": "文書の種類",
+  "check_doc": "文書 (JSON)",
+  "check_run": "検証",
+  "check_sample": "デモライブラリのハンドシェイクを読み込む",
+  "check_ok": "この文書は {name} に一致します。",
+  "check_bad": "{n} 件の問題が見つかりました:",
+  "check_not_json": "JSONではありません: {error}",
+  "check_failed": "検証できませんでした: {error}",
+  "check_newer": "このスキーマはサイトが知るものより新しく、読み手は無いものとして扱い (§ 3.2)、上書きしません。",
+  "check_noscript": "この画面でブラウザ内検証を行うにはJavaScriptが必要です。無い場合、スキーマは schemas/v1/ にあり、tools/check_schemas.py が例のフォルダーを検証します。"
 }

@@ -361,5 +361,22 @@
   "spec_ask": "Preguntar sobre esta sección",
   "spec_ask_title": "Abre una incidencia en GitHub que nombra esta sección",
   "spec_since": "desde el borrador {v}",
-  "spec_print": "Imprimir o guardar como PDF"
+  "spec_print": "Imprimir o guardar como PDF",
+  "footer_check": "Comprobar un documento",
+  "title_check": "Comprobar un documento Lantern",
+  "description_check": "Pega un handshake u otro documento de un servidor Lantern y compruébalo, en tu navegador, con los esquemas que publica este sitio.",
+  "check_eyebrow": "Comprobación",
+  "check_title": "Comprobar un documento",
+  "check_lede": "Pega lo que respondió un servidor y mira si coincide con el esquema esperado: los mismos esquemas de la especificación, los ejemplos y la suite de conformidad.",
+  "check_note": "Nada sale de tu navegador: el documento se comprueba aquí, con los esquemas que sirve este sitio.",
+  "check_kind": "Tipo de documento",
+  "check_doc": "El documento (JSON)",
+  "check_run": "Comprobar",
+  "check_sample": "Cargar el handshake de la biblioteca de demostración",
+  "check_ok": "Este documento coincide con {name}.",
+  "check_bad": "{n} problema(s) encontrado(s):",
+  "check_not_json": "No es JSON: {error}",
+  "check_failed": "No se pudo comprobar: {error}",
+  "check_newer": "Su esquema es más reciente que el que conoce este sitio: un lector lo trata como ausente (§ 3.2) y nunca lo sobrescribe.",
+  "check_noscript": "Esta página necesita JavaScript para comprobar un documento en tu navegador. Sin él, los esquemas están en schemas/v1/ y tools/check_schemas.py comprueba una carpeta de ejemplos."
 }

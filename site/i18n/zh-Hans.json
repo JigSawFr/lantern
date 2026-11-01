@@ -361,5 +361,22 @@
   "spec_ask": "就本节提问",
   "spec_ask_title": "将在 GitHub 上打开一个指明本节的 issue",
   "spec_since": "自草案 {v} 起",
-  "spec_print": "打印或另存为 PDF"
+  "spec_print": "打印或另存为 PDF",
+  "footer_check": "校验文档",
+  "title_check": "校验 Lantern 文档",
+  "description_check": "粘贴 Lantern 服务器的握手文档或其他文档,在浏览器中按本站发布的模式校验。",
+  "check_eyebrow": "校验",
+  "check_title": "校验文档",
+  "check_lede": "粘贴服务器的响应,看它是否符合应有的模式:与规范、示例和一致性套件使用的模式相同。",
+  "check_note": "不会有任何内容离开浏览器:文档在此按本站提供的模式校验。",
+  "check_kind": "文档类型",
+  "check_doc": "文档 (JSON)",
+  "check_run": "校验",
+  "check_sample": "载入演示库的握手文档",
+  "check_ok": "此文档符合 {name}。",
+  "check_bad": "发现 {n} 个问题:",
+  "check_not_json": "不是 JSON:{error}",
+  "check_failed": "无法校验:{error}",
+  "check_newer": "其 schema 比本站所知的更新:读取方将其视为不存在 (§ 3.2),且绝不覆盖。",
+  "check_noscript": "在浏览器中校验文档需要 JavaScript。没有它时,模式在 schemas/v1/,tools/check_schemas.py 可校验一个示例文件夹。"
 }

@@ -361,5 +361,22 @@
   "spec_ask": "Vraag over deze sectie",
   "spec_ask_title": "Opent een GitHub-issue dat deze sectie noemt",
   "spec_since": "sinds concept {v}",
-  "spec_print": "Afdrukken of opslaan als pdf"
+  "spec_print": "Afdrukken of opslaan als pdf",
+  "footer_check": "Een document controleren",
+  "title_check": "Een Lantern-document controleren",
+  "description_check": "Plak een handshake of ander document van een Lantern-server en controleer het in uw browser aan de schema's die deze site publiceert.",
+  "check_eyebrow": "Controle",
+  "check_title": "Een document controleren",
+  "check_lede": "Plak wat een server antwoordde en kijk of het past bij het verwachte schema: dezelfde schema's als in de specificatie, de voorbeelden en de conformiteitssuite.",
+  "check_note": "Niets verlaat uw browser: het document wordt hier gecontroleerd aan de schema's die deze site levert.",
+  "check_kind": "Soort document",
+  "check_doc": "Het document (JSON)",
+  "check_run": "Controleren",
+  "check_sample": "Handshake van de demobibliotheek laden",
+  "check_ok": "Dit document past bij {name}.",
+  "check_bad": "{n} probleem/problemen gevonden:",
+  "check_not_json": "Geen JSON: {error}",
+  "check_failed": "Controleren mislukt: {error}",
+  "check_newer": "Het schema is nieuwer dan wat deze site kent: een lezer behandelt het als afwezig (§ 3.2) en overschrijft het nooit.",
+  "check_noscript": "Deze pagina heeft JavaScript nodig om een document in uw browser te controleren. Zonder staan de schema's in schemas/v1/ en controleert tools/check_schemas.py een map met voorbeelden."
 }

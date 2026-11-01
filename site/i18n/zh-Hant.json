@@ -361,5 +361,22 @@
   "spec_ask": "就本節提問",
   "spec_ask_title": "將在 GitHub 上開啟一個指明本節的 issue",
   "spec_since": "自草案 {v} 起",
-  "spec_print": "列印或另存為 PDF"
+  "spec_print": "列印或另存為 PDF",
+  "footer_check": "校驗文件",
+  "title_check": "校驗 Lantern 文件",
+  "description_check": "貼上 Lantern 伺服器的握手文件或其他文件,在瀏覽器中依本站發布的結構描述校驗。",
+  "check_eyebrow": "校驗",
+  "check_title": "校驗文件",
+  "check_lede": "貼上伺服器的回應,看它是否符合應有的結構描述:與規範、範例和一致性套件使用的結構描述相同。",
+  "check_note": "不會有任何內容離開瀏覽器:文件在此依本站提供的結構描述校驗。",
+  "check_kind": "文件類型",
+  "check_doc": "文件 (JSON)",
+  "check_run": "校驗",
+  "check_sample": "載入示範資料庫的握手文件",
+  "check_ok": "此文件符合 {name}。",
+  "check_bad": "發現 {n} 個問題:",
+  "check_not_json": "不是 JSON:{error}",
+  "check_failed": "無法校驗:{error}",
+  "check_newer": "其 schema 比本站所知的更新:讀取方將其視為不存在 (§ 3.2),且絕不覆寫。",
+  "check_noscript": "在瀏覽器中校驗文件需要 JavaScript。沒有它時,結構描述在 schemas/v1/,tools/check_schemas.py 可校驗一個範例資料夾。"
 }

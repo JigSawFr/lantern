@@ -71,7 +71,7 @@ ENGLISH = CODES[0]
 # The file of the demo library the quick start downloads and hashes (its app's `sha256`, vita's first):
 # check_site.py's tests and the page's commands read it from here.
 DEMO_FILE = "fa75492f7b78cad7ca4044e8fb548ac67bfd7fbf05242ceecb29ebe492218a0d"
-PAGES = {"": "home", "spec/": "spec", "start/": "start", "demo/": "demo"}
+PAGES = {"": "home", "spec/": "spec", "start/": "start", "check/": "check", "demo/": "demo"}
 # The drafts of SPEC.md, each at spec/<draft>/: SPEC.md at the commit that
 # finished it, read from git at each build (git show <commit>:SPEC.md), so
 # that a published draft never changes; the site's workflow checks out the
@@ -417,6 +417,9 @@ def indexing(language: str, path: str, alternate: bool, noindex: bool = False) -
 def hero(page: str, catalog: dict, root: str, language: str, spec: dict, extra: dict) -> str:
     if page == "home":   # site/hero.html, filled with the page's values (page_html())
         return (SITE / "hero.html").read_text(encoding="utf-8")
+    if page == "check" and "h1" not in extra:
+        return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["check_eyebrow"]}</span>\n'
+                f'    <h1>{catalog["check_title"]}</h1>\n    <p class="lede">{catalog["check_lede"]}</p>\n  </div>')
     if page == "start" and "h1" not in extra:
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["start_eyebrow"]}</span>\n'
                 f'    <h1>{catalog["start_title"]}</h1>\n    <p class="lede">{catalog["start_lede"]}</p>\n  </div>')
@@ -983,7 +986,7 @@ def page_footer(language: str, catalog: dict, root: str) -> str:
         (catalog["nav_project"], [(catalog["nav_spec"], f"{home}spec/"), (catalog["footer_conformance"], f"{root}conformance/"),
                                   (catalog["footer_errors"], f"{root}errors/"), (catalog["footer_drafts"], f"{root}spec/changes/"),
                                   translation]),
-        (catalog["footer_label"], [(catalog["footer_start"], f"{home}start/"), (catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
+        (catalog["footer_label"], [(catalog["footer_start"], f"{home}start/"), (catalog["footer_check"], f"{home}check/"), (catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
                                    ("GitHub", REPO), (catalog["footer_issues"], f"{REPO}/issues")]),
     ], about=[catalog["footer_license"]], fine=catalog["footer_trademarks"])
 
@@ -1250,6 +1253,8 @@ def default_crumbs(page: str, path: str, catalog: dict) -> list:
         return [(catalog["footer_demo"], None)]
     if page == "start" and path == "start/":
         return [(catalog["footer_start"], None)]
+    if page == "check" and path == "check/":
+        return [(catalog["footer_check"], None)]
     return []
 
 
@@ -1284,14 +1289,17 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         "draft": DRAFT,
         # The specification's script: its contents, search and links (site/assets/spec.js).
         "spec_script": (f'<script src="{root}assets/spec.js" defer></script>' if page == "spec" else "")
-                       + (f'<script src="{root}assets/figures.js" defer></script>' if page in ("spec", "start") else ""),
+                       + (f'<script src="{root}assets/figures.js" defer></script>' if page in ("spec", "start") else "")
+        + (f'<script src="{root}assets/check.js" defer></script>' if page == "check" else ""),
     })
-    if page in ("home", "demo", "start") and not body:
+    if page in ("home", "demo", "start", "check") and not body:
         body = (SITE / f"{page}.html").read_text(encoding="utf-8")
         values["demo_url"] = SITE_URL + "demo/"
         values["diagram_overview"] = diagrams.render("overview", catalog)
         values["diagram_connect"] = diagrams.render("connect", catalog, None, None, stepper=True)
         values["demo_hash"] = DEMO_FILE
+        values["check_options"] = "".join(
+            f'<option value="{n}"{" selected" if n == "handshake" else ""}>{n}</option>' for n in schema_names())
         if page == "demo":
             values["demo_qr"] = qr.svg(SITE_URL + "demo/", catalog["demo_qr_alt"])
             values["demo_cards"] = demo_cards(catalog)
@@ -1299,6 +1307,11 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         body = spec_body(spec, catalog, ui=hl, root=root, search=True, cards=True, drawn=True, meta=AIDS)
     values["body"] = fill(body, values)
     return LANTERN.links_out(fill(template, values))
+
+
+def schema_names() -> list:
+    """The names of the schemas the site publishes (schemas/v1/<name>.json), which its checking page offers."""
+    return sorted(p.stem for p in (ROOT / "schemas" / "v1").glob("*.json"))
 
 
 def copy_schemas(out: Path) -> int:

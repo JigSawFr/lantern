@@ -47,3 +47,7 @@ SITE_AXE=axe.min.js python3 library/boreale-site/tools/site_layout.py build   # 
 
 `/feed.xml` is an Atom feed (RFC 4287) of the drafts, newest first, from the "Changes" of SPEC.md (`atom_feed()` in `tools/build_site.py`, `tests/test_feed.py`); every page names it in its head. The specification's page prints as a document of its own (`site.css`, `@media print`): the text alone, in ink on white, its external links spelt out, no contents, search, aids or way to the next section; a button (`site/assets/spec.js`) opens the browser's print dialog, which saves a PDF. No PDF is a release asset: a release is reproducible and standard-library only (`tools/release.py`), which a browser's PDF is not.
 
+## Checking a document
+
+`/check/` (`site/check.html`, `site/assets/check.js`): paste a document and its kind (a schema of `schemas/v1/`), and the page says what does not match, in the browser, against the schemas the site serves (nothing leaves it; its text is the catalog's, the problems are the keywords' own). The validator reads the subset of JSON Schema 2020-12 that the schemas use; `tests/test_check.py` runs it under Node against every example and every refused one, so that it agrees with the Python `jsonschema` of `tools/check_schemas.py` (skipped where Node is not installed; the CI's runners have it).
+

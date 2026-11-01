@@ -361,5 +361,22 @@
   "spec_ask": "이 절에 대해 질문",
   "spec_ask_title": "이 절을 지목한 GitHub 이슈를 엽니다",
   "spec_since": "초안 {v}부터",
-  "spec_print": "인쇄 또는 PDF로 저장"
+  "spec_print": "인쇄 또는 PDF로 저장",
+  "footer_check": "문서 검사",
+  "title_check": "Lantern 문서 검사",
+  "description_check": "Lantern 서버의 핸드셰이크나 다른 문서를 붙여 넣고, 이 사이트가 공개한 스키마로 브라우저에서 검사하세요.",
+  "check_eyebrow": "검사",
+  "check_title": "문서 검사",
+  "check_lede": "서버의 응답을 붙여 넣고 기대하는 스키마와 맞는지 확인하세요. 명세, 예제, 적합성 스위트와 같은 스키마입니다.",
+  "check_note": "브라우저 밖으로 아무것도 나가지 않습니다. 문서는 이 사이트가 제공하는 스키마로 여기서 검사됩니다.",
+  "check_kind": "문서 종류",
+  "check_doc": "문서 (JSON)",
+  "check_run": "검사",
+  "check_sample": "데모 라이브러리의 핸드셰이크 불러오기",
+  "check_ok": "이 문서는 {name}와 일치합니다.",
+  "check_bad": "문제 {n}개를 찾았습니다:",
+  "check_not_json": "JSON이 아닙니다: {error}",
+  "check_failed": "검사할 수 없습니다: {error}",
+  "check_newer": "이 스키마는 사이트가 아는 것보다 새롭습니다. 읽는 쪽은 없는 것으로 취급하고 (§ 3.2) 덮어쓰지 않습니다.",
+  "check_noscript": "브라우저에서 문서를 검사하려면 JavaScript가 필요합니다. 없으면 스키마는 schemas/v1/에 있고 tools/check_schemas.py가 예제 폴더를 검사합니다."
 }

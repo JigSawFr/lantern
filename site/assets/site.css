@@ -606,3 +606,22 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
   .prose h2, .prose h3 { break-after: avoid; }
   .prose a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.8em; word-break: break-all; }
 }
+
+/* The page that checks a document (site/check.html, site/assets/check.js). */
+.check-form { display: grid; gap: 0.5rem; max-width: 52rem; }
+.check-form[hidden] { display: none; }
+.check-form label { color: var(--mist); font-size: 0.875rem; }
+.check-form select, .check-form textarea { width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--night-line); border-radius: 12px;
+  background: var(--abyss); color: var(--snow); font: 13px/1.5 var(--mono); }
+.check-form select { min-height: 44px; }
+.check-form textarea { min-height: 16rem; resize: vertical; }
+.check-form select:focus-visible, .check-form textarea:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
+.check-buttons { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; }
+.check-result { max-width: 52rem; margin-top: 1.25rem; }
+.check-result.ok, .check-result.bad { padding: 0.9rem 1.1rem; border: 1px solid var(--night-line); border-radius: 12px; background: var(--night); }
+.check-result.ok { border-color: var(--aurora); }
+.check-result.bad { border-color: #ff6b81; }
+.check-result p { margin: 0 0 0.4rem; }
+.check-result ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+.check-result li { margin: 0.25rem 0; word-break: break-word; }
+.check-result code { color: var(--ice); }

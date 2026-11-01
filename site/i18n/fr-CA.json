@@ -361,5 +361,22 @@
   "spec_ask": "Poser une question",
   "spec_ask_title": "Ouvre un ticket GitHub qui nomme cette section",
   "spec_since": "depuis le brouillon {v}",
-  "spec_print": "Imprimer ou enregistrer en PDF"
+  "spec_print": "Imprimer ou enregistrer en PDF",
+  "footer_check": "Vérifier un document",
+  "title_check": "Vérifier un document Lantern",
+  "description_check": "Collez un handshake ou un autre document d'un serveur Lantern et vérifiez-le, dans votre navigateur, d'après les schémas que publie ce site.",
+  "check_eyebrow": "Vérification",
+  "check_title": "Vérifier un document",
+  "check_lede": "Collez ce qu'un serveur a répondu et voyez s'il correspond au schéma attendu : les mêmes schémas que ceux de la spécification, des exemples et de la suite de conformité.",
+  "check_note": "Rien ne quitte votre navigateur : le document est vérifié ici, d'après les schémas que sert ce site.",
+  "check_kind": "Type de document",
+  "check_doc": "Le document (JSON)",
+  "check_run": "Vérifier",
+  "check_sample": "Charger le handshake de la bibliothèque de démo",
+  "check_ok": "Ce document correspond à {name}.",
+  "check_bad": "{n} problème(s) trouvé(s) :",
+  "check_not_json": "Ce n'est pas du JSON : {error}",
+  "check_failed": "Vérification impossible : {error}",
+  "check_newer": "Son schema est plus récent que celui que ce site connaît : un lecteur le traite comme absent (§ 3.2) et ne l'écrase jamais.",
+  "check_noscript": "Cette page a besoin de JavaScript pour vérifier un document dans votre navigateur. Sans lui, les schémas sont dans schemas/v1/ et tools/check_schemas.py vérifie un dossier d'exemples."
 }
