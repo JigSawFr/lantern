@@ -357,5 +357,8 @@
   "dg_threats_caption": "What Lantern defends against",
   "dg_view_drawing": "Show the drawing",
   "dg_view_list": "Show as a list",
-  "spec_annex_d": "Where to start by role, a glossary and a checklist of what protects whom."
+  "spec_annex_d": "Where to start by role, a glossary and a checklist of what protects whom.",
+  "spec_ask": "Ask about this section",
+  "spec_ask_title": "Opens an issue on GitHub that names this section",
+  "spec_since": "since draft {v}"
 }

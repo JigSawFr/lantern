@@ -357,5 +357,8 @@
   "dg_threats_caption": "Wogegen Lantern schützt",
   "dg_view_drawing": "Zeichnung anzeigen",
   "dg_view_list": "Als Liste anzeigen",
-  "spec_annex_d": "Wo man je nach Rolle anfängt, ein Glossar und eine Liste dessen, was wen schützt."
+  "spec_annex_d": "Wo man je nach Rolle anfängt, ein Glossar und eine Liste dessen, was wen schützt.",
+  "spec_ask": "Frage zu diesem Abschnitt",
+  "spec_ask_title": "Öffnet ein GitHub-Issue, das diesen Abschnitt nennt",
+  "spec_since": "seit Entwurf {v}"
 }

@@ -119,6 +119,20 @@ class DiagramsTest(unittest.TestCase):
                         self.assertGreaterEqual(x0, rx - 1, f"{code} {name}: {text!r} leaves its box on the left")
                         self.assertLessEqual(x1, rx + rw + 1, f"{code} {name}: {text!r} leaves its box on the right")
 
+    def test_the_routes_of_the_figures_are_those_of_openapi(self):
+        """A route a figure draws (GET /v1/saves/{title_id}…) is a path of openapi.yaml: a renamed route cannot
+        stay drawn."""
+        paths = {re.sub(r"\{[^}]*\}", "{}", p) for p in re.findall(r"^  (/[^ :]*):", (ROOT / "openapi.yaml").read_text(encoding="utf-8"), re.M)}
+        drawn = set()
+        for spec in diagrams.DIAGRAMS.values():
+            texts = [step[1] if step[0] == "sep" else step[3] for step in spec.get("steps", [])]
+            texts += [node[2] for node in spec.get("nodes", {}).values()] + [edge[2] for edge in spec.get("edges", [])]
+            for text in texts:
+                for m in re.finditer(r"(?:GET|POST|PATCH|DELETE|HEAD|PUT)\s+((?:/[\w.{}\-]*)+)", text):
+                    drawn.add(re.sub(r"\{[^}]*\}", "{}", m.group(1)))
+        self.assertTrue(drawn, "no route found in the figures")
+        self.assertEqual(sorted(drawn - paths), [], "a route of a figure is not in openapi.yaml")
+
     def test_a_figure_is_a_list_of_its_steps_for_a_screen_reader(self):
         html = diagrams.render("connect", CATALOGS["en-US"])
         self.assertIn("<li>Device → Server: GET /.well-known/lantern</li>", html)

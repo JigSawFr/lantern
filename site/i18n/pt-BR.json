@@ -357,5 +357,8 @@
   "dg_threats_caption": "Contra o que o Lantern protege",
   "dg_view_drawing": "Mostrar o desenho",
   "dg_view_list": "Mostrar como lista",
-  "spec_annex_d": "Por onde começar consoante o papel, um glossário e a lista do que protege quem."
+  "spec_annex_d": "Por onde começar consoante o papel, um glossário e a lista do que protege quem.",
+  "spec_ask": "Perguntar sobre esta secção",
+  "spec_ask_title": "Abre uma issue no GitHub que nomeia esta secção",
+  "spec_since": "desde o rascunho {v}"
 }

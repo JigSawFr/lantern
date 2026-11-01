@@ -357,5 +357,8 @@
   "dg_threats_caption": "Da cosa protegge Lantern",
   "dg_view_drawing": "Mostra il disegno",
   "dg_view_list": "Mostra come elenco",
-  "spec_annex_d": "Da dove cominciare in base al ruolo, un glossario e l'elenco di ciò che protegge chi."
+  "spec_annex_d": "Da dove cominciare in base al ruolo, un glossario e l'elenco di ciò che protegge chi.",
+  "spec_ask": "Chiedi su questa sezione",
+  "spec_ask_title": "Apre una issue su GitHub che nomina questa sezione",
+  "spec_since": "dalla bozza {v}"
 }

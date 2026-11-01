@@ -357,5 +357,8 @@
   "dg_threats_caption": "Lanternが守る対象",
   "dg_view_drawing": "図を表示",
   "dg_view_list": "リストで表示",
-  "spec_annex_d": "役割ごとの読み始め、用語集、何が誰を守るかのチェックリスト。"
+  "spec_annex_d": "役割ごとの読み始め、用語集、何が誰を守るかのチェックリスト。",
+  "spec_ask": "このセクションについて質問",
+  "spec_ask_title": "このセクションを名指しするGitHubのissueを開きます",
+  "spec_since": "ドラフト{v}から"
 }

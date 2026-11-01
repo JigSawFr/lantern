@@ -41,6 +41,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -226,6 +227,8 @@ def blocks(lines: list, sections: dict, tight: bool = False, ref: str = "main") 
             title = plain(text)
             out.append(f'<h{level} id="{anchor}"><a class="anchor" href="#{anchor}">'
                        f'{inline(text, sections, refs=False, ref=ref)}</a></h{level}>')
+            if level in (2, 3):
+                out.append(f"<!--meta:{anchor}-->")
             for figure, number in diagrams.WHERE.items():
                 if heading(m.group(2))[1] == number:
                     out.append(f"<!--diagram:{figure}-->")
@@ -457,16 +460,32 @@ def drafts_nav(catalog: dict, root: str, language: str, here: str, translations:
             f'{catalog["spec_drafts"]}</span><ul>{"".join(items)}</ul></nav>{links}')
 
 
-def put_diagrams(text: str, catalog: dict, sections: dict, drawn: bool, ui: str) -> str:
-    """The figures at their headings (diagrams.WHERE) in `text`; an earlier draft, whose sections are not
-    these, gets none."""
+def put_diagrams(text: str, catalog: dict, sections: dict, drawn: bool, ui: str, meta: dict | None = None) -> str:
+    """The figures at their headings (diagrams.WHERE), and under each heading its line of aids (`meta`: the
+    draft each section first appeared in, and the English titles an issue about it quotes) in `text`; an
+    earlier draft, whose sections are not these, gets none."""
+    def aids(m):
+        anchor = m.group(1)
+        if not drawn or not meta or anchor not in meta["titles"]:
+            return ""
+        number, title = meta["titles"][anchor]
+        what = f"{number} {title}".strip()
+        ask = (f'<a class="ask" rel="noreferrer" href="{REPO}/issues/new?title='
+               f'{urllib.parse.quote("question: " + what)}&body='
+               f'{urllib.parse.quote("About " + what + " of SPEC.md, draft " + DRAFT + ".")}" '
+               f'title="{html.escape(catalog["spec_ask_title"], quote=True)}">{html.escape(catalog["spec_ask"])}</a>')
+        since = meta["since"].get(anchor)
+        chip = (f'<span class="since">{html.escape(catalog["spec_since"].replace("{v}", since))}</span>'
+                if since and since != DRAFTS[0][0] else "")
+        return f'<p class="sec-meta">{chip}{ask}</p>'
+    text = re.sub(r"<!--meta:([^>]*?)-->", aids, text)
     return re.sub(r"<!--diagram:(\w+)-->",
                   lambda m: diagrams.render(m.group(1), catalog, sections, f"figures/{m.group(1)}.{ui}.svg", stepper=True) if drawn else "", text)
 
 
 def spec_body(spec: dict, catalog: dict, lang: str = "en", source: str = f"{REPO}/blob/main/SPEC.md",
               label: str | None = None, ui: str = "en", root: str = "", search: bool = False,
-              cards: bool = False, drawn: bool = False) -> str:
+              cards: bool = False, drawn: bool = False, meta: dict | None = None) -> str:
     """The specification's text with its contents beside it. `lang` is the text's, `ui` the page's language;
     `search` puts the search field above the contents (the current English text, whose index search_index()
     writes), `cards` the annexes' under the header (the current text's)."""
@@ -474,7 +493,7 @@ def spec_body(spec: dict, catalog: dict, lang: str = "en", source: str = f"{REPO
                      for k in ("copy", "copied", "copy_failed"))
     side = (search_form(catalog, root) if search else "") + toc_html(spec, catalog["spec_toc"], lang)
     text = "\n".join(html_ + "\n" + section_nav(spec["parts"], i, catalog, ui) for i, (_, _, html_) in enumerate(spec["parts"]))
-    text = put_diagrams(text, catalog, spec["sections"], drawn, ui)
+    text = put_diagrams(text, catalog, spec["sections"], drawn, ui, meta)
     return (f'{annex_cards(spec, catalog, lang) if cards else ""}'
             f'<div class="spec-layout" data-ui="{ui}" {texts}>\n<div class="spec-side">\n{side}\n</div>\n'
             f'<article class="prose" lang="{lang}">\n<h2 class="spec-name sr">{html.escape(spec["title"])}</h2>\n'
@@ -698,6 +717,7 @@ def requirements_body(spec: dict, root: str) -> str:
             checks.setdefault(rid, []).append(shown)
     client = {rid: rule for _, ids, rule in suite.CLIENT_RULES for rid in ids}
     counts = {"suite": 0, "client": 0, "unseen": 0}
+    per_section = {}
     groups, current = [], None
     for r in found:
         if r["heading"] != current:
@@ -710,6 +730,9 @@ def requirements_body(spec: dict, root: str) -> str:
         else:
             kind, seen = "unseen", "Inside the server: the suite cannot see it (" + html.escape(suite.UNSEEN.get(r["id"], "")) + ")"
         counts[kind] += 1
+        per_section.setdefault(r["section"], [r["heading"], 0, 0, 0, 0])
+        per_section[r["section"]][1] += 1
+        per_section[r["section"]][{"suite": 2, "client": 3, "unseen": 4}[kind]] += 1
         groups[-1][2].append(
             f'<li id="{r["id"]}"><p class="req-head"><a class="req" href="{root}spec/#{r["id"]}">{r["id"]}</a>'
             f'<span class="state">{r["level"]}</span><span class="seen {kind}">{seen}</span></p>'
@@ -718,6 +741,12 @@ def requirements_body(spec: dict, root: str) -> str:
         f'<h2 id="s-{html.escape(section)}">{inline(heading, spec["sections"], refs=False)}</h2>\n<ul class="reqs">\n'
         + "\n".join(items) + "\n</ul>" for heading, section, items in groups)
     total = len(found)
+    rows = "".join(
+        f'<tr><th scope="row"><a href="#s-{html.escape(section)}">{inline(heading, spec["sections"], refs=False)}</a></th>'
+        f'<td>{n}</td><td>{a}</td><td>{b}</td><td>{c}</td></tr>' for section, (heading, n, a, b, c) in per_section.items())
+    by_section = ('<h2 id="by-section">By section</h2>\n<div class="table"><table><thead><tr><th scope="col">Section</th>'
+                  '<th scope="col">Requirements</th><th scope="col">Checked by the suite</th><th scope="col">A client keeps</th>'
+                  f'<th scope="col">Inside a server</th></tr></thead><tbody>{rows}</tbody></table></div>')
     return (f'<section class="prose wide" lang="en">\n<p>Every MUST and SHOULD of the specification has an id '
             f'(<a href="{root}spec/#35-changes-and-proposals">§&nbsp;3.5</a>). Here is each one, and what sees it: the '
             f'checks of the <a href="{REPO}/blob/main/conformance/run.py">conformance suite</a> that cover it, or why the '
@@ -725,7 +754,7 @@ def requirements_body(spec: dict, root: str) -> str:
             f'<dl class="facts"><div><dt>In all</dt><dd>{total} requirements</dd></div>'
             f'<div><dt>Suite</dt><dd>{counts["suite"]} checked by the suite</dd></div>'
             f'<div><dt>Clients</dt><dd>{counts["client"]} a client keeps</dd></div>'
-            f'<div><dt>Inside</dt><dd>{counts["unseen"]} inside a server</dd></div></dl>\n{body}\n</section>')
+            f'<div><dt>Inside</dt><dd>{counts["unseen"]} inside a server</dd></div></dl>\n{by_section}\n{body}\n</section>')
 
 
 def releases_body(root: str) -> str:
@@ -853,6 +882,39 @@ def spec_at(commit: str) -> str:
     except (OSError, subprocess.CalledProcessError) as error:
         sys.exit(f"build_site: SPEC.md of {commit[:7]} is not in git ({str(error).strip()}): the drafts need the "
                  "repository's history (git fetch --unshallow)")
+
+
+# What the specification's page puts under each heading (section_aids(), filled by main()).
+AIDS: dict = {}
+
+
+def section_aids(current: str) -> dict:
+    """For each section (## and ###) of the current text, by its anchor: the draft it first appeared in (walking
+    the drafts of DRAFTS in order and following renamed sections: compared()), and its number and English title,
+    which the issue about it quotes."""
+    first, previous = {}, None
+    for v, commit, _ in DRAFTS:
+        text = current if commit is None else spec_at(commit)
+        now = outline(text)
+        if previous is None:
+            first = {o["key"]: v for o in now}
+        else:
+            diff = compared(previous, now)
+            kept = {o["key"]: first[o["key"]] for o in now if o["key"] in first}
+            for old_o, new_o in diff["renamed"]:
+                kept[new_o["key"]] = first.get(old_o["key"], v)
+            for o in diff["added"]:
+                kept[o["key"]] = v
+            first = {k: kept.get(k, v) for k in (o["key"] for o in now)}
+        previous = now
+    final = outline(current)
+    since = {o["anchor"]: first.get(o["key"]) for o in final}
+    titles = {}
+    for o in final:
+        number = o["number"] or ""
+        label = f"§ {number}" if number and number[0].isdigit() else (f"Annex {number}" if number else "")
+        titles[o["anchor"]] = (label, re.sub(r"^(?:\d+(?:\.\d+)?\.?|Annex [A-Z] —|[A-Z]\.\d+) ", "", o["title"]).strip())
+    return {"since": since, "titles": titles}
 
 
 def read_translation(name: str) -> dict:
@@ -1199,7 +1261,7 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
             values["demo_qr"] = qr.svg(SITE_URL + "demo/", catalog["demo_qr_alt"])
             values["demo_cards"] = demo_cards(catalog)
     elif page == "spec" and not body:
-        body = spec_body(spec, catalog, ui=hl, root=root, search=True, cards=True, drawn=True)
+        body = spec_body(spec, catalog, ui=hl, root=root, search=True, cards=True, drawn=True, meta=AIDS)
     values["body"] = fill(body, values)
     return LANTERN.links_out(fill(template, values))
 
@@ -1233,6 +1295,7 @@ def main() -> None:
     catalogs = boreale.catalogs(SITE / "i18n")
     template = (SITE / "template.html").read_text(encoding="utf-8")
     spec = read_spec()
+    AIDS.update(section_aids(SPEC.read_text(encoding="utf-8")))
     versions = boreale.latest_versions()
     urls = []
     written = 0
@@ -1269,7 +1332,7 @@ def main() -> None:
             if page == "spec" and language in TRANSLATIONS:
                 t, translated = translations[TRANSLATIONS[language]]
                 body = spec_body(translated, catalog, lang=t["language"], source=f"{REPO}/blob/main/site/translations/{t['name']}",
-                                 label=html.escape(t["source"]), ui=boreale.html_lang(language), cards=True, drawn=True)
+                                 label=html.escape(t["source"]), ui=boreale.html_lang(language), cards=True, drawn=True, meta=AIDS)
                 if t["language"].split("-")[0] == "fr":
                     body = french_spaces(body)
                 extra = {"translation": {"lang": t["language"], "banner": t["banner"], "english": t["english"]}}
