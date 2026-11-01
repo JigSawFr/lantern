@@ -401,5 +401,21 @@
   "ex_grant_title": "Eine Freigabe für einen Peer",
   "ex_grant_text": "Der Server signiert eine kurze Aussage, dass ein Client eine Datei lesen darf; ein Peer, der die Datei hält, prüft sie mit dem öffentlichen Schlüssel des Servers, ohne jemanden zu fragen.",
   "ex_grant_h_payload": "Was der Server signiert (JSON, Schlüssel in dieser Reihenfolge, ohne Leerzeichen)",
-  "ex_grant_h_grant": "Die Freigabe: Nutzlast und Signatur, je in base64url"
+  "ex_grant_h_grant": "Die Freigabe: Nutzlast und Signatur, je in base64url",
+  "footer_translations": "Übersetzungen",
+  "title_translations": "Übersetzungen von Lantern",
+  "description_translations": "Die Sprachen dieser Seite, welche die Spezifikation übersetzt haben und wie aktuell jede Übersetzung ist.",
+  "tr_eyebrow": "Übersetzungen",
+  "tr_title": "Übersetzungen",
+  "tr_lede": "Diese Seite spricht fünfzehn Sprachen, und die Spezifikation ist in einige davon übersetzt: was jede hat und wie aktuell es ist.",
+  "tr_note": "Nur der englische Text der Spezifikation ist maßgeblich; eine Übersetzung ist informativ und nennt den englischen Text, den sie übersetzt. Auch die Texte der Seite sind übersetzt, und noch keiner wurde von Muttersprachlern geprüft.",
+  "tr_col_lang": "Sprache",
+  "tr_col_site": "Die Seite und ihre Abbildungen",
+  "tr_col_spec": "Die Spezifikation",
+  "tr_original": "Das Original",
+  "tr_site": "Übersetzt, Prüfung durch Muttersprachler steht aus",
+  "tr_spec_current": "Übersetzt, auf dem Stand von Entwurf {v}",
+  "tr_spec_behind": "Für Entwurf {v} übersetzt; der Text hat sich seither geändert",
+  "tr_spec_none": "Nur der englische Text",
+  "tr_help": "Um die Spezifikation zu übersetzen oder einen Text der Seite zu korrigieren, siehe"
 }

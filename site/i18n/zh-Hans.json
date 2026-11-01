@@ -401,5 +401,21 @@
   "ex_grant_title": "给对等主机的授权",
   "ex_grant_text": "服务器签署一条简短声明:某客户端可读取某个文件;持有该文件的对等主机用服务器的公钥校验,无需询问任何人。",
   "ex_grant_h_payload": "服务器所签署的内容(JSON,键按此顺序,无空格)",
-  "ex_grant_h_grant": "授权:载荷及其签名,各为 base64url"
+  "ex_grant_h_grant": "授权:载荷及其签名,各为 base64url",
+  "footer_translations": "翻译",
+  "title_translations": "Lantern 的翻译",
+  "description_translations": "本站的语言、哪些语言有规范译文,以及各译文的更新程度。",
+  "tr_eyebrow": "翻译",
+  "tr_title": "翻译",
+  "tr_lede": "本站有十五种语言,规范已译成其中几种:各语言有什么,以及是否最新。",
+  "tr_note": "规范只有英文文本具有效力;译文仅供参考,并注明所译的英文版本。本站自身文字也已翻译,但尚无一种经母语者审校。",
+  "tr_col_lang": "语言",
+  "tr_col_site": "网站及其图示",
+  "tr_col_spec": "规范",
+  "tr_original": "原文",
+  "tr_site": "已翻译,待母语者审校",
+  "tr_spec_current": "已翻译,与草案 {v} 同步",
+  "tr_spec_behind": "已为草案 {v} 翻译;此后文本已变更",
+  "tr_spec_none": "仅英文文本",
+  "tr_help": "要翻译规范或更正本站文字,请参见:"
 }

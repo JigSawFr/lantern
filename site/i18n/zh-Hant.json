@@ -401,5 +401,21 @@
   "ex_grant_title": "給對等主機的授權",
   "ex_grant_text": "伺服器簽署一則簡短聲明:某用戶端可讀取某個檔案;持有該檔案的對等主機用伺服器的公鑰校驗,無需詢問任何人。",
   "ex_grant_h_payload": "伺服器所簽署的內容(JSON,鍵依此順序,無空白)",
-  "ex_grant_h_grant": "授權:載荷及其簽章,各為 base64url"
+  "ex_grant_h_grant": "授權:載荷及其簽章,各為 base64url",
+  "footer_translations": "翻譯",
+  "title_translations": "Lantern 的翻譯",
+  "description_translations": "本站的語言、哪些語言有規範譯文,以及各譯文的更新程度。",
+  "tr_eyebrow": "翻譯",
+  "tr_title": "翻譯",
+  "tr_lede": "本站有十五種語言,規範已譯成其中幾種:各語言有什麼,以及是否最新。",
+  "tr_note": "規範只有英文文本具有效力;譯文僅供參考,並註明所譯的英文版本。本站自身文字也已翻譯,但尚無一種經母語者審校。",
+  "tr_col_lang": "語言",
+  "tr_col_site": "網站及其圖示",
+  "tr_col_spec": "規範",
+  "tr_original": "原文",
+  "tr_site": "已翻譯,待母語者審校",
+  "tr_spec_current": "已翻譯,與草案 {v} 同步",
+  "tr_spec_behind": "已為草案 {v} 翻譯;此後文本已變更",
+  "tr_spec_none": "僅英文文本",
+  "tr_help": "要翻譯規範或更正本站文字,請參見:"
 }

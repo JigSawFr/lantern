@@ -401,5 +401,21 @@
   "ex_grant_title": "피어를 위한 허가증",
   "ex_grant_text": "서버는 클라이언트가 파일 하나를 읽을 수 있다는 짧은 진술에 서명합니다. 그 파일을 가진 피어는 아무에게도 묻지 않고 서버의 공개 키로 검증합니다.",
   "ex_grant_h_payload": "서버가 서명하는 것(JSON, 키는 이 순서, 공백 없음)",
-  "ex_grant_h_grant": "허가증: 페이로드와 서명(각각 base64url)"
+  "ex_grant_h_grant": "허가증: 페이로드와 서명(각각 base64url)",
+  "footer_translations": "번역",
+  "title_translations": "Lantern 번역",
+  "description_translations": "이 사이트의 언어, 명세가 번역된 언어, 각 번역이 얼마나 최신인지.",
+  "tr_eyebrow": "번역",
+  "tr_title": "번역",
+  "tr_lede": "이 사이트는 15개 언어로 되어 있고 명세는 그중 일부로 번역되어 있습니다. 각 언어에 무엇이 있고 얼마나 최신인지.",
+  "tr_note": "명세는 영어 본문만 효력이 있습니다. 번역은 참고용이며 어느 영어 본문을 옮겼는지 밝힙니다. 사이트 자체 문구도 번역되어 있지만 아직 원어민 검토를 받은 것은 없습니다.",
+  "tr_col_lang": "언어",
+  "tr_col_site": "사이트와 그림",
+  "tr_col_spec": "명세",
+  "tr_original": "원문",
+  "tr_site": "번역됨, 원어민 검토 대기",
+  "tr_spec_current": "번역됨, 초안 {v}에 맞춤",
+  "tr_spec_behind": "초안 {v}용으로 번역됨, 이후 본문이 바뀜",
+  "tr_spec_none": "영어 본문만",
+  "tr_help": "명세를 번역하거나 사이트 문구를 고치려면 다음을 보세요:"
 }

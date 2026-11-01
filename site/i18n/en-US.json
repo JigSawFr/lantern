@@ -401,5 +401,21 @@
   "ex_grant_title": "A grant, for a peer",
   "ex_grant_text": "The server signs a short statement that a client may read one file; a peer that holds the file checks it with the server's public key, without asking anyone.",
   "ex_grant_h_payload": "What the server signs (JSON, keys in this order, no space)",
-  "ex_grant_h_grant": "The grant: the payload and its signature, each in base64url"
+  "ex_grant_h_grant": "The grant: the payload and its signature, each in base64url",
+  "footer_translations": "Translations",
+  "title_translations": "Translations of Lantern",
+  "description_translations": "The languages of this site and which of them have the specification translated, and how up to date each translation is.",
+  "tr_eyebrow": "Translations",
+  "tr_title": "Translations",
+  "tr_lede": "This site speaks fifteen languages, and the specification is translated into some of them: what each has, and how current it is.",
+  "tr_note": "Only the English text of the specification is authoritative; a translation is informative and says which English text it translates. The site's own texts are translated too, and none has yet been reviewed by a native speaker.",
+  "tr_col_lang": "Language",
+  "tr_col_site": "The site and its figures",
+  "tr_col_spec": "The specification",
+  "tr_original": "The original",
+  "tr_site": "Translated, awaiting a native review",
+  "tr_spec_current": "Translated, up to date with draft {v}",
+  "tr_spec_behind": "Translated for draft {v}; the text has changed since",
+  "tr_spec_none": "English text only",
+  "tr_help": "To translate the specification, or to correct a text of the site, see"
 }

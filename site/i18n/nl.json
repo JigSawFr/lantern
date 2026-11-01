@@ -401,5 +401,21 @@
   "ex_grant_title": "Een machtiging, voor een peer",
   "ex_grant_text": "De server ondertekent een korte verklaring dat een client één bestand mag lezen; een peer die het bestand heeft, controleert die met de publieke sleutel van de server, zonder iemand te vragen.",
   "ex_grant_h_payload": "Wat de server ondertekent (JSON, sleutels in deze volgorde, zonder spatie)",
-  "ex_grant_h_grant": "De machtiging: de payload en zijn handtekening, elk in base64url"
+  "ex_grant_h_grant": "De machtiging: de payload en zijn handtekening, elk in base64url",
+  "footer_translations": "Vertalingen",
+  "title_translations": "Vertalingen van Lantern",
+  "description_translations": "De talen van deze site, in welke de specificatie is vertaald en hoe actueel elke vertaling is.",
+  "tr_eyebrow": "Vertalingen",
+  "tr_title": "Vertalingen",
+  "tr_lede": "Deze site spreekt vijftien talen en de specificatie is in een aantal vertaald: wat elke taal heeft en hoe actueel dat is.",
+  "tr_note": "Alleen de Engelse tekst van de specificatie is bindend; een vertaling is informatief en zegt welke Engelse tekst ze vertaalt. De teksten van de site zijn ook vertaald, en geen is al door een moedertaalspreker nagelezen.",
+  "tr_col_lang": "Taal",
+  "tr_col_site": "De site en zijn figuren",
+  "tr_col_spec": "De specificatie",
+  "tr_original": "Het origineel",
+  "tr_site": "Vertaald, wacht op nalezing door een moedertaalspreker",
+  "tr_spec_current": "Vertaald, actueel met concept {v}",
+  "tr_spec_behind": "Vertaald voor concept {v}; de tekst is sindsdien gewijzigd",
+  "tr_spec_none": "Alleen de Engelse tekst",
+  "tr_help": "Om de specificatie te vertalen of een tekst van de site te corrigeren, zie"
 }

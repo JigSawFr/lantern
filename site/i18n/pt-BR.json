@@ -401,5 +401,21 @@
   "ex_grant_title": "Uma autorização, para um par",
   "ex_grant_text": "O servidor assina uma breve declaração de que um cliente pode ler um ficheiro; um par que tem o ficheiro verifica-a com a chave pública do servidor, sem perguntar a ninguém.",
   "ex_grant_h_payload": "O que o servidor assina (JSON, chaves nesta ordem, sem espaços)",
-  "ex_grant_h_grant": "A autorização: a carga e a sua assinatura, cada uma em base64url"
+  "ex_grant_h_grant": "A autorização: a carga e a sua assinatura, cada uma em base64url",
+  "footer_translations": "Traduções",
+  "title_translations": "Traduções do Lantern",
+  "description_translations": "As línguas deste site, quais têm a especificação traduzida e quão atualizada está cada tradução.",
+  "tr_eyebrow": "Traduções",
+  "tr_title": "Traduções",
+  "tr_lede": "Este site fala quinze línguas e a especificação está traduzida em algumas: o que cada uma tem e quão atual é.",
+  "tr_note": "Só o texto inglês da especificação faz fé; uma tradução é informativa e diz que texto inglês traduz. Os textos do site também estão traduzidos e nenhum foi ainda revisto por um falante nativo.",
+  "tr_col_lang": "Língua",
+  "tr_col_site": "O site e as suas figuras",
+  "tr_col_spec": "A especificação",
+  "tr_original": "O original",
+  "tr_site": "Traduzido, a aguardar revisão nativa",
+  "tr_spec_current": "Traduzida, atualizada com o rascunho {v}",
+  "tr_spec_behind": "Traduzida para o rascunho {v}; o texto mudou desde então",
+  "tr_spec_none": "Só o texto inglês",
+  "tr_help": "Para traduzir a especificação ou corrigir um texto do site, veja"
 }
