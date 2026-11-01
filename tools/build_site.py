@@ -49,6 +49,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "conformance"))
 sys.path.insert(0, str(ROOT / "library" / "boreale-site"))
 import make_demo  # noqa: E402  (tools/make_demo.py)
+import diagrams  # noqa: E402  (tools/diagrams.py: the specification's figures)
 import qr  # noqa: E402  (tools/qr.py: the demo's QR code)
 import requirements as spec_requirements  # noqa: E402  (tools/requirements.py)
 import boreale_site as boreale  # noqa: E402  (library/boreale-site)
@@ -221,6 +222,9 @@ def blocks(lines: list, sections: dict, tight: bool = False, ref: str = "main") 
             title = plain(text)
             out.append(f'<h{level} id="{anchor}"><a class="anchor" href="#{anchor}">'
                        f'{inline(text, sections, refs=False, ref=ref)}</a></h{level}>')
+            for figure, number in diagrams.WHERE.items():
+                if heading(m.group(2))[1] == number:
+                    out.append(f"<!--diagram:{figure}-->")
             i += 1
         elif line.startswith("|"):
             flush()
@@ -446,9 +450,16 @@ def drafts_nav(catalog: dict, root: str, language: str, here: str, translations:
             f'{catalog["spec_drafts"]}</span><ul>{"".join(items)}</ul></nav>{links}')
 
 
+def put_diagrams(text: str, catalog: dict, sections: dict, drawn: bool) -> str:
+    """The figures at their headings (diagrams.WHERE) in `text`; an earlier draft, whose sections are not
+    these, gets none."""
+    return re.sub(r"<!--diagram:(\w+)-->",
+                  lambda m: diagrams.render(m.group(1), catalog, sections) if drawn else "", text)
+
+
 def spec_body(spec: dict, catalog: dict, lang: str = "en", source: str = f"{REPO}/blob/main/SPEC.md",
               label: str | None = None, ui: str = "en", root: str = "", search: bool = False,
-              cards: bool = False) -> str:
+              cards: bool = False, drawn: bool = False) -> str:
     """The specification's text with its contents beside it. `lang` is the text's, `ui` the page's language;
     `search` puts the search field above the contents (the current English text, whose index search_index()
     writes), `cards` the annexes' under the header (the current text's)."""
@@ -456,6 +467,7 @@ def spec_body(spec: dict, catalog: dict, lang: str = "en", source: str = f"{REPO
                      for k in ("copy", "copied", "copy_failed"))
     side = (search_form(catalog, root) if search else "") + toc_html(spec, catalog["spec_toc"], lang)
     text = "\n".join(html_ + "\n" + section_nav(spec["parts"], i, catalog, ui) for i, (_, _, html_) in enumerate(spec["parts"]))
+    text = put_diagrams(text, catalog, spec["sections"], drawn)
     return (f'{annex_cards(spec, catalog, lang) if cards else ""}'
             f'<div class="spec-layout" data-ui="{ui}" {texts}>\n<div class="spec-side">\n{side}\n</div>\n'
             f'<article class="prose" lang="{lang}">\n<h2 class="spec-name sr">{html.escape(spec["title"])}</h2>\n'
@@ -1170,11 +1182,12 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
     if page in ("home", "demo") and not body:
         body = (SITE / f"{page}.html").read_text(encoding="utf-8")
         values["demo_url"] = SITE_URL + "demo/"
+        values["diagram_overview"] = diagrams.render("overview", catalog)
         if page == "demo":
             values["demo_qr"] = qr.svg(SITE_URL + "demo/", catalog["demo_qr_alt"])
             values["demo_cards"] = demo_cards(catalog)
     elif page == "spec" and not body:
-        body = spec_body(spec, catalog, ui=hl, root=root, search=True, cards=True)
+        body = spec_body(spec, catalog, ui=hl, root=root, search=True, cards=True, drawn=True)
     values["body"] = fill(body, values)
     return LANTERN.links_out(fill(template, values))
 
@@ -1238,7 +1251,7 @@ def main() -> None:
             if page == "spec" and language in TRANSLATIONS:
                 t, translated = translations[TRANSLATIONS[language]]
                 body = spec_body(translated, catalog, lang=t["language"], source=f"{REPO}/blob/main/site/translations/{t['name']}",
-                                 label=html.escape(t["source"]), ui=boreale.html_lang(language), cards=True)
+                                 label=html.escape(t["source"]), ui=boreale.html_lang(language), cards=True, drawn=True)
                 if t["language"].split("-")[0] == "fr":
                     body = french_spaces(body)
                 extra = {"translation": {"lang": t["language"], "banner": t["banner"], "english": t["english"]}}
