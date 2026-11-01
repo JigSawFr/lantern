@@ -1,0 +1,9 @@
+# ruff (https://docs.astral.sh/ruff/), run by the "lint" job of .github/workflows/reuse.yml and by
+# `ruff check .`: pyflakes' and pycodestyle's errors, which are bugs and not taste (an unused variable or
+# import, an undefined name, a bare except, a comparison to None); the style is not ruff's to decide.
+extend-exclude = ["library"]   # submodules, with their own checks
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+# E402: the tools and tests put the repository's folders on sys.path before importing its own modules.
+ignore = ["E402"]
