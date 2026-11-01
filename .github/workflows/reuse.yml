@@ -22,3 +22,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install --quiet "reuse==6.2.0"
           "$RUNNER_TEMP/venv/bin/reuse" lint
+      - name: ruff
+        run: |
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet "ruff==0.16.9"
+          "$RUNNER_TEMP/venv/bin/ruff" check .

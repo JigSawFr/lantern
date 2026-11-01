@@ -63,6 +63,7 @@ it is behind, is just as welcome.
   python3 -m unittest discover -s tests
   actionlint
   python3 tools/build_site.py build && python3 tools/check_site.py build
+  ruff check .   # pip install ruff==0.16.9; its rules are in ruff.toml
   reuse lint
   ```
 
