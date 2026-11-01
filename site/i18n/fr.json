@@ -401,5 +401,21 @@
   "ex_grant_title": "Une autorisation, pour un pair",
   "ex_grant_text": "Le serveur signe une courte déclaration disant qu'un client peut lire un fichier ; un pair qui détient le fichier la vérifie avec la clé publique du serveur, sans interroger personne.",
   "ex_grant_h_payload": "Ce que signe le serveur (JSON, clés dans cet ordre, sans espace)",
-  "ex_grant_h_grant": "L'autorisation : la charge et sa signature, chacune en base64url"
+  "ex_grant_h_grant": "L'autorisation : la charge et sa signature, chacune en base64url",
+  "footer_translations": "Traductions",
+  "title_translations": "Traductions de Lantern",
+  "description_translations": "Les langues de ce site, lesquelles ont la spécification traduite, et à quel point chaque traduction est à jour.",
+  "tr_eyebrow": "Traductions",
+  "tr_title": "Traductions",
+  "tr_lede": "Ce site parle quinze langues, et la spécification est traduite dans certaines : ce que chacune a, et son niveau de mise à jour.",
+  "tr_note": "Seul le texte anglais de la spécification fait foi ; une traduction est informative et dit quel texte anglais elle traduit. Les textes du site sont eux aussi traduits, et aucun n'a encore été relu par un locuteur natif.",
+  "tr_col_lang": "Langue",
+  "tr_col_site": "Le site et ses figures",
+  "tr_col_spec": "La spécification",
+  "tr_original": "L'original",
+  "tr_site": "Traduit, en attente d'une relecture native",
+  "tr_spec_current": "Traduite, à jour du brouillon {v}",
+  "tr_spec_behind": "Traduite pour le brouillon {v} ; le texte a changé depuis",
+  "tr_spec_none": "Texte anglais seulement",
+  "tr_help": "Pour traduire la spécification, ou corriger un texte du site, voir"
 }

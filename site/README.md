@@ -55,3 +55,7 @@ SITE_AXE=axe.min.js python3 library/boreale-site/tools/site_layout.py build   # 
 
 `/examples/` (`site/examples.html`): a signed request byte by byte (its request, its signature base, the key and the same request refused for want of a signature), a pairing from its code to its token, and a grant for a peer. Nothing is written by hand: `example_blocks()` in `tools/build_site.py` reads the test vectors (`vectors/signatures.json`, `vectors/grants.json`) and the examples the schemas check (`examples/v1/pairing-*.json`), and `tests/test_examples.py` verifies the signature and the grant again with the reference Ed25519, so that an example cannot drift from the text.
 
+## The translations
+
+`/translations/` (`site/translations.html`): one row per language of the site, with what it has: the site and its figures (all translated, none yet reviewed by a native speaker) and the specification (English the original; French, in `site/translations/`, translated and either current with SPEC.md or behind it, from the SHA-256 its header names; the others English only). `tests/test_translations.py` checks the rows and that every catalog has the page's texts.
+

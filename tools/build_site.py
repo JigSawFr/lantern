@@ -34,6 +34,7 @@ and their UTM tags, the audience, the fonts and marks) is boreale-site's, the
 submodule library/boreale-site. Python's standard library only.
 """
 import difflib
+import hashlib
 import html
 import json
 import os
@@ -71,7 +72,7 @@ ENGLISH = CODES[0]
 # The file of the demo library the quick start downloads and hashes (its app's `sha256`, vita's first):
 # check_site.py's tests and the page's commands read it from here.
 DEMO_FILE = "fa75492f7b78cad7ca4044e8fb548ac67bfd7fbf05242ceecb29ebe492218a0d"
-PAGES = {"": "home", "spec/": "spec", "start/": "start", "check/": "check", "examples/": "examples", "demo/": "demo"}
+PAGES = {"": "home", "spec/": "spec", "start/": "start", "check/": "check", "examples/": "examples", "translations/": "translations", "demo/": "demo"}
 # The drafts of SPEC.md, each at spec/<draft>/: SPEC.md at the commit that
 # finished it, read from git at each build (git show <commit>:SPEC.md), so
 # that a published draft never changes; the site's workflow checks out the
@@ -417,6 +418,9 @@ def indexing(language: str, path: str, alternate: bool, noindex: bool = False) -
 def hero(page: str, catalog: dict, root: str, language: str, spec: dict, extra: dict) -> str:
     if page == "home":   # site/hero.html, filled with the page's values (page_html())
         return (SITE / "hero.html").read_text(encoding="utf-8")
+    if page == "translations" and "h1" not in extra:
+        return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["tr_eyebrow"]}</span>\n'
+                f'    <h1>{catalog["tr_title"]}</h1>\n    <p class="lede">{catalog["tr_lede"]}</p>\n  </div>')
     if page == "examples" and "h1" not in extra:
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["examples_eyebrow"]}</span>\n'
                 f'    <h1>{catalog["examples_title"]}</h1>\n    <p class="lede">{catalog["examples_lede"]}</p>\n  </div>')
@@ -989,7 +993,7 @@ def page_footer(language: str, catalog: dict, root: str) -> str:
         (catalog["nav_project"], [(catalog["nav_spec"], f"{home}spec/"), (catalog["footer_conformance"], f"{root}conformance/"),
                                   (catalog["footer_errors"], f"{root}errors/"), (catalog["footer_drafts"], f"{root}spec/changes/"),
                                   translation]),
-        (catalog["footer_label"], [(catalog["footer_start"], f"{home}start/"), (catalog["footer_check"], f"{home}check/"), (catalog["footer_examples"], f"{home}examples/"), (catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
+        (catalog["footer_label"], [(catalog["footer_start"], f"{home}start/"), (catalog["footer_check"], f"{home}check/"), (catalog["footer_examples"], f"{home}examples/"), (catalog["footer_translations"], f"{home}translations/"), (catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
                                    ("GitHub", REPO), (catalog["footer_issues"], f"{REPO}/issues")]),
     ], about=[catalog["footer_license"]], fine=catalog["footer_trademarks"])
 
@@ -1260,6 +1264,8 @@ def default_crumbs(page: str, path: str, catalog: dict) -> list:
         return [(catalog["footer_check"], None)]
     if page == "examples" and path == "examples/":
         return [(catalog["footer_examples"], None)]
+    if page == "translations" and path == "translations/":
+        return [(catalog["footer_translations"], None)]
     return []
 
 
@@ -1297,13 +1303,14 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
                        + (f'<script src="{root}assets/figures.js" defer></script>' if page in ("spec", "start") else "")
         + (f'<script src="{root}assets/check.js" defer></script>' if page == "check" else ""),
     })
-    if page in ("home", "demo", "start", "check", "examples") and not body:
+    if page in ("home", "demo", "start", "check", "examples", "translations") and not body:
         body = (SITE / f"{page}.html").read_text(encoding="utf-8")
         values["demo_url"] = SITE_URL + "demo/"
         values["diagram_overview"] = diagrams.render("overview", catalog)
         values["diagram_connect"] = diagrams.render("connect", catalog, None, None, stepper=True)
         values["demo_hash"] = DEMO_FILE
         values.update({f"ex_{k}": html.escape(v) for k, v in example_blocks().items()})
+        values["translations_table"] = translations_table(catalog, root, values["home"])
         values["check_options"] = "".join(
             f'<option value="{n}"{" selected" if n == "handshake" else ""}>{n}</option>' for n in schema_names())
         if page == "demo":
@@ -1348,6 +1355,47 @@ def example_blocks() -> dict:
         "grant": grants["grant"],
         "grant_key": f"public key (peers.key): {grants['key']['public_key']}",
     }
+
+
+# What each language has of the specification (filled by main(): translation_rows()).
+TRANSLATION_ROWS: list = []
+
+
+def translation_rows(translations: dict, spec_text: str) -> list:
+    """For each language of the site: (code, name, folder, state, draft): the state of its translation of the
+    specification, "original" for English, "current" when its text translates this SPEC.md, "behind" when
+    SPEC.md has changed since, "none" when there is none (translations/, TRANSLATIONS)."""
+    current = hashlib.sha256(spec_text.encode("utf-8")).hexdigest()
+    rows = []
+    for code, folder_, name, _ in LANGUAGES:
+        if code == ENGLISH:
+            rows.append((code, name, folder_, "original", DRAFT))
+        elif code in TRANSLATIONS:
+            t, _ = translations[TRANSLATIONS[code]]
+            m = STATUS.search(t["text"])
+            rows.append((code, name, folder_, "current" if t["sha256"] == current else "behind", m.group(1) if m else ""))
+        else:
+            rows.append((code, name, folder_, "none", ""))
+    return rows
+
+
+def translations_table(catalog: dict, root: str, home: str) -> str:
+    """The translations page's table, in the page's language: for each language, its site and its specification."""
+    def spec_cell(state, draft):
+        if state == "original":
+            return html.escape(catalog["tr_original"])
+        if state == "current":
+            return html.escape(catalog["tr_spec_current"].replace("{v}", draft))
+        if state == "behind":
+            return html.escape(catalog["tr_spec_behind"].replace("{v}", draft))
+        return html.escape(catalog["tr_spec_none"])
+    rows = "".join(
+        f'<tr><th scope="row"><a href="{root}{folder_}{"/" if folder_ else ""}" hreflang="{html.escape(code)}" lang="{html.escape(code)}">{html.escape(name)}</a></th>'
+        f'<td>{html.escape(catalog["tr_original"] if state == "original" else catalog["tr_site"])}</td><td>{spec_cell(state, draft)}</td></tr>'
+        for code, name, folder_, state, draft in TRANSLATION_ROWS)
+    return (f'<div class="table"><table><thead><tr><th scope="col">{html.escape(catalog["tr_col_lang"])}</th>'
+            f'<th scope="col">{html.escape(catalog["tr_col_site"])}</th><th scope="col">{html.escape(catalog["tr_col_spec"])}</th>'
+            f'</tr></thead><tbody>{rows}</tbody></table></div>')
 
 
 def schema_names() -> list:
@@ -1412,6 +1460,7 @@ def main() -> None:
         if name not in translations:
             t = read_translation(name)
             translations[name] = (t, read_spec(t["text"], anchors=spec["sections"], errors_needed=False))
+    TRANSLATION_ROWS[:] = translation_rows(translations, SPEC.read_text(encoding="utf-8"))
     for language, _, _, _ in LANGUAGES:
         catalog = catalogs[language]
         for path, page in PAGES.items():

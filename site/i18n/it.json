@@ -401,5 +401,21 @@
   "ex_grant_title": "Un'autorizzazione, per un peer",
   "ex_grant_text": "Il server firma una breve dichiarazione che un client può leggere un file; un peer che ha il file la verifica con la chiave pubblica del server, senza interpellare nessuno.",
   "ex_grant_h_payload": "Ciò che il server firma (JSON, chiavi in quest'ordine, senza spazi)",
-  "ex_grant_h_grant": "L'autorizzazione: il payload e la sua firma, ciascuno in base64url"
+  "ex_grant_h_grant": "L'autorizzazione: il payload e la sua firma, ciascuno in base64url",
+  "footer_translations": "Traduzioni",
+  "title_translations": "Traduzioni di Lantern",
+  "description_translations": "Le lingue di questo sito, quali hanno la specifica tradotta e quanto è aggiornata ogni traduzione.",
+  "tr_eyebrow": "Traduzioni",
+  "tr_title": "Traduzioni",
+  "tr_lede": "Questo sito parla quindici lingue e la specifica è tradotta in alcune: cosa ha ciascuna e quanto è aggiornata.",
+  "tr_note": "Solo il testo inglese della specifica fa fede; una traduzione è informativa e dice quale testo inglese traduce. Anche i testi del sito sono tradotti e nessuno è ancora stato rivisto da un madrelingua.",
+  "tr_col_lang": "Lingua",
+  "tr_col_site": "Il sito e le sue figure",
+  "tr_col_spec": "La specifica",
+  "tr_original": "L'originale",
+  "tr_site": "Tradotto, in attesa di una revisione madrelingua",
+  "tr_spec_current": "Tradotta, aggiornata alla bozza {v}",
+  "tr_spec_behind": "Tradotta per la bozza {v}; il testo è cambiato da allora",
+  "tr_spec_none": "Solo il testo inglese",
+  "tr_help": "Per tradurre la specifica o correggere un testo del sito, vedi"
 }
