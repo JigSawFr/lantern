@@ -579,3 +579,11 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 .start-steps h3 { margin: 0 0 2px; color: var(--snow); font: 600 17px/1.4 var(--display); letter-spacing: -0.01em; }
 .start-steps p { margin: 0 0 0.5rem; }
 .start-steps pre { margin: 0; }
+
+/* Under each heading of the specification (tools/build_site.py, section_aids()): the draft the section first
+   appeared in, and a link that opens an issue about it. */
+.sec-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0.25rem 0 1rem; font-size: 0.8125rem; color: var(--dusk); }
+.sec-meta .since { padding: 0 0.6rem; border: 1px solid var(--night-line); border-radius: 999px; color: var(--mist); }
+.sec-meta .ask { display: inline-flex; align-items: center; min-height: 24px; color: var(--dusk); text-decoration: underline; text-underline-offset: 3px; }
+.sec-meta .ask:hover, .sec-meta .ask:focus-visible { color: var(--ice); }
+@media print { .sec-meta .ask { display: none; } }

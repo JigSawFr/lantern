@@ -357,5 +357,8 @@
   "dg_threats_caption": "Waartegen Lantern beschermt",
   "dg_view_drawing": "Tekening tonen",
   "dg_view_list": "Als lijst tonen",
-  "spec_annex_d": "Waar te beginnen per rol, een woordenlijst en een lijst van wat wie beschermt."
+  "spec_annex_d": "Waar te beginnen per rol, een woordenlijst en een lijst van wat wie beschermt.",
+  "spec_ask": "Vraag over deze sectie",
+  "spec_ask_title": "Opent een GitHub-issue dat deze sectie noemt",
+  "spec_since": "sinds concept {v}"
 }
