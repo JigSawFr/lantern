@@ -34,3 +34,7 @@ SITE_AXE=axe.min.js python3 library/boreale-site/tools/site_layout.py build   # 
 - No e-mail address anywhere: contact goes through the repository's issues (`check_site.py` checks it).
 
 `.github/workflows/site.yml` checks the submodule out (`submodules: true`), builds and checks the site for each pull request touching it (a move of `library/boreale-site` included), and publishes main's on GitHub Pages (*Settings › Pages › Source: GitHub Actions*; the custom domain is written in `build/CNAME` too).
+
+## The social preview
+
+`site/assets/social-preview.png` (1280 × 640, the image of a link shared on a network) is `site/social-preview.html` drawn by a browser: the lantern mark, the sentence and the home page's overview figure (`figures/overview.svg`). When the sentence or the figure changes, run `python3 tools/diagrams.py write`, open the page at 1280 × 640 (Playwright's `page.screenshot`) and replace the PNG.
