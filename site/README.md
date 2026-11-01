@@ -42,3 +42,8 @@ SITE_AXE=axe.min.js python3 library/boreale-site/tools/site_layout.py build   # 
 ## The quick start
 
 `site/start.html` (`/start/`): three `curl` commands against the demo library (its handshake, its Vita apps, one file hashed with `sha256sum`: `DEMO_FILE` of `tools/build_site.py`, which `tests/test_demo.py` checks against the demo), three against a made-up server (find it, pair, call it) and the first connection's figure with its stepper.
+
+## The feed and the printed text
+
+`/feed.xml` is an Atom feed (RFC 4287) of the drafts, newest first, from the "Changes" of SPEC.md (`atom_feed()` in `tools/build_site.py`, `tests/test_feed.py`); every page names it in its head. The specification's page prints as a document of its own (`site.css`, `@media print`): the text alone, in ink on white, its external links spelt out, no contents, search, aids or way to the next section; a button (`site/assets/spec.js`) opens the browser's print dialog, which saves a PDF. No PDF is a release asset: a release is reproducible and standard-library only (`tools/release.py`), which a browser's PDF is not.
+

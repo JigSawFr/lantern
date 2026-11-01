@@ -360,5 +360,6 @@
   "spec_annex_d": "Da dove cominciare in base al ruolo, un glossario e l'elenco di ciò che protegge chi.",
   "spec_ask": "Chiedi su questa sezione",
   "spec_ask_title": "Apre una issue su GitHub che nomina questa sezione",
-  "spec_since": "dalla bozza {v}"
+  "spec_since": "dalla bozza {v}",
+  "spec_print": "Stampa o salva come PDF"
 }

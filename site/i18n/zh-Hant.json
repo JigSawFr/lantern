@@ -360,5 +360,6 @@
   "spec_annex_d": "依角色從哪裡讀起、術語表,以及什麼保護誰的檢核清單。",
   "spec_ask": "就本節提問",
   "spec_ask_title": "將在 GitHub 上開啟一個指明本節的 issue",
-  "spec_since": "自草案 {v} 起"
+  "spec_since": "自草案 {v} 起",
+  "spec_print": "列印或另存為 PDF"
 }

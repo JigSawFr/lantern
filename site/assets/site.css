@@ -587,3 +587,22 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 .sec-meta .ask { display: inline-flex; align-items: center; min-height: 24px; color: var(--dusk); text-decoration: underline; text-underline-offset: 3px; }
 .sec-meta .ask:hover, .sec-meta .ask:focus-visible { color: var(--ice); }
 @media print { .sec-meta .ask { display: none; } }
+
+/* The specification's print button (site/assets/spec.js shows it), and its page on paper: the text alone, on
+   white, in ink, with its links spelt out where they leave the page; no contents, no search, no way to the
+   next section, no aids under the headings. */
+.spec-print { align-self: start; min-height: 32px; padding: 0 0.9rem; border: 1px solid var(--night-line); border-radius: 999px; background: none;
+  color: var(--mist); font: inherit; font-size: 0.8125rem; cursor: pointer; }
+.spec-print:hover { color: var(--snow); border-color: var(--ice); }
+.spec-print:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
+@media print {
+  .spec-side, .sec-nav, .sec-meta, .annex-cards, .drafts, .spec-print, .req-copy, .sec-top { display: none !important; }
+  .spec-layout { display: block; padding: 0; }
+  body.spec, body.spec main { background: #fff; color: #000; }
+  .prose, .prose p, .prose li, .prose td, .prose th, .prose h2, .prose h3, .prose h4 { color: #000; }
+  .prose a { color: #000; text-decoration: underline; }
+  .prose pre, .prose code { color: #000; background: #f4f4f4; border-color: #bbb; white-space: pre-wrap; overflow: visible; }
+  .prose table { break-inside: avoid; }
+  .prose h2, .prose h3 { break-after: avoid; }
+  .prose a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.8em; word-break: break-all; }
+}

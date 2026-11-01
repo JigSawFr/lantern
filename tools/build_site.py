@@ -491,7 +491,9 @@ def spec_body(spec: dict, catalog: dict, lang: str = "en", source: str = f"{REPO
     writes), `cards` the annexes' under the header (the current text's)."""
     texts = " ".join(f'data-{k.replace("_", "-")}="{html.escape(catalog["spec_" + k], quote=True)}"'
                      for k in ("copy", "copied", "copy_failed"))
-    side = (search_form(catalog, root) if search else "") + toc_html(spec, catalog["spec_toc"], lang)
+    # The print button is hidden until site/assets/spec.js runs: the browser's own print gives the PDF.
+    printing = f'<button type="button" class="spec-print" hidden>{html.escape(catalog["spec_print"])}</button>'
+    side = (search_form(catalog, root) if search else "") + toc_html(spec, catalog["spec_toc"], lang) + printing
     text = "\n".join(html_ + "\n" + section_nav(spec["parts"], i, catalog, ui) for i, (_, _, html_) in enumerate(spec["parts"]))
     text = put_diagrams(text, catalog, spec["sections"], drawn, ui, meta)
     return (f'{annex_cards(spec, catalog, lang) if cards else ""}'
@@ -1056,6 +1058,39 @@ def changes_notes(text: str) -> dict:
     return notes
 
 
+def atom_feed(notes: dict) -> str:
+    """feed.xml, an Atom feed (RFC 4287) of the drafts, newest first: for each, the sentence its "Changes" entry
+    opens with, its date, and a link to its page (spec/<draft>/). A new draft is what an author of a client or
+    a server wants to hear of."""
+    entries = []
+    for v, _, _ in reversed(DRAFTS):
+        lines = notes.get(v)
+        if not lines:
+            continue
+        head = re.match(r"- \d+\.\d+ \((\d{4}-\d{2}-\d{2})\):\s*(.*)", lines[0])
+        if not head:
+            continue
+        date, summary = head.group(1), [head.group(2)]
+        for line in lines[1:]:
+            if not line.strip() or re.match(r"\s*- ", line):
+                break
+            summary.append(line.strip())
+        text = " ".join(summary).strip()
+        text = re.sub(r"\*\*|`", "", text)
+        entries.append(
+            f"  <entry>\n    <id>tag:{urlparse(SITE_URL).hostname},{date}:spec-{v}</id>\n"
+            f"    <title>Draft {v}</title>\n    <updated>{date}T00:00:00Z</updated>\n"
+            f'    <link rel="alternate" type="text/html" href="{html.escape(SITE_URL)}spec/{v}/"/>\n'
+            f"    <summary>{html.escape(text)}</summary>\n  </entry>\n")
+    updated = max((re.search(r"<updated>([^<]+)</updated>", e).group(1) for e in entries), default="2026-10-30T00:00:00Z")
+    return ('<?xml version="1.0" encoding="utf-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">\n'
+            f"  <id>tag:{urlparse(SITE_URL).hostname},2026:drafts</id>\n  <title>Lantern: the drafts of the specification</title>\n"
+            f"  <subtitle>A new draft of the Lantern protocol, and what it changes.</subtitle>\n  <updated>{updated}</updated>\n"
+            f'  <link rel="self" type="application/atom+xml" href="{html.escape(SITE_URL)}feed.xml"/>\n'
+            f'  <link rel="alternate" type="text/html" href="{html.escape(SITE_URL)}spec/"/>\n'
+            f"  <author><name>Lantern</name></author>\n" + "".join(entries) + "</feed>\n")
+
+
 def changes_body(drafts: list) -> str:
     """spec/changes/: each draft, what its "Changes" says, and its sections against the draft before."""
     notes = changes_notes(SPEC.read_text(encoding="utf-8"))
@@ -1419,6 +1454,7 @@ def main() -> None:
     (out / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
         + "".join(f"  <url><loc>{html.escape(u)}</loc></url>\n" for u in urls) + "</urlset>\n", encoding="utf-8")
+    (out / "feed.xml").write_text(atom_feed(changes_notes(SPEC.read_text(encoding="utf-8"))), encoding="utf-8")
     # The trapped libraries are for clients under test, not for search engines (their page says noindex too).
     (out / "robots.txt").write_text(f"User-agent: *\nAllow: /\nDisallow: /demo/trapped/\nSitemap: {SITE_URL}sitemap.xml\n",
                                     encoding="utf-8")
