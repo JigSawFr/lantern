@@ -360,5 +360,6 @@
   "spec_annex_d": "Where to start by role, a glossary and a checklist of what protects whom.",
   "spec_ask": "Ask about this section",
   "spec_ask_title": "Opens an issue on GitHub that names this section",
-  "spec_since": "since draft {v}"
+  "spec_since": "since draft {v}",
+  "spec_print": "Print or save as PDF"
 }

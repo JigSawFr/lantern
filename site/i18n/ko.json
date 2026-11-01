@@ -360,5 +360,6 @@
   "spec_annex_d": "역할별 시작점, 용어집, 무엇이 누구를 지키는지 점검 목록.",
   "spec_ask": "이 절에 대해 질문",
   "spec_ask_title": "이 절을 지목한 GitHub 이슈를 엽니다",
-  "spec_since": "초안 {v}부터"
+  "spec_since": "초안 {v}부터",
+  "spec_print": "인쇄 또는 PDF로 저장"
 }

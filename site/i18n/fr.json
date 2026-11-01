@@ -360,5 +360,6 @@
   "spec_annex_d": "Par où commencer selon son rôle, un glossaire et la liste de ce qui protège qui.",
   "spec_ask": "Poser une question",
   "spec_ask_title": "Ouvre un ticket GitHub qui nomme cette section",
-  "spec_since": "depuis le brouillon {v}"
+  "spec_since": "depuis le brouillon {v}",
+  "spec_print": "Imprimer ou enregistrer en PDF"
 }

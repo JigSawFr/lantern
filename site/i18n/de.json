@@ -360,5 +360,6 @@
   "spec_annex_d": "Wo man je nach Rolle anfängt, ein Glossar und eine Liste dessen, was wen schützt.",
   "spec_ask": "Frage zu diesem Abschnitt",
   "spec_ask_title": "Öffnet ein GitHub-Issue, das diesen Abschnitt nennt",
-  "spec_since": "seit Entwurf {v}"
+  "spec_since": "seit Entwurf {v}",
+  "spec_print": "Drucken oder als PDF speichern"
 }

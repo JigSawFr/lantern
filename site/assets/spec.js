@@ -138,6 +138,13 @@
     });
   }
 
+  // ---- Print: the browser's print dialog, which saves a PDF (site.css has the print layout of the text).
+  const printer = layout.querySelector('.spec-print');
+  if (printer) {
+    printer.hidden = false;
+    printer.addEventListener('click', () => window.print());
+  }
+
   // ---- Scrolling tables and code: an edge fades while there is more to scroll to.
   function edges(el) {
     el.classList.toggle('more-left', el.scrollLeft > 2);
