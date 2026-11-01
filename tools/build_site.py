@@ -92,7 +92,7 @@ DRAFTS = [
     ("0.5", "ca10e3146a6300cc99814e2290de5da97c735965", 11),
     ("0.6", "9871962a35d336b3fb0906cd4e049858817962cb", 13),
     ("0.7", "8f34dd69ef50b4952b6231a56276bb1236b2051b", 15),
-    ("0.8", None, None),
+    ("0.8", "5ac42b8c73d60d44df6d2557fccb0c92abd00324", 30),
 ]
 # The specification's informative translations (site/translations/), by
 # the catalogs whose spec/ page shows them; each says the English commit it
