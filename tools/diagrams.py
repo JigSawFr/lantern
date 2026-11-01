@@ -269,9 +269,11 @@ def figure(name: str, svg: str, steps: list, catalog: dict) -> str:
             f'<ol class="sr">{items}</ol></figure>')
 
 
-def svg_open(w: float, h: float, name: str, catalog: dict) -> str:
+def svg_open(w: float, h: float, name: str, catalog: dict, links: bool = False) -> str:
+    # A drawing is an image; one whose boxes are links is a group, or the links would sit inside an image.
+    role = "group" if links else "img"
     return (f'<svg class="dg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w:.0f} {h:.0f}" width="{w:.0f}" '
-            f'height="{h:.0f}" role="img" aria-label="{esc(catalog[f"dg_{name}_caption"])}">'
+            f'height="{h:.0f}" role="{role}" aria-label="{esc(catalog[f"dg_{name}_caption"])}">'
             '<defs><marker id="dg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
             'orient="auto-start-reverse"><path class="dg-head" d="M0 0L10 5L0 10z"/></marker></defs>')
 
@@ -444,7 +446,7 @@ def columns(name: str, spec: dict, catalog: dict, sections: dict) -> tuple:
                 parts.append(f"{label} (§ {ref})")
             alt.append(f"{text}: " + ", ".join(parts))
         y = top + 34 + tallest * step + 6 + 12
-    return svg_open(width, y, name, catalog) + "".join(body) + "</svg>", alt
+    return svg_open(width, y, name, catalog, links=True) + "".join(body) + "</svg>", alt
 
 
 def render(name: str, catalog: dict, sections: dict | None = None) -> str:
