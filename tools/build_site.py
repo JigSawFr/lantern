@@ -92,6 +92,7 @@ DRAFTS = [
     ("0.5", "ca10e3146a6300cc99814e2290de5da97c735965", 11),
     ("0.6", "9871962a35d336b3fb0906cd4e049858817962cb", 13),
     ("0.7", "8f34dd69ef50b4952b6231a56276bb1236b2051b", 15),
+    ("0.8", None, None),
 ]
 # The specification's informative translations (site/translations/), by
 # the catalogs whose spec/ page shows them; each says the English commit it
@@ -99,7 +100,7 @@ DRAFTS = [
 TRANSLATIONS = {"fr": "SPEC.fr.md", "fr-CA": "SPEC.fr.md"}
 
 REQ = re.compile(r"\[(L-(?:\d+(?:\.\d+)?|[A-Z](?:\.\d+)?)-\d+)\]")
-DRAFT = "0.7"   # the draft the badges name (SPEC.md § 17)
+DRAFT = "0.8"   # the draft the badges name (SPEC.md § 17)
 LEVELS = [("core", "Core"), ("titles", "+titles"), ("homebrew", "+homebrew"), ("saves", "+saves"),
           ("cheats", "+cheats"), ("requests", "+requests"), ("admin", "+admin"), ("events", "+events"),
           ("peers", "+peers"), ("sync", "+sync"), ("encrypted_saves", "+encrypted_saves"), ("deltas", "+deltas"),
@@ -376,10 +377,10 @@ def status_chips(spec: dict, catalog: dict) -> str:
 
 def annex_cards(spec: dict, catalog: dict, lang: str) -> str:
     """A card for each of the annexes the page's text has (A: platforms, B: client authors, C: the road to
-    1.0), under the page's header; their titles are the text's, their words the catalog's."""
+    1.0, D: reading guide), under the page's header; their titles are the text's, their words the catalog's."""
     cards = []
     for anchor, text, _ in spec["toc"]:
-        m = re.match(r"Annexe? ([A-C]) — (.*)", text)
+        m = re.match(r"Annexe? ([A-D]) — (.*)", text)
         if m and f"spec_annex_{m.group(1).lower()}" in catalog:
             cards.append(f'<li><a href="#{anchor}"><span class="annex-k" lang="{lang}">{html.escape(text.split(" — ")[0])}</span>'
                          f'<strong lang="{lang}">{html.escape(m.group(2))}</strong>'
