@@ -91,6 +91,7 @@ class DiagramsTest(unittest.TestCase):
     def test_a_figure_offers_its_downloads_where_it_is_given_a_file(self):
         with_file = diagrams.render("connect", CATALOGS["en-US"], None, "figures/connect.en.svg")
         self.assertIn('data-src="figures/connect.en.svg"', with_file)
+        self.assertIn('data-kind="view"', with_file)   # the drawing, or the list of its steps
         self.assertNotIn("dg-tools", diagrams.render("connect", CATALOGS["en-US"]))
 
     def test_a_sequence_can_be_stepped_through_and_a_graph_cannot(self):

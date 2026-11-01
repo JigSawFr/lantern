@@ -390,7 +390,9 @@ def figure(name: str, svg: str, steps: list, catalog: dict, src: str | None = No
     if src:
         tools = (f'<p class="dg-tools" hidden data-src="{esc(src)}">'
                  f'<a data-kind="svg" title="{esc(catalog["dg_download_svg"])}">SVG</a>'
-                 f'<button type="button" data-kind="png" title="{esc(catalog["dg_download_png"])}">PNG</button></p>')
+                 f'<button type="button" data-kind="png" title="{esc(catalog["dg_download_png"])}">PNG</button>'
+                 f'<button type="button" data-kind="view" data-list="{esc(catalog["dg_view_list"])}" '
+                 f'data-drawing="{esc(catalog["dg_view_drawing"])}" aria-pressed="false">{esc(catalog["dg_view_list"])}</button></p>')
     if stepper:
         tools += (f'<p class="dg-stepper" hidden data-steps="{len(steps)}">'
                   f'<button type="button" data-do="prev">{esc(catalog["dg_step_prev"])}</button>'
@@ -661,7 +663,7 @@ def export(directory: Path, check: bool = False) -> list:
 
 def keys() -> set:
     """Every catalog key the diagrams use."""
-    found = {"dg_download_svg", "dg_download_png", "dg_step_prev", "dg_step_next", "dg_step_all"}
+    found = {"dg_download_svg", "dg_download_png", "dg_view_list", "dg_view_drawing", "dg_step_prev", "dg_step_next", "dg_step_all"}
     for name, spec in DIAGRAMS.items():
         found |= {f"dg_{name}_caption"}
         items = list(spec.get("actors", []))

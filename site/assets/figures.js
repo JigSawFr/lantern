@@ -1,5 +1,5 @@
-// The figures (tools/diagrams.py, site/README.md): the buttons that download one as SVG or PNG, and the
-// ones that walk through a sequence step by step. Every text it shows is the figure's own markup (the page's
+// The figures (tools/diagrams.py, site/README.md): the buttons that download one as SVG or PNG or show it as
+// the list of its steps, and the ones that walk through a sequence step by step. Every text it shows is the figure's own markup (the page's
 // catalog); the buttons are hidden until here, so without script there are none and the figure is whole.
 'use strict';
 
@@ -29,6 +29,14 @@
         a.download = name.replace(/\.svg$/, '.png');
         a.click();
       } catch (e) { /* the SVG link stays */ }
+    });
+    // The drawing or the list of its steps (the same ones a screen reader is given).
+    const view = tools.querySelector('[data-kind="view"]');
+    const figure = tools.closest('figure');
+    view.addEventListener('click', () => {
+      const list = figure.classList.toggle('dg-list');
+      view.textContent = list ? view.dataset.drawing : view.dataset.list;
+      view.setAttribute('aria-pressed', String(list));
     });
     tools.hidden = false;
   }
