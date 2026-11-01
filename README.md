@@ -9,8 +9,8 @@ backups and cheats.
 
 Website: <https://lantern.boreale.dev/?utm_source=github&utm_medium=readme>.
 
-**Status: draft 0.7**: differential updates and browser clients, on a core
-ready for 1.0. The text may still change before 1.0; comments and issues are
+**Status: draft 0.8**: a reading guide, a glossary and a checklist on top of
+0.7's differential updates and browser clients, on a core ready for 1.0. The text may still change before 1.0; comments and issues are
 welcome, from client and server authors especially.
 
 - **[The specification](SPEC.md)**: REST and JSON, versioned by path (`/v1/`)
@@ -87,6 +87,11 @@ welcome, from client and server authors especially.
     sums and build provenance attestations (below);
   - a suite that reads the mirrors' bytes (`--fetch-mirrors`) and fills a
     peer's slots, and unit tests that run in a few minutes.
+- **What 0.8 adds**: Annex D, a reading guide (what to read first for a static
+  client, a client with accounts, a homebrew installer, a server, a peer…), a
+  glossary and a checklist of the requirements that protect a client and a
+  server; and Annex C's state of each part of the text. Nothing in the
+  protocol changes.
 - **What 0.7 adds**:
   - **differential updates** (`deltas`): a file cut into chunks by a
     content-defined chunker spelled out to the byte, an index per file in
@@ -255,7 +260,7 @@ and their SHA-256 sums. The release workflow builds them reproducibly from
 the tag and has GitHub attest their provenance; to check a file:
 
 ```sh
-gh attestation verify lantern-0.7.zip --repo JigSawFr/lantern
+gh attestation verify lantern-0.8.zip --repo JigSawFr/lantern
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 

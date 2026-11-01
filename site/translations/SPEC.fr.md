@@ -12,11 +12,11 @@ source: SPEC.fr.md sur GitHub
 -->
 # Lantern — un protocole ouvert pour les serveurs de bibliothèques de jeux
 
-Brouillon 0.7, 2026-10-30. Statut : **brouillon**, susceptible de changer jusqu'à la 1.0
+Brouillon 0.8, 2026-11-01. Statut : **brouillon**, susceptible de changer jusqu'à la 1.0
 (l'annexe C dit ce qu'elle attend).
 Ce texte est publié sous licence [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
-**Traduction informative.** Ce texte traduit en français le brouillon 0.7
+**Traduction informative.** Ce texte traduit en français le brouillon 0.8
 de la spécification. Seul le texte anglais fait foi : en cas de doute ou
 d'écart, c'est lui qui s'applique. Les identifiants d'exigence
 (`[L-5.2-3]`), le code, les noms de champs, les documents JSON et les mots
@@ -52,7 +52,7 @@ une possibilité laissée au choix de l'implémentation. Chaque exigence porte
 un identifiant stable, écrit à côté d'elle entre crochets, comme
 `[L-5.2-3]` : le § 3.5 dit comment les identifiants sont tenus, et la suite
 de conformité (§ 17) nomme ceux que couvre chacun de ses contrôles.
-L'annexe B donne des conseils aux auteurs de clients, sans exigences.
+L'annexe B donne des conseils aux auteurs de clients, sans exigences ; l'annexe D est un guide de lecture, un glossaire et une liste de contrôle, elle aussi sans exigences.
 
 ## 1. Principes
 
@@ -413,7 +413,7 @@ sa section « Modifications » le dit.
 ### 3.6 Versions publiées
 
 Chaque version de ce texte est publiée sur le dépôt, par une étiquette
-`spec-v<version>` (`spec-v0.7`) : sa release contient SPEC.md, les
+`spec-v<version>` (`spec-v0.8`) : sa release contient SPEC.md, les
 schémas, leurs exemples, les vecteurs de test, `openapi.yaml` et la suite
 de conformité, chacun comme un fichier à part et tous dans un zip, avec
 leurs sommes SHA-256 dans `SHA256SUMS`. GitHub atteste que chaque fichier a
@@ -422,7 +422,7 @@ dépôt (une attestation de provenance de build, SLSA). Pour vérifier un
 fichier :
 
 ```sh
-gh attestation verify lantern-0.7.zip --repo JigSawFr/lantern
+gh attestation verify lantern-0.8.zip --repo JigSawFr/lantern
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
@@ -2315,7 +2315,7 @@ sur un serveur public). Chaque niveau d'un serveur exige `Lantern Core` ;
 
 **Le nom.** Seule une implémentation qui passe la suite à un niveau peut se
 dire « Lantern compatible » et afficher le badge, avec ce niveau et la
-version du texte : « Lantern compatible 0.7 · Core +titles ». Les badges et
+version du texte : « Lantern compatible 0.8 · Core +titles ». Les badges et
 le registre des implémentations sont
 [sur le site](https://lantern.boreale.dev/conformance/) ; une
 implémentation rejoint le registre par une pull request accompagnée de son
@@ -3518,9 +3518,9 @@ de l'appareil.
 
 Non normatif : ce dont ce texte a besoin avant sa version 1.0, quand
 `/v1/` et le `schema` 1 cesseront de changer de forme, et où en est chaque
-critère à ce brouillon, le 0.7.
+critère à ce brouillon, le 0.8.
 
-| | Critère | Où il en est au 0.7 |
+| | Critère | Où il en est au 0.8 |
 |---|---|---|
 | 1 | **Deux serveurs et deux clients indépendants** atteignent `Lantern Core` avec la suite de conformité, chacun écrit à partir de ce texte par des personnes qui n'ont pas écrit les autres, et chaque paire d'entre eux fonctionne ensemble : appairage, listage, téléchargement, ce qui manque. | Ouvert. Un serveur passe la suite, le serveur de référence de ce dépôt ; les bibliothèques de lantern-sdk sont écrites par les auteurs de ce texte et ne comptent pas. Le registre du site liste qui passe la suite. |
 | 2 | **Un cœur sans question ouverte** : chaque section du § 2 au § 14, et le § 17, sans partie marquée « à vérifier », et aucun ticket étiqueté comme question à leur sujet encore ouvert. | Rempli. Le 0.6 a tranché ce que le cœur laissait ouvert, et le 0.7 ce que les navigateurs lui demandent (§ 2.5) et la forme canonique des nombres (§ 2.3) ; leurs Modifications listent chaque point. Aucune de ces sections n'est marquée « à vérifier », et la liste ci-dessous ne contient aucune question à leur sujet. Il le reste tant qu'aucun ticket étiqueté comme question à leur sujet n'est ouvert. |
@@ -3546,6 +3546,89 @@ Ensuite, à la 1.0 :
 
 Les clients dans un navigateur (§ 2.5, annexe A.7) et les mises à jour par
 différences (§ 22), sur la liste jusqu'au 0.6, sont tranchés par le 0.7.
+
+**Où en est chaque partie.** Ce n'est pas une promesse : l'état du texte à ce brouillon.
+
+| Partie | État au 0.8 |
+|---|---|
+| § 2 à § 14, et § 17 : le cœur | Tranché : aucune partie marquée « à vérifier » (critère 2). |
+| § 5.4, § 9.4 et § 19 : les requêtes signées, les sauvegardes chiffrées, les autorisations et les pairs | Tranché dans ce texte, et encore à faire relire par quelqu'un qui ne les a pas écrits (critère 4). |
+| § 7 à § 11 et § 18 à § 22 : les familles au-delà du cœur | Tranché dans leur forme ; elles pourront encore grandir par ajouts après la 1.0 (§ 3.5). |
+| Annexe A : le profil de la Switch | Complet. |
+| Annexe A.2 à A.6 : les profils des autres brouillons | En brouillon, chacun avec ses « (à vérifier) », à trancher par quelqu'un qui connaît la plateforme. |
+| Annexe A.7 : le navigateur | Tranché par le 0.7. |
+
+## Annexe D — Guide de lecture, glossaire et liste de contrôle
+
+Non normatif : une aide pour lire ce texte, sans exigence propre. Quand elle et une section diffèrent, la section l'emporte.
+
+### D.1 Par où commencer
+
+Le texte est long, et un client ou un serveur n'a pas besoin de tout. Le tableau dit quoi lire d'abord selon le travail en cours, puis ce que ce travail peut ajouter.
+
+| Vous écrivez | À lire d'abord | Ensuite, selon le travail |
+|---|---|---|
+| Un client d'une bibliothèque statique (un hébergeur web, une clé USB) | § 2, § 3, § 4.2, § 4.3, § 6.1, § 6.2, § 6.6, § 21 ; l'annexe A pour la plateforme | § 7 (titres), § 8 (homebrews), § 22 (mises à jour par leurs différences) |
+| Un client d'un serveur à comptes | la même chose, puis § 4.1, § 5, § 12, § 13, § 14 | l'annexe B ; les familles qu'il utilise, § 7 à § 11 |
+| Un installeur de homebrews | § 8, avec les chemins et les racines de l'annexe A | § 8.4 (signatures), § 8.6 (portages de jeux), § 22 |
+| Des sauvegardes | § 9 | § 9.4 (chiffrement sur l'appareil et sa clé) |
+| Un client qui tourne en arrière-plan (domotique, homebrew d'une console pendant que son utilisateur joue) | § 18, § 6.4, annexe B.10 | § 20 (synchro) |
+| Un serveur | § 2 à § 6, § 12 à § 14, § 17 | § 15 et § 16 ; puis chaque famille qu'il offre |
+| Un miroir ou un pair | § 19 | § 6.6 (fichiers et plages) |
+| Une bibliothèque en simples fichiers | § 21 | § 22 (les index de blocs que contient une bibliothèque statique) |
+
+### D.2 Glossaire
+
+Chaque mot est celui du texte ; la section qui le suit le définit.
+
+- **Compte** (*account*) : à qui appartient un jeton, avec son nom, son état (`anonymous`, `active` ou `frozen`) et ses portées (§ 4.2, § 5).
+- **Appli** (*app*) : un jeu, une mise à jour ou un contenu additionnel d'une plateforme qu'une bibliothèque liste : son identifiant de titre, son identifiant d'appli, son type, sa version, sa taille, son format, son `sha256` et son fichier (§ 6.1).
+- **Base** : le chemin sous lequel un serveur sert ses routes, donné en `base` dans son handshake (§ 2).
+- **Jeton porteur seul** (*bearer-only*) : un jeton qu'aucune clé d'appareil ne lie, si bien que quiconque le détient peut s'en servir (§ 5.4).
+- **Bloc** (*chunk*) : une partie d'un fichier, découpée par une règle qui ne dépend que des octets, si bien que deux versions d'un fichier partagent les blocs qui n'ont pas changé (§ 22).
+- **Fonction** (*feature*, aussi **famille**) : un groupe de routes qu'un serveur déclare dans `features`, avec le `schema` qu'il écrit, ou `0` quand il ne l'offre pas à cet appelant (§ 4.2).
+- **Autorisation** (*grant*) : une courte déclaration, signée par le serveur, qui permet à un pair de servir un fichier à un client sans interroger le serveur (§ 19.3).
+- **Handshake** : le document à `/.well-known/lantern` et à `<base>/v1/` qui dit ce qu'est un serveur, ce qu'il offre et ses limites (§ 4.2).
+- **Homebrew** : un programme ou un portage de jeu avec un manifeste qui dit où va chacun de ses fichiers (§ 8).
+- **Index** (de blocs) : le document qui liste les blocs d'un fichier, chacun par sa taille et son SHA-256 (§ 22.1).
+- **Invitation** : un code ou un lien fait par un admin, avec lequel un appareil s'apparie sans que personne se connecte (§ 5.5).
+- **Miroir** : une autre adresse qui sert les mêmes octets d'un fichier (§ 19.2).
+- **Pair** (*peer*) : une console appariée qui sert, sur son réseau, les fichiers de son serveur qu'elle détient (§ 19.4).
+- **Épinglage** (*pinning*) : garder le SHA-256 entier de la clé d'un serveur pour son `uid` et refuser toute autre (§ 5.3).
+- **Plateforme** et **profil** : la plateforme sur laquelle tourne une appli, et la partie de l'annexe A qui dit ce qui change pour elle : identifiants, formats, chemins et racines (§ 4.3).
+- **Portée** (*scope*) : ce qu'un jeton laisse faire à son appareil : `library`, `saves`, `cheats`, `cheats.write`, `requests`, `admin`, `sync.read`, `sync.write` (§ 4.2).
+- **Schéma** (*schema*) : l'entier de chaque document qui dit sa forme, qu'un lecteur qui ne la connaît pas laisse de côté (§ 3.2).
+- **Source locale** (*seed*) : des octets d'une version plus ancienne qu'un client détient et dont il prend des blocs pour reconstituer un fichier plus récent (§ 22.3).
+- **Bibliothèque statique** : une bibliothèque servie en fichiers qui ne changent que quand on les réécrit (§ 21).
+- **Jeton** (*token*) : le secret qu'un appareil détient pour un serveur, que l'utilisateur peut révoquer depuis le serveur (§ 5.1).
+- **`uid`** : l'UUID qui identifie un serveur et ne change jamais (§ 4.2).
+
+### D.3 Liste de contrôle : ce qui protège qui
+
+Une aide à la lecture du § 15 et du § 16, tirée des exigences qui portent le poids. Chaque ligne nomme l'exigence ; la section en donne les mots exacts.
+
+**Un client :**
+
+- vérifie le certificat ou la clé qu'il a épinglée, et ne parle en HTTP simple que sur la boucle locale (`L-2-1`, `L-2-2`) ;
+- montre l'empreinte courte de la clé à l'appairage, épingle le SHA-256 entier et échoue devant une autre clé (`L-5.3-1`, `L-5.3-3`, `L-5.3-4`) ;
+- signe chaque requête qui porte un jeton lié, et n'envoie jamais sa clé privée (`L-5.4-3`, `L-5.4-4`) ;
+- vérifie le SHA-256 d'un téléchargement, et pour un fichier reconstitué à partir de blocs, chaque bloc puis l'ensemble (`L-6.6-5`, `L-22.3-2`) ;
+- traite un miroir ou un pair comme non fiable et ne lui envoie aucun identifiant (`L-19.1-1`, `L-19.1-2`) ;
+- vérifie la signature d'un homebrew et épingle la clé de son auteur (`L-8.4-2`, `L-8.4-3`) ;
+- n'envoie jamais la clé des sauvegardes à un serveur ou à un pair, et refuse une phrase mal saisie (`L-9.4-2`, `L-9.4-7`) ;
+- demande à son utilisateur avant de synchroniser quoi que ce soit (`L-20.1-1`) ;
+- borne tout ce qu'il lit (`L-13-1`).
+
+**Un serveur :**
+
+- offre les clés d'appareil, vérifie chaque signature dans l'ordre que donne le texte et garde les nonces vus (`L-5.4-1`, `L-5.4-6`, `L-5.4-9`) ;
+- refuse les clés d'ordre faible, à l'appairage et dans une signature (`L-5.4-12`, `L-8.4-5`) ;
+- laisse un code d'appairage expirer en dix minutes, limite les essais, et n'approuve jamais par l'appareil qui s'apparie (`L-5.2-6`, `L-5.2-8`, `L-5.2-2`) ;
+- refuse une invitation inconnue, expirée, révoquée ou épuisée, compte ses appareils et limite les essais (`L-5.5-1`, `L-5.5-2`, `L-5.5-3`) ;
+- ne donne une autorisation que pour un fichier que l'appelant peut lire, pour quinze minutes au plus (`L-19.3-1`, `L-19.3-2`) ;
+- garde les octets d'une sauvegarde chiffrée tels qu'envoyés (`L-9.4-4`).
+
+**Un pair** ne sert qu'avec une autorisation qui se vérifie, que des fichiers qu'il détient en entier, et qu'aux adresses de ses propres réseaux (`L-19.4-1`, `L-19.4-2`, `L-19.4-3`).
 
 ## Modifications {#changes}
 
@@ -3920,3 +4003,12 @@ différences (§ 22), sur la liste jusqu'au 0.6, sont tranchés par le 0.7.
     d'une bibliothèque statique à une page de cette origine ; la suite ne
     demande `zstd` que quand son Python sait le lire, et vérifie les images
     du serveur de référence sur sa propre origine (§ 7.1).
+- 0.8 (2026-11-01) : un guide de lecture, un glossaire et une liste de
+  contrôle, et l'état de chaque partie ; rien d'autre. Aucune route,
+  aucun champ, aucun code ni aucune exigence ne change, et la suite, le
+  serveur de référence et `openapi.yaml` ne changent que de version.
+  - Annexe D (nouvelle, non normative) : par où commencer selon ce qu'on
+    écrit (D.1), un glossaire (D.2) et une liste de contrôle des
+    exigences qui protègent un client et un serveur, par leurs
+    identifiants (D.3).
+  - Annexe C : l'état de chaque partie du texte à ce brouillon.

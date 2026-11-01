@@ -1,6 +1,6 @@
 # Lantern — an open protocol for game library servers
 
-Draft 0.7, 2026-10-30. Status: **draft**, open to change until 1.0 (Annex C says what it
+Draft 0.8, 2026-11-01. Status: **draft**, open to change until 1.0 (Annex C says what it
 waits for).
 This text is licensed under [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
@@ -22,7 +22,7 @@ The key words MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT and MAY are used
 as in RFC 2119 and RFC 8174, in capitals only. Each requirement has a stable
 id written next to it in brackets, such as `[L-5.2-3]`: § 3.5 says how ids are
 kept, and the conformance suite (§ 17) names the ones each of its checks
-covers. Annex B is advice to client authors, without requirements.
+covers. Annex B is advice to client authors, without requirements; Annex D is a reading guide, a glossary and a checklist, also without requirements.
 
 ## 1. Principles
 
@@ -341,7 +341,7 @@ a shape another draft wrote, and its section "Changes" says so.
 ### 3.6 Releases
 
 Each version of this text is released on the repository, by a tag
-`spec-v<version>` (`spec-v0.7`): its release holds SPEC.md, the schemas,
+`spec-v<version>` (`spec-v0.8`): its release holds SPEC.md, the schemas,
 their examples, the test vectors, `openapi.yaml` and the conformance suite,
 each as an asset of its own and all in one zip, with their SHA-256 sums in
 `SHA256SUMS`. GitHub attests that each asset was built from that tag by the
@@ -349,7 +349,7 @@ repository's release workflow (a build provenance attestation, SLSA). To
 check an asset:
 
 ```sh
-gh attestation verify lantern-0.7.zip --repo JigSawFr/lantern
+gh attestation verify lantern-0.8.zip --repo JigSawFr/lantern
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
@@ -2049,7 +2049,7 @@ read with `--static`.
 
 **The name.** Only an implementation that passes the suite at a level may
 call itself "Lantern compatible" and show the badge, with that level and
-the version of the text: "Lantern compatible 0.7 · Core +titles". The
+the version of the text: "Lantern compatible 0.8 · Core +titles". The
 badges and the registry of implementations are
 [on the site](https://lantern.boreale.dev/conformance/); an implementation joins the
 registry by a pull request with its report.
@@ -3118,9 +3118,9 @@ device's own zone.
 
 Not normative: what this text needs before its version 1.0, when `/v1/`
 and `schema` 1 stop changing shape, and where each criterion stands at this
-draft, 0.7.
+draft, 0.8.
 
-| | Criterion | Where it stands at 0.7 |
+| | Criterion | Where it stands at 0.8 |
 |---|---|---|
 | 1 | **Two independent servers and two independent clients** reach `Lantern Core` with the conformance suite, each written from this text by people who did not write the other ones, and each pair of them works together: pairing, listing, downloading, what is missing. | Open. One server passes the suite, the reference server of this repository; the libraries of lantern-sdk are written by this text's authors and do not count. The registry on the site lists who passes. |
 | 2 | **A core with no open question**: every section from § 2 to § 14, and § 17, without a part marked "to check", and no issue labelled as a question on them left open. | Met. 0.6 settled what the core left open, and 0.7 what browsers ask of it (§ 2.5) and the canonical form of numbers (§ 2.3); their Changes list each point. None of those sections is marked "to check", and the list below holds no question on them. It stays met while no issue labelled as a question on them is open. |
@@ -3144,6 +3144,89 @@ criterion 2 holds while the first list is empty.
 
 Browser clients (§ 2.5, Annex A.7) and updates by their differences (§ 22),
 on the list until 0.6, are settled by 0.7.
+
+**Where each part stands.** Not a promise: the state of the text at this draft.
+
+| Part | State at 0.8 |
+|---|---|
+| § 2 to § 14, and § 17: the core | Settled: no part marked "to check" (criterion 2). |
+| § 5.4, § 9.4 and § 19: signed requests, encrypted backups, grants and peers | Settled in this text, and still to be reviewed by someone who did not write them (criterion 4). |
+| § 7 to § 11 and § 18 to § 22: the families beyond the core | Settled in their shape; they may still grow by additions after 1.0 (§ 3.5). |
+| Annex A: the Switch's profile | Complete. |
+| Annex A.2 to A.6: the other drafts' profiles | Drafts, each with its "(to check)" items, to settle by someone who knows the platform. |
+| Annex A.7: the browser | Settled by 0.7. |
+
+## Annex D — Reading guide, glossary and checklist
+
+Not normative: help to read this text, without any requirement of its own. Where it and a section differ, the section holds.
+
+### D.1 Where to start
+
+The text is long, and a client or a server does not need all of it. The table says what to read first for the work in hand, then what the work may add.
+
+| You write | Read first | Then, as the work needs |
+|---|---|---|
+| A client of a static library (a web host, a USB key) | § 2, § 3, § 4.2, § 4.3, § 6.1, § 6.2, § 6.6, § 21; Annex A for the platform | § 7 (titles), § 8 (homebrew), § 22 (updates by their differences) |
+| A client of a server with accounts | the same, then § 4.1, § 5, § 12, § 13, § 14 | Annex B; the families it uses, § 7 to § 11 |
+| A homebrew installer | § 8, with Annex A's paths and roots | § 8.4 (signatures), § 8.6 (game ports), § 22 |
+| Save backups | § 9 | § 9.4 (encryption on the device and its key) |
+| A client that runs in the background (home automation, a console's homebrew while its user plays) | § 18, § 6.4, Annex B.10 | § 20 (sync) |
+| A server | § 2 to § 6, § 12 to § 14, § 17 | § 15 and § 16; then each family it offers |
+| A mirror or a peer | § 19 | § 6.6 (files and ranges) |
+| A library as plain files | § 21 | § 22 (the chunk indexes a static library holds) |
+
+### D.2 Glossary
+
+Each word is the one the text uses; the section after it defines it.
+
+- **Account**: who a token belongs to, with its name, its state (`anonymous`, `active` or `frozen`) and its scopes (§ 4.2, § 5).
+- **App**: a game, an update or an add-on of one platform that a library lists: its title id, app id, type, version, size, format, `sha256` and file (§ 6.1).
+- **Base**: the path under which a server serves its routes, given as `base` in its handshake (§ 2).
+- **Bearer-only token**: a token that no device key binds, so that whoever holds it can use it (§ 5.4).
+- **Chunk**: a part of a file, cut by a rule that depends on the bytes alone, so that two versions of a file share the chunks that did not change (§ 22).
+- **Feature** (also **family**): a group of routes that a server declares in `features`, with the `schema` it writes, or `0` when it does not offer it to this caller (§ 4.2).
+- **Grant**: a short statement, signed by the server, that lets a peer serve one file to a client without asking the server (§ 19.3).
+- **Handshake**: the document at `/.well-known/lantern` and at `<base>/v1/` that says what a server is, what it offers and its limits (§ 4.2).
+- **Homebrew**: a program or a game port with a manifest that says where each of its files goes (§ 8).
+- **Index** (of chunks): the document that lists a file's chunks, each by its size and SHA-256 (§ 22.1).
+- **Invitation**: a code or a link made by an admin, with which a device pairs without anyone signing in (§ 5.5).
+- **Mirror**: another address that serves the same bytes of a file (§ 19.2).
+- **Peer**: a paired console that serves, on its network, the files of its server that it holds (§ 19.4).
+- **Pinning**: keeping the whole SHA-256 of a server's key for its `uid` and refusing any other (§ 5.3).
+- **Platform** and **profile**: the platform an app runs on, and the part of Annex A that says what differs for it: ids, formats, paths and roots (§ 4.3).
+- **Scope**: what a token lets its device do: `library`, `saves`, `cheats`, `cheats.write`, `requests`, `admin`, `sync.read`, `sync.write` (§ 4.2).
+- **Schema**: the integer in every document that says its shape, which a reader that does not know it skips (§ 3.2).
+- **Seed**: bytes of an older version that a client holds and takes chunks from to put a newer file together (§ 22.3).
+- **Static library**: a library served as files that change only when written again (§ 21).
+- **Token**: the secret a device holds for a server, which the user can revoke from the server (§ 5.1).
+- **`uid`**: the UUID that identifies a server and never changes (§ 4.2).
+
+### D.3 Checklist: what protects whom
+
+A reading aid for § 15 and § 16, from the requirements that carry the weight. Each line names the requirement; the section holds its exact words.
+
+**A client:**
+
+- verifies the certificate or the key it pinned, and speaks plain HTTP only on loopback (`L-2-1`, `L-2-2`);
+- shows the key's short fingerprint at pairing, pins the whole SHA-256 and fails on another key (`L-5.3-1`, `L-5.3-3`, `L-5.3-4`);
+- signs every request that carries a bound token, and never sends its private key (`L-5.4-3`, `L-5.4-4`);
+- checks a download's SHA-256, and for a file put together from chunks, each chunk and then the whole (`L-6.6-5`, `L-22.3-2`);
+- treats a mirror or a peer as untrusted and sends it no credential (`L-19.1-1`, `L-19.1-2`);
+- checks a homebrew's signature and pins its author's key (`L-8.4-2`, `L-8.4-3`);
+- never sends the save key to a server or a peer, and refuses a mistyped phrase (`L-9.4-2`, `L-9.4-7`);
+- asks its user before it syncs anything (`L-20.1-1`);
+- bounds everything it reads (`L-13-1`).
+
+**A server:**
+
+- offers device keys, checks each signature in the order the text gives and keeps the nonces it saw (`L-5.4-1`, `L-5.4-6`, `L-5.4-9`);
+- refuses keys of small order, at pairing and in a signature (`L-5.4-12`, `L-8.4-5`);
+- lets a pairing code expire within ten minutes, limits attempts, and never approves through the device that pairs (`L-5.2-6`, `L-5.2-8`, `L-5.2-2`);
+- refuses an invitation that is unknown, expired, revoked or used up, counts its devices and limits attempts (`L-5.5-1`, `L-5.5-2`, `L-5.5-3`);
+- gives a grant only for a file the caller may read, for fifteen minutes at most (`L-19.3-1`, `L-19.3-2`);
+- keeps an encrypted backup's bytes as sent (`L-9.4-4`).
+
+**A peer** serves only with a grant that verifies, only files it holds whole, and only to the addresses of its own networks (`L-19.4-1`, `L-19.4-2`, `L-19.4-3`).
 
 ## Changes
 
@@ -3460,3 +3543,11 @@ on the list until 0.6, are settled by 0.7.
     answers to a page of that origin; the suite asks for `zstd` only when
     its Python reads it, and checks the reference server's images on its
     own origin (§ 7.1).
+- 0.8 (2026-11-01): a reading guide, a glossary and a checklist, and where
+  each part stands; nothing else. No route, field, code or requirement
+  changes, and the suite, the reference server and `openapi.yaml` only
+  change their version.
+  - Annex D (new, not normative): where to start by what one writes (D.1),
+    a glossary (D.2) and a checklist of the requirements that protect a
+    client and a server, by their ids (D.3).
+  - Annex C: the state of each part of the text at this draft.

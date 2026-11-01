@@ -259,7 +259,7 @@ try:                    # Python 3.14 and later: zstd in the standard library (S
 except ImportError:
     zstd = None
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 BASE = "/api/lantern"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
             "signatures", "admin", "events", "peers", "sync", "encrypted_saves", "deltas")
