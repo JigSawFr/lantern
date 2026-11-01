@@ -612,7 +612,7 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 .check-form[hidden] { display: none; }
 .check-form label { color: var(--mist); font-size: 0.875rem; }
 .check-form select, .check-form textarea { width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--night-line); border-radius: 12px;
-  background: var(--abyss); color: var(--snow); font: 13px/1.5 var(--mono); }
+  background: var(--abyss); color: var(--snow); font: 16px/1.5 var(--mono); }   /* 16 px: iOS zooms into a smaller field */
 .check-form select { min-height: 44px; }
 .check-form textarea { min-height: 16rem; resize: vertical; }
 .check-form select:focus-visible, .check-form textarea:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
