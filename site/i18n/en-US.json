@@ -361,5 +361,22 @@
   "spec_ask": "Ask about this section",
   "spec_ask_title": "Opens an issue on GitHub that names this section",
   "spec_since": "since draft {v}",
-  "spec_print": "Print or save as PDF"
+  "spec_print": "Print or save as PDF",
+  "footer_check": "Check a document",
+  "title_check": "Check a Lantern document",
+  "description_check": "Paste a handshake or any other document of a Lantern server and check it, in your browser, against the schemas this site publishes.",
+  "check_eyebrow": "Check",
+  "check_title": "Check a document",
+  "check_lede": "Paste what a server answered and see whether it matches the schema it should: the same schemas the specification, the examples and the conformance suite use.",
+  "check_note": "Nothing leaves your browser: the document is checked here, against the schemas this site serves.",
+  "check_kind": "Kind of document",
+  "check_doc": "The document (JSON)",
+  "check_run": "Check",
+  "check_sample": "Load the demo library's handshake",
+  "check_ok": "This document matches {name}.",
+  "check_bad": "{n} problem(s) found:",
+  "check_not_json": "Not JSON: {error}",
+  "check_failed": "Could not check: {error}",
+  "check_newer": "Its schema is newer than the one this site knows: a reader treats it as absent (§ 3.2) and never writes over it.",
+  "check_noscript": "This page needs JavaScript to check a document in your browser. Without it, the schemas are at schemas/v1/ and tools/check_schemas.py checks a folder of examples."
 }

@@ -361,5 +361,22 @@
   "spec_ask": "Frage zu diesem Abschnitt",
   "spec_ask_title": "Öffnet ein GitHub-Issue, das diesen Abschnitt nennt",
   "spec_since": "seit Entwurf {v}",
-  "spec_print": "Drucken oder als PDF speichern"
+  "spec_print": "Drucken oder als PDF speichern",
+  "footer_check": "Dokument prüfen",
+  "title_check": "Ein Lantern-Dokument prüfen",
+  "description_check": "Fügen Sie einen Handshake oder ein anderes Dokument eines Lantern-Servers ein und prüfen Sie es in Ihrem Browser gegen die Schemas dieser Seite.",
+  "check_eyebrow": "Prüfung",
+  "check_title": "Ein Dokument prüfen",
+  "check_lede": "Fügen Sie ein, was ein Server geantwortet hat, und sehen Sie, ob es dem erwarteten Schema entspricht: dieselben Schemas wie in der Spezifikation, den Beispielen und der Konformitätssuite.",
+  "check_note": "Nichts verlässt Ihren Browser: Das Dokument wird hier gegen die Schemas dieser Seite geprüft.",
+  "check_kind": "Art des Dokuments",
+  "check_doc": "Das Dokument (JSON)",
+  "check_run": "Prüfen",
+  "check_sample": "Handshake der Demo-Bibliothek laden",
+  "check_ok": "Dieses Dokument entspricht {name}.",
+  "check_bad": "{n} Problem(e) gefunden:",
+  "check_not_json": "Kein JSON: {error}",
+  "check_failed": "Prüfung nicht möglich: {error}",
+  "check_newer": "Sein Schema ist neuer als das, das diese Seite kennt: Ein Leser behandelt es als fehlend (§ 3.2) und überschreibt es nie.",
+  "check_noscript": "Diese Seite braucht JavaScript, um ein Dokument im Browser zu prüfen. Ohne liegen die Schemas unter schemas/v1/, und tools/check_schemas.py prüft einen Ordner mit Beispielen."
 }
