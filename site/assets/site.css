@@ -528,7 +528,7 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 /* A phone: a figure wider than the page is a list of its steps, which every figure carries for screen
    readers (the drawing leaves the page, so no one reads both). */
 @media (max-width: 680px) {
-  .diagram .dg-scroll { display: none; }
+  .diagram .dg-scroll, .diagram .dg-stepper { display: none; }
   .diagram ol.sr { position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: normal;
     margin: 0; padding: 0.75rem 1rem 0.75rem 2rem; border: 1px solid var(--night-line); border-radius: var(--radius); background: var(--night); }
   .diagram ol.sr li { margin: 0.35rem 0; }
@@ -561,3 +561,21 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 .dg-tools a:hover, .dg-tools button:hover { color: var(--snow); border-color: var(--ice); }
 .dg-tools a:focus-visible, .dg-tools button:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
 @media print { .dg-tools { display: none; } }
+
+/* The stepper (site/assets/figures.js): the steps after the one lit are dimmed, the one lit is in the aurora. */
+.dg-stepper { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0.4rem 0 0; }
+.dg-stepper button { min-height: 28px; padding: 0 0.75rem; border: 1px solid var(--night-line); border-radius: 999px; background: none;
+  color: var(--mist); font: inherit; font-size: 0.8125rem; cursor: pointer; }
+.dg-stepper button:hover { color: var(--snow); border-color: var(--aurora); }
+.dg-stepper button:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
+.dg-count { color: var(--dusk); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.dg-later { opacity: 0.2; }
+.dg-now .dg-msg, .dg-now .dg-note, .dg-now .dg-sepbg { stroke: var(--aurora); }
+.dg-now .dg-head { fill: var(--aurora); }
+@media (prefers-reduced-motion: no-preference) { .dg-step { transition: opacity 0.2s; } }
+@media print { .dg-stepper { display: none; } .dg-later { opacity: 1; } }
+
+/* The quick start (site/start.html): its steps are headed by an h3, in the steps' look. */
+.start-steps h3 { margin: 0 0 2px; color: var(--snow); font: 600 17px/1.4 var(--display); letter-spacing: -0.01em; }
+.start-steps p { margin: 0 0 0.5rem; }
+.start-steps pre { margin: 0; }

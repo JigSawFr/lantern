@@ -1,0 +1,54 @@
+  <section class="section">
+    <h2>{{start_try_title}}</h2>
+    <p class="section-lede">{{start_try_lede}}</p>
+    <ol class="steps start-steps">
+      <li>
+        <h3>{{start_1_title}}</h3>
+        <p>{{start_1_text}}</p>
+        <pre tabindex="0"><code>curl -s {{demo_url}}lantern.json</code></pre>
+      </li>
+      <li>
+        <h3>{{start_2_title}}</h3>
+        <p>{{start_2_text}}</p>
+        <pre tabindex="0"><code>curl -s {{demo_url}}v1/apps/vita/pages/1.json</code></pre>
+      </li>
+      <li>
+        <h3>{{start_3_title}}</h3>
+        <p>{{start_3_text}}</p>
+        <pre tabindex="0"><code>curl -s {{demo_url}}v1/blobs/sha256/{{demo_hash}} | sha256sum</code></pre>
+      </li>
+    </ol>
+    <p class="note">{{start_try_note}} <a href="{{root}}{{home}}demo/">{{footer_demo}}</a></p>
+  </section>
+
+  <section class="section">
+    <h2>{{start_server_title}}</h2>
+    <p class="section-lede">{{start_server_lede}}</p>
+    <ol class="steps start-steps">
+      <li>
+        <h3>{{start_4_title}}</h3>
+        <p>{{start_4_text}}</p>
+        <pre tabindex="0"><code>curl -s https://shelf.example.org/.well-known/lantern</code></pre>
+      </li>
+      <li>
+        <h3>{{start_5_title}}</h3>
+        <p>{{start_5_text}}</p>
+        <pre tabindex="0"><code>curl -s -X POST https://shelf.example.org/api/lantern/v1/pairing \
+  -H 'Content-Type: application/json' \
+  -d '{"schema":1,"device":"My console","scopes":["library"]}'</code></pre>
+      </li>
+      <li>
+        <h3>{{start_6_title}}</h3>
+        <p>{{start_6_text}}</p>
+        <pre tabindex="0"><code>curl -s https://shelf.example.org/api/lantern/v1/apps?page_size=5 \
+  -H 'Authorization: Bearer et_…'</code></pre>
+      </li>
+    </ol>
+  </section>
+
+  <section class="section">
+    <h2>{{start_path_title}}</h2>
+    <p class="section-lede">{{start_path_lede}}</p>
+    {{diagram_connect}}
+    <p class="note"><a href="{{root}}{{home}}spec/#4-discovery-handshake-and-platforms">{{nav_spec}}</a></p>
+  </section>

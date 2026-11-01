@@ -69,6 +69,16 @@ class DiagramsTest(unittest.TestCase):
         self.assertIn('data-src="figures/connect.en.svg"', with_file)
         self.assertNotIn("dg-tools", diagrams.render("connect", CATALOGS["en-US"]))
 
+    def test_a_sequence_can_be_stepped_through_and_a_graph_cannot(self):
+        catalog = CATALOGS["en-US"]
+        sequence = diagrams.render("connect", catalog, None, None, stepper=True)
+        self.assertIn("dg-stepper", sequence)
+        self.assertEqual(sequence.count('class="dg-step"'), len(diagrams.DIAGRAMS["connect"]["steps"]))
+        # each step has its line in the list for screen readers, which the stepper says aloud
+        self.assertEqual(sequence.count("<li>"), len(diagrams.DIAGRAMS["connect"]["steps"]))
+        self.assertNotIn("dg-stepper", diagrams.render("sync", catalog, None, None, stepper=True))
+        self.assertNotIn("dg-stepper", diagrams.render("connect", catalog))
+
     def test_a_figure_is_a_list_of_its_steps_for_a_screen_reader(self):
         html = diagrams.render("connect", CATALOGS["en-US"])
         self.assertIn("<li>Device → Server: GET /.well-known/lantern</li>", html)

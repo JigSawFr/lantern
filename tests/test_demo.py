@@ -35,6 +35,15 @@ class Demo(unittest.TestCase):
         """The demo reaches Lantern Static; each trapped scenario fails the checks it names, and no level."""
         self.assertEqual(make_demo.check(self.out), [])
 
+    def test_quick_start_commands(self):
+        """The quick start (site/start.html) lists the demo's first Vita app and hashes its file: the page's
+        file is the one the app names, and its SHA-256 is the app's."""
+        page = json.loads((self.out / "v1/apps/vita/pages/1.json").read_text())
+        app = page["items"][0]
+        self.assertEqual(app["sha256"], build_site.DEMO_FILE)
+        self.assertEqual(app["file"], f"v1/blobs/sha256/{build_site.DEMO_FILE}")
+        self.assertEqual(hashlib.sha256((self.out / app["file"]).read_bytes()).hexdigest(), build_site.DEMO_FILE)
+
     def test_content(self):
         """Several platforms, titles with their icons, signed homebrew, cheat sets; placeholders only."""
         hello = json.loads((self.out / "lantern.json").read_text())

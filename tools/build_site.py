@@ -67,7 +67,10 @@ SITE_URL = LANTERN.url
 # English, at the root: the reference catalog (site/i18n/en-US.json).
 ENGLISH = CODES[0]
 # The pages in every language, by their path under each language's folder.
-PAGES = {"": "home", "spec/": "spec", "demo/": "demo"}
+# The file of the demo library the quick start downloads and hashes (its app's `sha256`, vita's first):
+# check_site.py's tests and the page's commands read it from here.
+DEMO_FILE = "fa75492f7b78cad7ca4044e8fb548ac67bfd7fbf05242ceecb29ebe492218a0d"
+PAGES = {"": "home", "spec/": "spec", "start/": "start", "demo/": "demo"}
 # The drafts of SPEC.md, each at spec/<draft>/: SPEC.md at the commit that
 # finished it, read from git at each build (git show <commit>:SPEC.md), so
 # that a published draft never changes; the site's workflow checks out the
@@ -410,6 +413,9 @@ def indexing(language: str, path: str, alternate: bool, noindex: bool = False) -
 def hero(page: str, catalog: dict, root: str, language: str, spec: dict, extra: dict) -> str:
     if page == "home":   # site/hero.html, filled with the page's values (page_html())
         return (SITE / "hero.html").read_text(encoding="utf-8")
+    if page == "start" and "h1" not in extra:
+        return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["start_eyebrow"]}</span>\n'
+                f'    <h1>{catalog["start_title"]}</h1>\n    <p class="lede">{catalog["start_lede"]}</p>\n  </div>')
     if page == "demo" and "h1" not in extra:
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["demo_eyebrow"]}</span>\n'
                 f'    <h1>{catalog["demo_title"]}</h1>\n    <p class="lede">{catalog["demo_lede"]}</p>\n  </div>')
@@ -454,7 +460,7 @@ def put_diagrams(text: str, catalog: dict, sections: dict, drawn: bool, ui: str)
     """The figures at their headings (diagrams.WHERE) in `text`; an earlier draft, whose sections are not
     these, gets none."""
     return re.sub(r"<!--diagram:(\w+)-->",
-                  lambda m: diagrams.render(m.group(1), catalog, sections, f"figures/{m.group(1)}.{ui}.svg") if drawn else "", text)
+                  lambda m: diagrams.render(m.group(1), catalog, sections, f"figures/{m.group(1)}.{ui}.svg", stepper=True) if drawn else "", text)
 
 
 def spec_body(spec: dict, catalog: dict, lang: str = "en", source: str = f"{REPO}/blob/main/SPEC.md",
@@ -912,7 +918,7 @@ def page_footer(language: str, catalog: dict, root: str) -> str:
         (catalog["nav_project"], [(catalog["nav_spec"], f"{home}spec/"), (catalog["footer_conformance"], f"{root}conformance/"),
                                   (catalog["footer_errors"], f"{root}errors/"), (catalog["footer_drafts"], f"{root}spec/changes/"),
                                   translation]),
-        (catalog["footer_label"], [(catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
+        (catalog["footer_label"], [(catalog["footer_start"], f"{home}start/"), (catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
                                    ("GitHub", REPO), (catalog["footer_issues"], f"{REPO}/issues")]),
     ], about=[catalog["footer_license"]], fine=catalog["footer_trademarks"])
 
@@ -1144,6 +1150,8 @@ def default_crumbs(page: str, path: str, catalog: dict) -> list:
         return [(catalog["nav_spec"], None)]
     if page == "demo" and path == "demo/":
         return [(catalog["footer_demo"], None)]
+    if page == "start" and path == "start/":
+        return [(catalog["footer_start"], None)]
     return []
 
 
@@ -1177,12 +1185,15 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         "repo": REPO,
         "draft": DRAFT,
         # The specification's script: its contents, search and links (site/assets/spec.js).
-        "spec_script": f'<script src="{root}assets/spec.js" defer></script>' if page == "spec" else "",
+        "spec_script": (f'<script src="{root}assets/spec.js" defer></script>' if page == "spec" else "")
+                       + (f'<script src="{root}assets/figures.js" defer></script>' if page in ("spec", "start") else ""),
     })
-    if page in ("home", "demo") and not body:
+    if page in ("home", "demo", "start") and not body:
         body = (SITE / f"{page}.html").read_text(encoding="utf-8")
         values["demo_url"] = SITE_URL + "demo/"
         values["diagram_overview"] = diagrams.render("overview", catalog)
+        values["diagram_connect"] = diagrams.render("connect", catalog, None, None, stepper=True)
+        values["demo_hash"] = DEMO_FILE
         if page == "demo":
             values["demo_qr"] = qr.svg(SITE_URL + "demo/", catalog["demo_qr_alt"])
             values["demo_cards"] = demo_cards(catalog)
