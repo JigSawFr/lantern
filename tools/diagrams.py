@@ -367,7 +367,7 @@ def lines_of(text: str) -> int:
     return text.count("\n") + 1
 
 
-def figure(name: str, svg: str, steps: list, catalog: dict, src: str | None = None) -> str:
+def figure(name: str, svg: str, steps: list, catalog: dict, src: str | None = None, stepper: bool = False) -> str:
     """The figure: its drawing, its caption and its steps. `src` is where the standalone SVG of the figure is
     served, relative to the site's root (the build writes it, standalone()): with it, the figure offers to
     download it as SVG, or as PNG drawn from it (site/assets/spec.js sets the links, so that without script
@@ -379,6 +379,12 @@ def figure(name: str, svg: str, steps: list, catalog: dict, src: str | None = No
         tools = (f'<p class="dg-tools" hidden data-src="{esc(src)}">'
                  f'<a data-kind="svg" title="{esc(catalog["dg_download_svg"])}">SVG</a>'
                  f'<button type="button" data-kind="png" title="{esc(catalog["dg_download_png"])}">PNG</button></p>')
+    if stepper:
+        tools += (f'<p class="dg-stepper" hidden data-steps="{len(steps)}">'
+                  f'<button type="button" data-do="prev">{esc(catalog["dg_step_prev"])}</button>'
+                  f'<button type="button" data-do="next">{esc(catalog["dg_step_next"])}</button>'
+                  f'<button type="button" data-do="all">{esc(catalog["dg_step_all"])}</button>'
+                  f'<span class="dg-count" aria-hidden="true"></span><span class="sr" role="status" aria-live="polite"></span></p>')
     return (f'<figure class="diagram" id="diagram-{name.replace("_", "-")}">'
             f'<div class="dg-scroll" tabindex="0" role="region" aria-label="{caption}">{svg}</div>'
             f'<figcaption>{caption}</figcaption>{tools}'
@@ -420,9 +426,10 @@ def sequence(name: str, spec: dict, catalog: dict) -> tuple:
     out, alt = [], []
     y = 56.0
     body = []
-    for step, (text, mono) in zip(spec["steps"], texts):
+    for n, (step, (text, mono)) in enumerate(zip(spec["steps"], texts)):
         k = lines_of(text)
         cls = "mono" if mono else ""
+        opened = len(body)
         if step[0] == "sep":
             body.append(f'<line class="dg-sep" x1="12" y1="{y + 16:.0f}" x2="{width - 12:.0f}" y2="{y + 16:.0f}"/>')
             w = tw(text, mono) + 28
@@ -450,6 +457,8 @@ def sequence(name: str, spec: dict, catalog: dict) -> tuple:
             body.append(text_el(cx, y + 18, text, "dg-notetext " + cls))
             alt.append(text.replace("\n", " "))
             y += h + 10
+        # the step's drawing in a group of its own: the figure's stepper lights them one by one
+        body[opened:] = [f'<g class="dg-step" data-step="{n}">', *body[opened:], "</g>"]
     height = y + 8
     head = [svg_open(width, height, name, catalog)]
     for x, label in zip(xs, actors):
@@ -577,9 +586,10 @@ def draw(name: str, catalog: dict, sections: dict | None = None) -> tuple:
     return columns(name, spec, catalog, sections or {})
 
 
-def render(name: str, catalog: dict, sections: dict | None = None, src: str | None = None) -> str:
+def render(name: str, catalog: dict, sections: dict | None = None, src: str | None = None, stepper: bool = False) -> str:
+    """The figure; `stepper` adds the buttons that walk through a sequence's steps (site/assets/figures.js)."""
     svg, alt = draw(name, catalog, sections)
-    return figure(name, svg, alt, catalog, src)
+    return figure(name, svg, alt, catalog, src, stepper and DIAGRAMS[name]["kind"] == SEQUENCE)
 
 
 # The figures' colours and fonts outside the site, where there is no site.css (a README, a slide, a PNG):
@@ -631,7 +641,7 @@ def export(directory: Path, check: bool = False) -> list:
 
 def keys() -> set:
     """Every catalog key the diagrams use."""
-    found = {"dg_download_svg", "dg_download_png"}
+    found = {"dg_download_svg", "dg_download_png", "dg_step_prev", "dg_step_next", "dg_step_all"}
     for name, spec in DIAGRAMS.items():
         found |= {f"dg_{name}_caption"}
         items = list(spec.get("actors", []))
