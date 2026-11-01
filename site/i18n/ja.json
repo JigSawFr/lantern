@@ -238,6 +238,8 @@
   "dg_dl_other": "見つからないチャンク",
   "dg_dl_seed": "シード\n古い版のバイト列",
   "dg_dl_verify": "各チャンク、\n続いて全体の sha256 を検証",
+  "dg_download_png": "この図をPNGでダウンロード",
+  "dg_download_svg": "この図をSVGでダウンロード",
   "dg_e2e_archive": "アーカイブ\n(zip)",
   "dg_e2e_carry": "復旧フレーズ\nまたはQRコード",
   "dg_e2e_decrypt": "端末で復号\n全チャンクを検証",

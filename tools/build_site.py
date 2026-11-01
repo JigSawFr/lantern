@@ -450,11 +450,11 @@ def drafts_nav(catalog: dict, root: str, language: str, here: str, translations:
             f'{catalog["spec_drafts"]}</span><ul>{"".join(items)}</ul></nav>{links}')
 
 
-def put_diagrams(text: str, catalog: dict, sections: dict, drawn: bool) -> str:
+def put_diagrams(text: str, catalog: dict, sections: dict, drawn: bool, ui: str) -> str:
     """The figures at their headings (diagrams.WHERE) in `text`; an earlier draft, whose sections are not
     these, gets none."""
     return re.sub(r"<!--diagram:(\w+)-->",
-                  lambda m: diagrams.render(m.group(1), catalog, sections) if drawn else "", text)
+                  lambda m: diagrams.render(m.group(1), catalog, sections, f"figures/{m.group(1)}.{ui}.svg") if drawn else "", text)
 
 
 def spec_body(spec: dict, catalog: dict, lang: str = "en", source: str = f"{REPO}/blob/main/SPEC.md",
@@ -467,7 +467,7 @@ def spec_body(spec: dict, catalog: dict, lang: str = "en", source: str = f"{REPO
                      for k in ("copy", "copied", "copy_failed"))
     side = (search_form(catalog, root) if search else "") + toc_html(spec, catalog["spec_toc"], lang)
     text = "\n".join(html_ + "\n" + section_nav(spec["parts"], i, catalog, ui) for i, (_, _, html_) in enumerate(spec["parts"]))
-    text = put_diagrams(text, catalog, spec["sections"], drawn)
+    text = put_diagrams(text, catalog, spec["sections"], drawn, ui)
     return (f'{annex_cards(spec, catalog, lang) if cards else ""}'
             f'<div class="spec-layout" data-ui="{ui}" {texts}>\n<div class="spec-side">\n{side}\n</div>\n'
             f'<article class="prose" lang="{lang}">\n<h2 class="spec-name sr">{html.escape(spec["title"])}</h2>\n'
@@ -1234,6 +1234,12 @@ def main() -> None:
         written += 1
         if listed:
             urls.append(SITE_URL + path)
+
+    # The figures as files of their own, in every language: what a figure's buttons download.
+    (out / "figures").mkdir()
+    for code, _, _, hl in LANGUAGES:
+        for name in diagrams.DIAGRAMS:
+            (out / "figures" / f"{name}.{hl}.svg").write_text(diagrams.standalone(name, catalogs[code]), encoding="utf-8")
 
     # The demo library and its trapped variant (tools/make_demo.py), before its page.
     demo = make_demo.build(out / "demo")

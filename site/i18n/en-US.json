@@ -238,6 +238,8 @@
   "dg_dl_other": "chunks not found",
   "dg_dl_seed": "Seeds\nbytes of an older version",
   "dg_dl_verify": "Checks every chunk,\nthen the whole sha256",
+  "dg_download_png": "Download this figure as PNG",
+  "dg_download_svg": "Download this figure as SVG",
   "dg_e2e_archive": "Archive\n(zip)",
   "dg_e2e_carry": "recovery phrase\nor QR code",
   "dg_e2e_decrypt": "Decrypts on the device\nevery chunk checked",

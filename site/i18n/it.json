@@ -238,6 +238,8 @@
   "dg_dl_other": "blocchi non trovati",
   "dg_dl_seed": "Semi\nbyte di una versione precedente",
   "dg_dl_verify": "Verifica ogni blocco,\npoi l'intero sha256",
+  "dg_download_png": "Scarica questa figura come PNG",
+  "dg_download_svg": "Scarica questa figura come SVG",
   "dg_e2e_archive": "Archivio\n(zip)",
   "dg_e2e_carry": "frase di recupero\no codice QR",
   "dg_e2e_decrypt": "Decifra sul dispositivo\nogni blocco verificato",

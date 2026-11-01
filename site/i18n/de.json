@@ -238,6 +238,8 @@
   "dg_dl_other": "Blöcke nicht gefunden",
   "dg_dl_seed": "Quellen\nBytes einer älteren Version",
   "dg_dl_verify": "Prüft jeden Block,\ndann das ganze sha256",
+  "dg_download_png": "Diese Abbildung als PNG herunterladen",
+  "dg_download_svg": "Diese Abbildung als SVG herunterladen",
   "dg_e2e_archive": "Archiv\n(Zip)",
   "dg_e2e_carry": "Wiederherstellungsphrase\noder QR-Code",
   "dg_e2e_decrypt": "Entschlüsselt auf dem Gerät\njeder Block geprüft",

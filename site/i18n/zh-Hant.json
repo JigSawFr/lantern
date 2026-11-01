@@ -238,6 +238,8 @@
   "dg_dl_other": "未找到的塊",
   "dg_dl_seed": "種子\n舊版本的位元組",
   "dg_dl_verify": "校驗每個塊,\n再校驗整體 sha256",
+  "dg_download_png": "將此圖下載為 PNG",
+  "dg_download_svg": "將此圖下載為 SVG",
   "dg_e2e_archive": "封存檔\n(zip)",
   "dg_e2e_carry": "復原短語\n或 QR 碼",
   "dg_e2e_decrypt": "在裝置上解密\n逐塊校驗",

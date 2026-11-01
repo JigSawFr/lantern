@@ -553,3 +553,11 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
   .dg-key { stroke: #5b34c4; }
   .dg-bad { stroke: #b00020; }
 }
+
+/* The buttons that download a figure (site/assets/spec.js shows them). */
+.dg-tools { display: flex; gap: 0.5rem; margin: 0.4rem 0 0; }
+.dg-tools a, .dg-tools button { display: inline-flex; align-items: center; min-height: 28px; padding: 0 0.75rem; border: 1px solid var(--night-line); border-radius: 999px;
+  background: none; color: var(--mist); font: inherit; font-size: 0.8125rem; text-decoration: none; cursor: pointer; }
+.dg-tools a:hover, .dg-tools button:hover { color: var(--snow); border-color: var(--ice); }
+.dg-tools a:focus-visible, .dg-tools button:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
+@media print { .dg-tools { display: none; } }
