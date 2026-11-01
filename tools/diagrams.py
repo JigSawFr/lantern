@@ -20,6 +20,12 @@ import re
 WHERE = {
     "connect": "4",
     "features": "4.2",
+    "signed": "5.4",
+    "invitation": "5.5",
+    "homebrew": "8.4",
+    "requests": "11",
+    "errors": "12",
+    "deltas": "22",
     "saves": "9",
     "saves_e2e": "9.4",
     "events": "18",
@@ -48,7 +54,7 @@ DIAGRAMS = {
             ("note", 0, 0, "@connect_show"),
             ("msg", 2, 1, "@connect_approve"),
             ("msg", 0, 1, "GET <poll>  (every interval)"),
-            ("msg", 1, 0, "202 …  then  200 {token: et_…}", True),
+            ("msg", 1, 0, "202 …  then  200 {token: et_…}\nor 410 gone · 429 slow_down", True),
             ("note", 0, 0, "@connect_pin"),
             ("sep", "@connect_calls"),
             ("msg", 0, 1, "Authorization: Bearer et_…\n+ request signature"),
@@ -118,6 +124,102 @@ DIAGRAMS = {
             ("server2", "decrypt", "GET …/{save_id}"),
             ("key", "decrypt", "@e2e_unwraps"),
             ("decrypt", "restored", "zip"),
+        ],
+    },
+    # ---- A signed request, and its refusals (§ 5.4).
+    "signed": {
+        "kind": SEQUENCE,
+        "actors": ["@client", "@server"],
+        "steps": [
+            ("note", 0, 0, "@sg_key"),
+            ("msg", 0, 1, "GET /v1/apps?page_size=50\nAuthorization: Bearer et_…\nSignature-Input: lantern=(…);created, nonce, keyid, alg\nSignature: lantern=:…:"),
+            ("note", 1, 1, "@sg_check"),
+            ("msg", 1, 0, "200", True),
+            ("msg", 1, 0, "401 signature_required | signature_invalid\n| signature_expired | signature_replayed", True),
+            ("note", 0, 0, "@sg_clock"),
+            ("msg", 0, 1, "@sg_again"),
+            ("msg", 1, 0, "200", True),
+        ],
+    },
+    # ---- An invitation: a device pairs without anyone signing in (§ 5.5).
+    "invitation": {
+        "kind": SEQUENCE,
+        "actors": ["@admin", "@server", "@device"],
+        "steps": [
+            ("msg", 0, 1, "@inv_create"),
+            ("msg", 1, 0, "{code, link, devices, expires}", True),
+            ("msg", 0, 2, "@inv_hand"),
+            ("msg", 2, 1, 'POST /v1/pairing\n{device, scopes, key, "invitation": code}'),
+            ("note", 1, 1, "@inv_limits"),
+            ("msg", 1, 2, "@inv_poll", True),
+        ],
+    },
+    # ---- An author's signature, and the key a client pins (§ 8.4).
+    "homebrew": {
+        "kind": SEQUENCE,
+        "actors": ["@author", "@server", "@client"],
+        "steps": [
+            ("msg", 0, 1, "package + signature\n{alg: ed25519, public_key, value}"),
+            ("note", 1, 1, "@hb_serves"),
+            ("msg", 1, 2, "entry + package + signature", True),
+            ("note", 2, 2, "@hb_check"),
+            ("note", 2, 2, "@hb_pin"),
+            ("note", 2, 2, "@hb_change"),
+        ],
+    },
+    # ---- The life of a request (§ 11).
+    "requests": {
+        "kind": GRAPH,
+        "cols": 3, "rows": 2,
+        "nodes": {
+            "ask": (0, 0, "@rq_ask", "dev"),
+            "open": (1, 0, "open", "srv"),
+            "done": (2, 0, "done", "dev"),
+            "declined": (2, 1, "declined", "bad"),
+            "withdrawn": (1, 1, "@rq_withdrawn", "dev"),
+        },
+        "edges": [
+            ("ask", "open", "POST /v1/requests"),
+            ("open", "done", "@rq_done"),
+            ("open", "declined", "@rq_declined"),
+            ("open", "withdrawn", "DELETE"),
+        ],
+    },
+    # ---- Which status, which code, for which cause (§ 12).
+    "errors": {
+        "kind": COLUMNS,
+        "per_row": 4, "cw": 220, "tall": True,
+        "cols": [
+            ("@er_who", [("401 unauthorized", "5.1"), ("401 signature_*", "5.4"), ("403 account_frozen", "4.2"),
+                         ("429 slow_down", "5.2")]),
+            ("@er_req", [("400 bad_request", "2.4"), ("413 too_large", "9.3"), ("422 digest_mismatch", "9.2"),
+                         ("422 unsupported_schema", "3.2")]),
+            ("@er_state", [("404 not_found", "12"), ("409 conflict", "9.3"), ("410 gone", "6.4"),
+                           ("412 precondition_failed", "20.4")]),
+            ("@er_server", [("500 internal", "12"), ("503 unavailable", "12")]),
+        ],
+    },
+    # ---- Updating a file from an older version, chunk by chunk (§ 22).
+    "deltas": {
+        "kind": GRAPH,
+        "cols": 3, "rows": 3, "pad": 90,
+        "nodes": {
+            "seed": (0, 0, "@dl_seed", "dev"),
+            "cut": (1, 0, "@dl_cut", "dev"),
+            "missing": (2, 0, "@dl_missing", "srv"),
+            "index": (1, 1, "@dl_index\nGET /v1/chunks/sha256/{hex}", "srv"),
+            "assemble": (2, 1, "@dl_assemble", "dev"),
+            "verify": (2, 2, "@dl_verify", "key"),
+            "install": (1, 2, "@dl_install", "dev"),
+        },
+        "edges": [
+            ("seed", "cut", ""),
+            ("index", "cut", ""),
+            ("cut", "missing", "@dl_other"),
+            ("cut", "assemble", "@dl_found"),
+            ("missing", "assemble", "@dl_each"),
+            ("assemble", "verify", ""),
+            ("verify", "install", ""),
         ],
     },
     # ---- A stream of events, and its resumption (§ 18).
@@ -363,7 +465,7 @@ def graph(name: str, spec: dict, catalog: dict) -> tuple:
     rh = max(heights.values()) + 46
     if any(e[2] and lines_of(words(e[2], catalog)[0]) > 1 for e in spec["edges"]):
         rh += 14
-    width = cols * cw - gap + 24
+    width = cols * cw - gap + 24 + spec.get("pad", 0)
     height = rows * rh - 46 + 24 + 12
 
     def box(key):
@@ -392,6 +494,8 @@ def graph(name: str, spec: dict, catalog: dict) -> tuple:
             sy, ey = (ay + ah, by) if bcy > acy else (ay, by + bh)
             path = f"M{acx:.0f} {sy:.0f}V{ey:.0f}"
             lx, ly, anchor = acx + 8, (sy + ey) / 2 + 4, "start"
+            if text and lx + tw(text, mono) > width - 4:  # no room on the right: the label goes on the left
+                lx, anchor = acx - 8, "end"
         elif abs(acy - bcy) < 1:  # same row: horizontal
             sx, ex = (ax + aw, bx) if bcx > acx else (ax, bx + bw)
             path = f"M{sx:.0f} {acy:.0f}H{ex:.0f}"
