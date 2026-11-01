@@ -525,21 +525,21 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 .dg text.dg-ref { fill: var(--dusk); font-size: 11px; }
 .dg a:hover .dg-node, .dg a:focus-visible .dg-node { fill: var(--night); stroke: var(--ice); }
 
-/* A phone: a figure wider than the page is a list of its steps, which every figure carries for screen
-   readers (the drawing leaves the page, so no one reads both). */
-@media (max-width: 680px) {
-  .diagram .dg-scroll, .diagram .dg-stepper { display: none; }
-  .diagram ol.sr { position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: normal;
-    margin: 0; padding: 0.75rem 1rem 0.75rem 2rem; border: 1px solid var(--night-line); border-radius: var(--radius); background: var(--night); }
-  .diagram ol.sr li { margin: 0.35rem 0; }
-}
+/* A figure is its drawing, on a phone too: a frame that slides (and zooms) under the finger, its edges
+   fading where there is more. A button (site/assets/figures.js) swaps it for the list of its steps, which
+   every figure carries for screen readers: then no one, assistive technology included, reads both. */
+.diagram.dg-list .dg-scroll, .diagram.dg-list .dg-stepper { display: none; }
+.diagram.dg-list ol.sr { position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: normal;
+  margin: 0; padding: 0.75rem 1rem 0.75rem 2rem; border: 1px solid var(--night-line); border-radius: var(--radius); background: var(--night); }
+.diagram.dg-list ol.sr li { margin: 0.35rem 0; }
 
 /* On paper: the drawing on white, in ink, whole (never cut across two pages), and not the list. */
 @media print {
   .diagram { break-inside: avoid; }
   .dg-scroll { overflow: visible; padding: 0; border-color: #888; background: #fff; }
   svg.dg { min-width: 0; }
-  .diagram ol.sr { display: none; }
+  .diagram ol.sr, .diagram.dg-list ol.sr { display: none; }
+  .diagram.dg-list .dg-scroll { display: block; }
   .diagram figcaption { color: #333; }
   .dg text, .dg text.dg-notetext, .dg text.dg-septext, .dg text.dg-zonetext, .dg text.dg-ref { fill: #000; }
   .dg-halo { stroke: #fff; }
