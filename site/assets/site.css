@@ -41,8 +41,11 @@ h1, h2, h3 { hyphens: auto; overflow-wrap: break-word; }
   padding-block: clamp(32px, 6vw, 80px) clamp(40px, 6vw, 72px);
 }
 .hero-home h1 { font-size: clamp(2.1rem, 4.2vw, 3.15rem); max-width: none; margin: 0 0 16px; }
-.hero-home .sub { font: 500 14px/1.6 var(--mono); color: var(--snow); margin: 0 0 14px; max-width: 60ch; text-wrap: balance; }
-.hero-home .sub span { white-space: nowrap; }
+.hero-home .sub { font: 500 14px/1.6 var(--mono); color: var(--snow); margin: 0 0 14px; padding: 0; max-width: 60ch; list-style: none;
+  display: flex; flex-wrap: wrap; gap: 2px 20px; }
+/* Each fact keeps its own dot, so that no line starts with a bare separator. */
+.hero-home .sub li { display: flex; align-items: baseline; gap: 8px; }
+.hero-home .sub li::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--aurora); transform: translateY(-1px); }
 .hero-home .lede { max-width: 56ch; }
 .hero-home .source { margin-top: 18px; font-size: 15px; color: var(--dusk); max-width: 56ch; }
 .hero-home .source a { color: var(--mist); display: inline-flex; align-items: center; min-height: 24px; }
@@ -628,3 +631,6 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 
 /* The worked examples (site/examples.html): a small heading above each block of code. */
 .section > h3 { margin: 1.4rem 0 0.5rem; color: var(--snow); font: 600 17px/1.4 var(--display); letter-spacing: -0.01em; }
+
+/* A heading, a figure or a requirement reached by a link stops below the sticky contents bar of a phone. */
+.prose [id], .prose figure.diagram { scroll-margin-top: 5.5rem; }
