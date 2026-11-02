@@ -58,19 +58,39 @@
       count.textContent = now < 0 ? '' : `${now + 1} / ${steps.length}`;
       say.textContent = now < 0 ? '' : words[now] || '';
       const current = steps[now];
-      if (current && current.scrollIntoView && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        current.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      // The lit step stays in view, in the figure's own scroller and in the page (below the sticky contents bar).
+      if (current && current.scrollIntoView) {
+        current.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
       }
     };
-    bar.addEventListener('click', (event) => {
-      const button = event.target.closest('button');
-      if (!button) return;
-      const what = button.dataset.do;
+    const go = (what) => {
       if (what === 'next') now = Math.min(now + 1, steps.length - 1);
       else if (what === 'prev') now = now <= 0 ? -1 : now - 1;
       else now = -1;
       show();
+    };
+    bar.addEventListener('click', (event) => {
+      const button = event.target.closest('button');
+      if (!button) return;
+      go(button.dataset.do);
     });
+    // Keys, once the focus is in the figure: N and P walk the steps, Escape shows the figure whole again; on the
+    // stepper's own buttons the arrows do too. The drawing keeps its arrows: it scrolls with them.
+    const keys = { n: 'next', p: 'prev', Escape: 'all' };
+    figure.addEventListener('keydown', (event) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      let what = keys[event.key];
+      if (!what && bar.contains(event.target)) what = { ArrowRight: 'next', ArrowLeft: 'prev' }[event.key];
+      if (!what || (event.key !== 'Escape' && event.shiftKey)) return;
+      if (event.target.closest && event.target.closest('input, textarea, select')) return;
+      if (what === 'all' && now < 0) return;
+      event.preventDefault();
+      go(what);
+    });
+    const shortcut = { next: 'n', prev: 'p', all: 'Escape' };
+    for (const button of bar.querySelectorAll('button')) {
+      if (shortcut[button.dataset.do]) button.setAttribute('aria-keyshortcuts', shortcut[button.dataset.do]);
+    }
     bar.hidden = false;
   }
 })();

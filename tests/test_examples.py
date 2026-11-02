@@ -28,7 +28,8 @@ def b64url(text):
 class Examples(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.blocks = build_site.example_blocks()
+        cls.raw = build_site.example_blocks()
+        cls.blocks = {k: v.replace("\x01", "").replace("\x02", "") for k, v in cls.raw.items()}   # the marks are the page's
 
     def test_the_signed_request_is_one_whose_signature_verifies(self):
         sig = vector("signatures")
@@ -46,6 +47,11 @@ class Examples(unittest.TestCase):
     def test_the_refused_twin_is_refused_for_what_the_page_says(self):
         self.assertEqual(self.blocks["sign_refused_code"], "401 · signature_required")
         self.assertNotIn("Signature", self.blocks["sign_refused_headers"])
+
+    def test_the_page_marks_what_tells_the_twins_apart(self):
+        marked = [line for line in self.raw["sign_request"].split("\n") if "\x01" in line]
+        self.assertEqual([line.strip("\x01\x02").split(":")[0] for line in marked], ["Signature-Input", "Signature"])
+        self.assertEqual(self.raw["sign_refused_code"], "\x01401 · signature_required\x02")
 
     def test_the_grant_verifies_with_the_grant_key(self):
         grants = vector("grants")

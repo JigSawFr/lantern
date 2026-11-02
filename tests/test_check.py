@@ -24,6 +24,7 @@ class Validator(unittest.TestCase):
         self.assertGreater(out["checked"], 100)
         self.assertEqual(out["valid"], [], "an example the page refuses")
         self.assertEqual(out["invalid"], [], "a refused example the page accepts")
+        self.assertEqual(out["reader"], [], "a text on which the page's reader of JSON errors disagrees with JSON.parse")
 
 
 class Page(unittest.TestCase):

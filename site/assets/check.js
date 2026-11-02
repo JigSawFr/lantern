@@ -140,6 +140,56 @@
     };
   }
 
+  // Where a text stops being JSON: the index of the first character that cannot be there, -1 when it is JSON.
+  // A small reader of JSON, for browsers whose parse error does not say where (the page asks it once
+  // JSON.parse has refused the text; tests/check_runner.js checks it against JSON.parse).
+  function errorIndex(src) {
+    let i = 0;
+    const ws = () => { while (i < src.length && ' \t\n\r'.includes(src[i])) i++; };
+    const fail = () => { throw i; };
+    const str = () => {
+      i++;
+      while (i < src.length && src[i] !== '"') {
+        if (src[i] === '\\') { i++; if (!'"\\/bfnrtu'.includes(src[i] || '\0')) fail(); if (src[i] === 'u') { if (!/^[0-9a-fA-F]{4}$/.test(src.slice(i + 1, i + 5))) fail(); i += 4; } }
+        else if (src[i] < ' ') fail();
+        i++;
+      }
+      if (src[i] !== '"') fail();
+      i++;
+    };
+    const value = () => {
+      ws();
+      const c = src[i];
+      if (c === '{') {
+        i++; ws();
+        if (src[i] === '}') { i++; return; }
+        for (;;) {
+          ws(); if (src[i] !== '"') fail(); str(); ws();
+          if (src[i] !== ':') fail(); i++; value(); ws();
+          if (src[i] === ',') { i++; continue; }
+          if (src[i] === '}') { i++; return; }
+          fail();
+        }
+      } else if (c === '[') {
+        i++; ws();
+        if (src[i] === ']') { i++; return; }
+        for (;;) {
+          value(); ws();
+          if (src[i] === ',') { i++; continue; }
+          if (src[i] === ']') { i++; return; }
+          fail();
+        }
+      } else if (c === '"') str();
+      else {
+        const m = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/.exec(src.slice(i));
+        if (!m) fail();
+        i += m[0].length;
+      }
+    };
+    try { value(); ws(); if (i < src.length) fail(); } catch (at) { return typeof at === 'number' ? at : -1; }
+    return -1;
+  }
+
   // The names of the schemas a schema refers to ("common" for "common.json#/$defs/name").
   const referred = (node, found = new Set()) => {
     if (Array.isArray(node)) node.forEach((n) => referred(n, found));
@@ -154,7 +204,7 @@
     return found;
   };
 
-  return { validator, referred, BASE };
+  return { validator, referred, errorIndex, BASE };
 });
 
 // ---- The page (site/check.html): a document, the kind it claims to be, and what is wrong with it.
@@ -183,11 +233,63 @@
   };
   const text = (tag, s, cls) => { const e = document.createElement(tag); e.textContent = s; if (cls) e.className = cls; return e; };
 
+  function where(message, source) {
+    const m = /line (\d+) column (\d+)/i.exec(message);
+    if (m) return { line: +m[1], col: +m[2] };
+    const at = window.LanternCheck.errorIndex(source);
+    if (at < 0) return null;
+    const before = source.slice(0, at).split('\n');
+    return { line: before.length, col: before[before.length - 1].length + 1 };
+  }
+  // The document and its kind live in the address' fragment (never sent to a server), so that a check can be
+  // shared and survives a reload; the fragment is only read back when it is one this page wrote.
+  const bytes = (s) => { const u = new TextEncoder().encode(s); let b = ''; u.forEach((c) => { b += String.fromCharCode(c); }); return b; };
+  const toHash = (s) => btoa(bytes(s)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const fromHash = (h) => {
+    const b = atob(h.replace(/-/g, '+').replace(/_/g, '/'));
+    return new TextDecoder().decode(Uint8Array.from(b, (c) => c.charCodeAt(0)));
+  };
+  function remember() {
+    try {
+      const text = doc.value.trim();
+      const hash = text ? '#kind=' + encodeURIComponent(kindSelect.value) + '&doc=' + toHash(text) : '';
+      if (hash.length < 6000) history.replaceState(null, '', location.pathname + location.search + hash);
+    } catch (e) { /* the address is only a convenience */ }
+  }
+  function restore() {
+    try {
+      const m = /^#kind=([\w-]+)&doc=([\w-]+)$/.exec(location.hash);
+      if (!m) return false;
+      const kind = decodeURIComponent(m[1]);
+      if (![...kindSelect.options].some((o) => o.value === kind)) return false;
+      doc.value = fromHash(m[2]);
+      kindSelect.value = kind;
+      return true;
+    } catch (e) { return false; }
+  }
+  const clear = () => { result.replaceChildren(); result.className = 'check-result'; };
+
+  function parse() {
+    try { return { value: JSON.parse(doc.value) }; } catch (e) {
+      const at = where(e.message, doc.value);
+      const shown = at ? fill(T.notJsonAt, { line: at.line, col: at.col, error: e.message }) : fill(T.notJson, { error: e.message });
+      say('bad', text('p', shown));
+      if (at) {   // the field's caret goes to the error
+        const lines = doc.value.split('\n');
+        const offset = lines.slice(0, at.line - 1).reduce((n, l) => n + l.length + 1, 0) + at.col - 1;
+        doc.focus(); doc.setSelectionRange(Math.min(offset, doc.value.length), Math.min(offset + 1, doc.value.length));
+      }
+      return null;
+    }
+  }
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    let value;
-    try { value = JSON.parse(doc.value); } catch (e) { say('bad', text('p', fill(T.notJson, { error: e.message }))); return; }
+    const parsed = parse();
+    if (!parsed) return;
+    const value = parsed.value;
     const name = kindSelect.value;
+    remember();
     try {
       await load(name);
       const problems = window.LanternCheck.validator(cache).validate(name, value);
@@ -208,6 +310,32 @@
     } catch (e) { say('bad', text('p', fill(T.failed, { error: e.message }))); }
   });
 
+  // Format: the document re-indented, when it is JSON (else the error says where it is not).
+  const format = document.getElementById('check-format');
+  if (format) {
+    format.addEventListener('click', () => {
+      const parsed = parse();
+      if (!parsed) return;
+      doc.value = JSON.stringify(parsed.value, null, 2);
+      clear(); remember();
+    });
+  }
+
+  // A .json file dropped on the field is read as text, here, and put in it.
+  const hint = document.getElementById('check-drop');
+  if (hint) hint.hidden = false;
+  doc.addEventListener('dragover', (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); doc.classList.add('dropping'); } });
+  doc.addEventListener('dragleave', () => doc.classList.remove('dropping'));
+  doc.addEventListener('drop', async (e) => {
+    doc.classList.remove('dropping');
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    e.preventDefault();
+    try { doc.value = await file.text(); clear(); remember(); }
+    catch (err) { say('bad', text('p', T.fileFailed)); }
+  });
+  kindSelect.addEventListener('change', () => { if (doc.value.trim()) remember(); });
+
   const sample = document.getElementById('check-sample');
   if (sample) {
     sample.hidden = false;
@@ -216,10 +344,10 @@
         const response = await fetch(root + 'demo/lantern.json', { credentials: 'omit' });
         doc.value = JSON.stringify(await response.json(), null, 2);
         kindSelect.value = 'handshake';
-        result.replaceChildren();
-        result.className = 'check-result';
+        clear(); remember();
       } catch (e) { say('bad', text('p', fill(T.failed, { error: e.message }))); }
     });
   }
+  if (restore()) form.requestSubmit();
   form.hidden = false;
 })();

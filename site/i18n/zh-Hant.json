@@ -421,5 +421,10 @@
   "hero_impl": "給實作者:",
   "impl_guide": "從哪裡讀起",
   "spec_start": "初次閱讀?從哪裡讀起(附錄 D)",
-  "home_rail": "本頁的各節"
+  "home_rail": "本頁的各節",
+  "check_format": "格式化",
+  "check_not_json_at": "不是 JSON，第 {line} 行第 {col} 欄：{error}",
+  "check_drop": "也可以把 .json 檔案拖曳到輸入框上。",
+  "check_file_failed": "無法讀取此檔案。",
+  "ex_sign_marked": "醒目標示：該請求帶有而其對照請求缺少的內容，以及伺服器的回應。"
 }

@@ -421,5 +421,10 @@
   "hero_impl": "Zum Implementieren:",
   "impl_guide": "Wo man anfängt",
   "spec_start": "Neu im Text? Wo man anfängt (Anhang D)",
-  "home_rail": "Abschnitte dieser Seite"
+  "home_rail": "Abschnitte dieser Seite",
+  "check_format": "Formatieren",
+  "check_not_json_at": "Kein JSON, Zeile {line}, Spalte {col}: {error}",
+  "check_drop": "Sie können auch eine .json-Datei auf das Feld ziehen.",
+  "check_file_failed": "Diese Datei konnte nicht gelesen werden.",
+  "ex_sign_marked": "Hervorgehoben: was die Anfrage trägt und ihr Zwilling nicht hat, und was der Server darauf antwortet."
 }

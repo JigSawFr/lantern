@@ -421,5 +421,10 @@
   "hero_impl": "Pour implémenter :",
   "impl_guide": "Par où commencer",
   "spec_start": "Nouveau sur le texte ? Par où commencer (annexe D)",
-  "home_rail": "Sections de cette page"
+  "home_rail": "Sections de cette page",
+  "check_format": "Mettre en forme",
+  "check_not_json_at": "Pas du JSON, ligne {line}, colonne {col} : {error}",
+  "check_drop": "Vous pouvez aussi déposer un fichier .json sur le champ.",
+  "check_file_failed": "Impossible de lire ce fichier.",
+  "ex_sign_marked": "En surbrillance : ce que la requête porte et que sa jumelle n'a pas, et ce que le serveur lui répond."
 }

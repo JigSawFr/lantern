@@ -421,5 +421,10 @@
   "hero_impl": "구현하는 분께:",
   "impl_guide": "어디서 시작할까",
   "spec_start": "처음이신가요? 어디서 시작할까(부록 D)",
-  "home_rail": "이 페이지의 섹션"
+  "home_rail": "이 페이지의 섹션",
+  "check_format": "서식 맞추기",
+  "check_not_json_at": "JSON이 아닙니다({line}행 {col}열): {error}",
+  "check_drop": ".json 파일을 입력란에 끌어다 놓을 수도 있습니다.",
+  "check_file_failed": "이 파일을 읽을 수 없습니다.",
+  "ex_sign_marked": "강조 표시: 이 요청에는 있고 짝이 되는 요청에는 없는 부분, 그리고 서버의 응답."
 }

@@ -421,5 +421,10 @@
   "hero_impl": "For implementers:",
   "impl_guide": "Where to start",
   "spec_start": "New to the text? Where to start (Annex D)",
-  "home_rail": "Sections of this page"
+  "home_rail": "Sections of this page",
+  "check_format": "Format",
+  "check_not_json_at": "Not JSON, line {line}, column {col}: {error}",
+  "check_drop": "You can also drop a .json file on the field.",
+  "check_file_failed": "Could not read this file.",
+  "ex_sign_marked": "Highlighted: what the request carries and its twin lacks, and what the server answers to it."
 }
