@@ -442,8 +442,13 @@ def hero(page: str, catalog: dict, root: str, language: str, spec: dict, extra: 
             note = f'\n    <p class="note-en">{catalog["spec_english"]}</p>'
         else:
             note = ""
+        start = spec["sections"].get("D")
+        where = ""
+        if start:
+            jump = "" if translated else f' <a class="spec-jump" href="#spec-q" hidden>{catalog["spec_search"]}</a>'
+            where = f'\n    <p class="spec-start"><a href="#{start}">{catalog["spec_start"]}</a>{jump}</p>'
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["spec_eyebrow"]}</span>\n'
-                f'    <h1>{catalog["spec_title"]}</h1>\n    <p class="lede">{catalog["spec_lede"]}</p>{note}\n'
+                f'    <h1>{catalog["spec_title"]}</h1>\n    <p class="lede">{catalog["spec_lede"]}</p>{note}{where}\n'
                 f'    {status_chips(spec, catalog)}\n'
                 f'    {drafts_nav(catalog, root, language, "current", translated is None)}\n  </div>')
     more = f'\n    {extra["after"]}' if extra.get("after") else ""
@@ -1299,11 +1304,13 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         "crumbs": crumbs_html(catalog, root, language, extra["crumbs"] if "crumbs" in extra else default_crumbs(page, path, catalog)),
         "hero": hero(page, catalog, root, language, spec, extra),
         "repo": REPO,
+        "annex_d": spec["sections"].get("D", ""),
         "draft": DRAFT,
         # The specification's script: its contents, search and links (site/assets/spec.js).
         "spec_script": (f'<script src="{root}assets/spec.js" defer></script>' if page == "spec" else "")
                        + (f'<script src="{root}assets/figures.js" defer></script>' if page in ("spec", "start") else "")
-        + (f'<script src="{root}assets/check.js" defer></script>' if page == "check" else ""),
+        + (f'<script src="{root}assets/check.js" defer></script>' if page == "check" else "")
+        + (f'<script src="{root}assets/rail.js" defer data-label="{html.escape(catalog["home_rail"], quote=True)}"></script>' if page == "home" else ""),
     })
     if page in ("home", "demo", "start", "check", "examples", "translations") and not body:
         body = (SITE / f"{page}.html").read_text(encoding="utf-8")

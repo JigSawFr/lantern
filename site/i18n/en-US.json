@@ -417,5 +417,9 @@
   "tr_spec_current": "Translated, up to date with draft {v}",
   "tr_spec_behind": "Translated for draft {v}; the text has changed since",
   "tr_spec_none": "English text only",
-  "tr_help": "To translate the specification, or to correct a text of the site, see"
+  "tr_help": "To translate the specification, or to correct a text of the site, see",
+  "hero_impl": "For implementers:",
+  "impl_guide": "Where to start",
+  "spec_start": "New to the text? Where to start (Annex D)",
+  "home_rail": "Sections of this page"
 }

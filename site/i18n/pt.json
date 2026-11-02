@@ -417,5 +417,9 @@
   "tr_spec_current": "Traduzida, atualizada com o rascunho {v}",
   "tr_spec_behind": "Traduzida para o rascunho {v}; o texto mudou desde então",
   "tr_spec_none": "Só o texto inglês",
-  "tr_help": "Para traduzir a especificação ou corrigir um texto do site, veja"
+  "tr_help": "Para traduzir a especificação ou corrigir um texto do site, veja",
+  "hero_impl": "Para implementar:",
+  "impl_guide": "Por onde começar",
+  "spec_start": "Novo no texto? Por onde começar (anexo D)",
+  "home_rail": "Secções desta página"
 }

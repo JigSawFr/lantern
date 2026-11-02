@@ -31,6 +31,12 @@ class Pages(unittest.TestCase):
         own = build_site.drafts_nav(catalog, "../../", "en-US", build_site.DRAFT)
         self.assertIn(f'aria-current="page">{build_site.DRAFT}</a>', own)
 
+    def test_the_entry_texts_exist_in_every_language(self):
+        for p in sorted((ROOT / "site" / "i18n").glob("*.json")):
+            catalog = json.loads(p.read_text(encoding="utf-8"))
+            for key in ("hero_impl", "impl_guide", "spec_start", "home_rail"):
+                self.assertTrue(str(catalog.get(key, "")).strip(), f"{p.stem}: {key}")
+
 
 if __name__ == "__main__":
     unittest.main()

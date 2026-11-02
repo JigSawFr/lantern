@@ -417,5 +417,9 @@
   "tr_spec_current": "Übersetzt, auf dem Stand von Entwurf {v}",
   "tr_spec_behind": "Für Entwurf {v} übersetzt; der Text hat sich seither geändert",
   "tr_spec_none": "Nur der englische Text",
-  "tr_help": "Um die Spezifikation zu übersetzen oder einen Text der Seite zu korrigieren, siehe"
+  "tr_help": "Um die Spezifikation zu übersetzen oder einen Text der Seite zu korrigieren, siehe",
+  "hero_impl": "Zum Implementieren:",
+  "impl_guide": "Wo man anfängt",
+  "spec_start": "Neu im Text? Wo man anfängt (Anhang D)",
+  "home_rail": "Abschnitte dieser Seite"
 }

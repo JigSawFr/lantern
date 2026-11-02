@@ -417,5 +417,9 @@
   "tr_spec_current": "Traduite, à jour du brouillon {v}",
   "tr_spec_behind": "Traduite pour le brouillon {v} ; le texte a changé depuis",
   "tr_spec_none": "Texte anglais seulement",
-  "tr_help": "Pour traduire la spécification, ou corriger un texte du site, voir"
+  "tr_help": "Pour traduire la spécification, ou corriger un texte du site, voir",
+  "hero_impl": "Pour implémenter :",
+  "impl_guide": "Par où commencer",
+  "spec_start": "Nouveau sur le texte ? Par où commencer (annexe D)",
+  "home_rail": "Sections de cette page"
 }
