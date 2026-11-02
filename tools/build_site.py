@@ -457,8 +457,10 @@ def drafts_nav(catalog: dict, root: str, language: str, here: str, translations:
     def item(key, href, label):
         current = ' aria-current="page"' if key == here else ""
         return f'<li><a href="{href}"{current}>{label}</a></li>'
-    items = [item("current", f"{root}{folder(language)}spec/", catalog["spec_current"])]
-    items += [item(v, f"{root}spec/{v}/", v) for v, _, _ in reversed(DRAFTS)]
+    # "Current" names the draft it is (the latest draft's own page is the same text, so it has no chip of its own
+    # unless it is the page shown).
+    items = [item("current", f"{root}{folder(language)}spec/", f'{catalog["spec_current"]} · {DRAFT}')]
+    items += [item(v, f"{root}spec/{v}/", v) for v, _, _ in reversed(DRAFTS) if v != DRAFT or here == v]
     items.append(item("changes", f"{root}spec/changes/", catalog["spec_changes"]))
     links, seen = [], set()
     for c, _, name, hl in LANGUAGES:
@@ -1292,7 +1294,7 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         "main_class": "" if page == "home" else ' class="wrap"',
         "footer": page_footer(language, catalog, root),
         # The hero's line under the title, each of its parts kept whole ("SHA-256" never broken).
-        "hero_sub_parts": " · ".join(f'<span>{part}</span>' for part in catalog["hero_sub"].split(" · ")),
+        "hero_sub_parts": "".join(f'<li>{part}</li>' for part in catalog["hero_sub"].split(" · ")),
         "audience": LANTERN.audience(root),
         "crumbs": crumbs_html(catalog, root, language, extra["crumbs"] if "crumbs" in extra else default_crumbs(page, path, catalog)),
         "hero": hero(page, catalog, root, language, spec, extra),
