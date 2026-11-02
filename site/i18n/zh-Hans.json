@@ -417,5 +417,9 @@
   "tr_spec_current": "已翻译,与草案 {v} 同步",
   "tr_spec_behind": "已为草案 {v} 翻译;此后文本已变更",
   "tr_spec_none": "仅英文文本",
-  "tr_help": "要翻译规范或更正本站文字,请参见:"
+  "tr_help": "要翻译规范或更正本站文字,请参见:",
+  "hero_impl": "给实现者:",
+  "impl_guide": "从哪里读起",
+  "spec_start": "初次阅读?从哪里读起(附录 D)",
+  "home_rail": "本页的各节"
 }

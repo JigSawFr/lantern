@@ -138,6 +138,18 @@
     });
   }
 
+  // ---- On a phone the search field is far down the page: a link in the header of the text goes to it.
+  const jump = document.querySelector('.spec-jump');
+  const searchField = document.getElementById('spec-q');
+  if (jump && searchField) {
+    jump.hidden = false;
+    jump.addEventListener('click', (event) => {
+      event.preventDefault();
+      searchField.scrollIntoView({ block: 'center', behavior: reduce.matches ? 'auto' : 'smooth' });
+      searchField.focus({ preventScroll: true });
+    });
+  }
+
   // ---- Print: the browser's print dialog, which saves a PDF (site.css has the print layout of the text).
   const printer = layout.querySelector('.spec-print');
   if (printer) {

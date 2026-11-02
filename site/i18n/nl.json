@@ -417,5 +417,9 @@
   "tr_spec_current": "Vertaald, actueel met concept {v}",
   "tr_spec_behind": "Vertaald voor concept {v}; de tekst is sindsdien gewijzigd",
   "tr_spec_none": "Alleen de Engelse tekst",
-  "tr_help": "Om de specificatie te vertalen of een tekst van de site te corrigeren, zie"
+  "tr_help": "Om de specificatie te vertalen of een tekst van de site te corrigeren, zie",
+  "hero_impl": "Om te implementeren:",
+  "impl_guide": "Waar te beginnen",
+  "spec_start": "Nieuw bij de tekst? Waar te beginnen (bijlage D)",
+  "home_rail": "Secties van deze pagina"
 }

@@ -417,5 +417,9 @@
   "tr_spec_current": "Traducida, al día con el borrador {v}",
   "tr_spec_behind": "Traducida para el borrador {v}; el texto ha cambiado desde entonces",
   "tr_spec_none": "Solo el texto inglés",
-  "tr_help": "Para traducir la especificación o corregir un texto del sitio, véase"
+  "tr_help": "Para traducir la especificación o corregir un texto del sitio, véase",
+  "hero_impl": "Para implementar:",
+  "impl_guide": "Por dónde empezar",
+  "spec_start": "¿Nuevo en el texto? Por dónde empezar (anexo D)",
+  "home_rail": "Secciones de esta página"
 }

@@ -634,3 +634,27 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 
 /* A heading, a figure or a requirement reached by a link stops below the sticky contents bar of a phone. */
 .prose [id], .prose figure.diagram { scroll-margin-top: 5.5rem; }
+
+/* The links for implementers, under the home page's buttons and in its section for authors. */
+.impl-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: 18px 0 0; font-size: 0.9375rem; color: var(--mist); }
+.impl-links a { display: inline-flex; align-items: center; min-height: 32px; color: var(--snow); text-decoration: underline; text-underline-offset: 4px; }
+.impl-links a:hover, .impl-links a:focus-visible { color: var(--ice); }
+#implement .impl-links { margin: 0 0 22px; }
+
+/* The specification's header: where to start, and on a phone a way to the search field. */
+.spec-start { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; margin: 14px 0 0; font-size: 0.9375rem; }
+.spec-start a { display: inline-flex; align-items: center; min-height: 32px; }
+@media (min-width: 1024px) { .spec-jump { display: none; } }
+
+/* The home page's rail (site/assets/rail.js): wide screens only. */
+.rail { display: none; }
+@media (min-width: 1200px) {
+  .rail { display: block; position: fixed; right: 18px; top: 50%; transform: translateY(-50%); z-index: 20; }
+  .rail ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .rail a { display: block; width: 24px; height: 24px; position: relative; }
+  .rail a::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; background: var(--night-line); transition: background 0.2s, inset 0.2s; }
+  .rail a:hover::after, .rail a:focus-visible::after { background: var(--mist); }
+  .rail a[aria-current="location"]::after { inset: 7px; background: var(--aurora); }
+  .rail a:focus-visible { outline: 2px solid var(--ice); outline-offset: 0; border-radius: 50%; }
+}
+@media print { .rail { display: none !important; } }
