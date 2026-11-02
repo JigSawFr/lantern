@@ -1309,6 +1309,7 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         # The specification's script: its contents, search and links (site/assets/spec.js).
         "spec_script": (f'<script src="{root}assets/spec.js" defer></script>' if page == "spec" else "")
                        + (f'<script src="{root}assets/figures.js" defer></script>' if page in ("spec", "start") else "")
+        + (f'<script src="{root}assets/code.js" defer data-copy="{html.escape(catalog["ui_copy"], quote=True)}" data-copied="{html.escape(catalog["ui_copied"], quote=True)}" data-failed="{html.escape(catalog["ui_copy_failed"], quote=True)}"></script>' if page in ("spec", "start") else "")
         + (f'<script src="{root}assets/check.js" defer></script>' if page == "check" else "")
         + (f'<script src="{root}assets/rail.js" defer data-label="{html.escape(catalog["home_rail"], quote=True)}"></script>' if page == "home" else ""),
     })

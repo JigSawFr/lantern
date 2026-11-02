@@ -37,6 +37,14 @@ class Pages(unittest.TestCase):
             for key in ("hero_impl", "impl_guide", "spec_start", "home_rail"):
                 self.assertTrue(str(catalog.get(key, "")).strip(), f"{p.stem}: {key}")
 
+    def test_the_code_copy_texts_exist_in_every_language(self):
+        """site/assets/code.js reads these three from the script tag the build writes for the spec and the start page."""
+        for p in sorted((ROOT / "site" / "i18n").glob("*.json")):
+            catalog = json.loads(p.read_text(encoding="utf-8"))
+            for key in ("ui_copy", "ui_copied", "ui_copy_failed", "spec_copy", "spec_copied", "spec_copy_failed"):
+                self.assertTrue(str(catalog.get(key, "")).strip(), f"{p.stem}: {key}")
+        self.assertTrue((ROOT / "site" / "assets" / "code.js").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

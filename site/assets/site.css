@@ -658,3 +658,29 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
   .rail a:focus-visible { outline: 2px solid var(--ice); outline-offset: 0; border-radius: 50%; }
 }
 @media print { .rail { display: none !important; } }
+
+/* Code blocks (code.js): a bar over the block with its language and the button that copies it. */
+.code-wrap { display: grid; gap: 6px; min-width: 0; max-width: 100%; margin-block: 1em; }
+.prose .code-wrap pre, .start-steps .code-wrap pre { margin: 0; }
+.code-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; }
+.code-lang { font: 500 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--mist); }
+.code-copy {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; min-width: 28px; padding: 0 10px; border: 1px solid var(--night-line); border-radius: 8px;
+  background: rgb(14 26 51 / 0.7); color: var(--snow); font: 500 16px var(--body); cursor: pointer;
+}
+.code-copy svg { width: 14px; height: 14px; fill: none; stroke: var(--aurora); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.code-copy .done, .code-copy[data-done] .copy { display: none; }
+.code-copy[data-done] .done { display: block; }
+.code-copy[data-done] { border-color: rgb(0 255 204 / 0.6); color: var(--aurora); }
+@media (hover: hover) { .code-copy:hover { border-color: var(--mist); } }
+
+/* A heading's link button: beside the title on hover and focus, and where there is no hover, once it is the target. */
+.head-copy { position: static; opacity: 0; vertical-align: middle; margin-left: 6px; visibility: visible; }
+:is(h2, h3):hover > .head-copy, .head-copy:focus-visible, .head-copy[data-done] { opacity: 1; }
+@media (hover: none) { .head-copy { opacity: 0.55; } :is(h2, h3):target > .head-copy { opacity: 1; } }
+
+/* How far the text is read: a line along the bottom of the contents' bar. */
+.toc-read { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 0 0 var(--radius) var(--radius); background: var(--aurora); transform-origin: left; transform: scaleX(var(--read, 0)); pointer-events: none; }
+@media (min-width: 1024px) { .toc-read { display: none; } }
+@media (prefers-reduced-motion: no-preference) { .toc-read { transition: transform 0.1s linear; } }
+@media print { .code-bar, .head-copy, .toc-read { display: none !important; } }
