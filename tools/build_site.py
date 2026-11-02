@@ -1309,7 +1309,7 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         # The specification's script: its contents, search and links (site/assets/spec.js).
         "spec_script": (f'<script src="{root}assets/spec.js" defer></script>' if page == "spec" else "")
                        + (f'<script src="{root}assets/figures.js" defer></script>' if page in ("spec", "start") else "")
-        + (f'<script src="{root}assets/code.js" defer data-copy="{html.escape(catalog["ui_copy"], quote=True)}" data-copied="{html.escape(catalog["ui_copied"], quote=True)}" data-failed="{html.escape(catalog["ui_copy_failed"], quote=True)}"></script>' if page in ("spec", "start") else "")
+        + (f'<script src="{root}assets/code.js" defer data-copy="{html.escape(catalog["ui_copy"], quote=True)}" data-copied="{html.escape(catalog["ui_copied"], quote=True)}" data-failed="{html.escape(catalog["ui_copy_failed"], quote=True)}"></script>' if page in ("spec", "start", "examples") else "")
         + (f'<script src="{root}assets/check.js" defer></script>' if page == "check" else "")
         + (f'<script src="{root}assets/rail.js" defer data-label="{html.escape(catalog["home_rail"], quote=True)}"></script>' if page == "home" else ""),
     })
@@ -1319,7 +1319,9 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         values["diagram_overview"] = diagrams.render("overview", catalog)
         values["diagram_connect"] = diagrams.render("connect", catalog, None, None, stepper=True)
         values["demo_hash"] = DEMO_FILE
-        values.update({f"ex_{k}": html.escape(v) for k, v in example_blocks().items()})
+        # \x01…\x02 in an example mark what makes it differ from its twin (<mark>, after the escaping)
+        values.update({f"ex_{k}": html.escape(v).replace("\x01", "<mark>").replace("\x02", "</mark>")
+                       for k, v in example_blocks().items()})
         values["translations_table"] = translations_table(catalog, root, values["home"])
         values["check_options"] = "".join(
             f'<option value="{n}"{" selected" if n == "handshake" else ""}>{n}</option>' for n in schema_names())
@@ -1342,8 +1344,10 @@ def example_blocks() -> dict:
     sig = read("vectors/signatures.json")
     ok, refused = sig["accepted"][0], sig["refused"][0]
     url = urlparse(ok["uri"])
+    refused_keys = set(refused["request"]["headers"])
+    # the headers the refused twin lacks are marked: they are the whole difference between the two requests
     request = (f"{ok['method']} {url.path}{'?' + url.query if url.query else ''} HTTP/1.1\nHost: {url.netloc}\n"
-               + "\n".join(f"{k}: {v}" for k, v in ok["headers"].items()))
+               + "\n".join((f"{k}: {v}" if k in refused_keys else f"\x01{k}: {v}\x02") for k, v in ok["headers"].items()))
     key = sig["key"]
     pairing = read("examples/v1/pairing-request.json")
     code, token = read("examples/v1/pairing-code.json"), read("examples/v1/pairing-token.json")
@@ -1356,7 +1360,7 @@ def example_blocks() -> dict:
         "sign_key": (f"private key (seed): {key['seed']}\npublic key:         {key['public_key']}\n"
                      f"keyid:              {key['keyid']}\nshort fingerprint:  {key['short_fingerprint']}"),
         "sign_refused_headers": "\n".join(f"{k}: {v}" for k, v in refused["request"]["headers"].items()),
-        "sign_refused_code": f"401 · {refused['code']}",
+        "sign_refused_code": f"\x01401 · {refused['code']}\x02",
         "pair_1": f"POST /api/lantern/v1/pairing HTTP/1.1\nHost: {host}\nContent-Type: application/json\n\n{dumps(pairing)}",
         "pair_2": f"HTTP/1.1 200 OK\nContent-Type: application/json\n\n{dumps(code)}",
         "pair_3": f"GET {code['poll']} HTTP/1.1\nHost: {host}\nSignature-Input: lantern=(\"@method\" \"@target-uri\");created=…;nonce=\"…\";keyid=\"…\";alg=\"ed25519\"\nSignature: lantern=:…:",

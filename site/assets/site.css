@@ -684,3 +684,16 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 @media (min-width: 1024px) { .toc-read { display: none; } }
 @media (prefers-reduced-motion: no-preference) { .toc-read { transition: transform 0.1s linear; } }
 @media print { .code-bar, .head-copy, .toc-read { display: none !important; } }
+
+/* /check/: a file dragged over the field. */
+.check-form textarea.dropping { border-color: var(--aurora); outline: 2px dashed var(--aurora); outline-offset: 2px; }
+.check-drop { margin: 0; }
+.check-drop[hidden] { display: none; }
+
+/* A lit step of a figure scrolls into view clear of the sticky contents bar. */
+.dg-step { scroll-margin-block: 72px; }
+
+/* The worked examples: what tells a request from its refused twin (build_site.example_blocks()), and stable anchors. */
+pre mark { background: rgb(0 255 204 / 0.16); color: inherit; border-radius: 4px; padding: 1px 4px; margin-inline: -4px; box-shadow: 0 0 0 1px rgb(0 255 204 / 0.35); }
+#signed-request, #pairing, #grant { scroll-margin-top: 80px; }
+@media print { pre mark { background: none; box-shadow: none; font-weight: 700; } }

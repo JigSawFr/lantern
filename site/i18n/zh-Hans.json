@@ -421,5 +421,10 @@
   "hero_impl": "给实现者:",
   "impl_guide": "从哪里读起",
   "spec_start": "初次阅读?从哪里读起(附录 D)",
-  "home_rail": "本页的各节"
+  "home_rail": "本页的各节",
+  "check_format": "格式化",
+  "check_not_json_at": "不是 JSON，第 {line} 行第 {col} 列：{error}",
+  "check_drop": "也可以把 .json 文件拖到输入框上。",
+  "check_file_failed": "无法读取此文件。",
+  "ex_sign_marked": "高亮部分：该请求带有而它的对照请求缺少的内容，以及服务器的响应。"
 }

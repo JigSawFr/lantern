@@ -421,5 +421,10 @@
   "hero_impl": "実装する方へ:",
   "impl_guide": "読み始めるには",
   "spec_start": "初めてですか?読み始めるには(付録D)",
-  "home_rail": "このページのセクション"
+  "home_rail": "このページのセクション",
+  "check_format": "整形",
+  "check_not_json_at": "JSON ではありません（{line} 行 {col} 列）: {error}",
+  "check_drop": ".json ファイルをこの欄にドロップすることもできます。",
+  "check_file_failed": "このファイルを読めませんでした。",
+  "ex_sign_marked": "強調表示: このリクエストにあって対になるものにない部分と、サーバーの応答。"
 }

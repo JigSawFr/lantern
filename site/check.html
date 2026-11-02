@@ -2,13 +2,16 @@
     <p class="note">{{check_note}}</p>
     <form id="check-form" class="check-form" hidden
           data-ok="{{check_ok}}" data-bad="{{check_bad}}" data-not-json="{{check_not_json}}"
-          data-failed="{{check_failed}}" data-newer="{{check_newer}}">
+          data-failed="{{check_failed}}" data-newer="{{check_newer}}"
+          data-not-json-at="{{check_not_json_at}}" data-file-failed="{{check_file_failed}}">
       <label for="check-kind">{{check_kind}}</label>
       <select id="check-kind" name="kind">{{check_options}}</select>
       <label for="check-doc">{{check_doc}}</label>
-      <textarea id="check-doc" name="doc" rows="16" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+      <textarea id="check-doc" name="doc" rows="16" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="check-drop"></textarea>
+      <p id="check-drop" class="note check-drop" hidden>{{check_drop}}</p>
       <div class="check-buttons">
         <button type="submit" class="button">{{check_run}}</button>
+        <button type="button" id="check-format" class="button ghost">{{check_format}}</button>
         <button type="button" id="check-sample" class="button ghost" hidden>{{check_sample}}</button>
       </div>
     </form>

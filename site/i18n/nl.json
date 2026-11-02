@@ -421,5 +421,10 @@
   "hero_impl": "Om te implementeren:",
   "impl_guide": "Waar te beginnen",
   "spec_start": "Nieuw bij de tekst? Waar te beginnen (bijlage D)",
-  "home_rail": "Secties van deze pagina"
+  "home_rail": "Secties van deze pagina",
+  "check_format": "Opmaken",
+  "check_not_json_at": "Geen JSON, regel {line}, kolom {col}: {error}",
+  "check_drop": "Je kunt ook een .json-bestand op het veld slepen.",
+  "check_file_failed": "Dit bestand kon niet worden gelezen.",
+  "ex_sign_marked": "Gemarkeerd: wat het verzoek meedraagt en zijn tweeling mist, en wat de server daarop antwoordt."
 }

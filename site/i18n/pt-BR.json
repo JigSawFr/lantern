@@ -421,5 +421,10 @@
   "hero_impl": "Para implementar:",
   "impl_guide": "Por onde começar",
   "spec_start": "Novo no texto? Por onde começar (anexo D)",
-  "home_rail": "Secções desta página"
+  "home_rail": "Secções desta página",
+  "check_format": "Formatar",
+  "check_not_json_at": "Não é JSON, linha {line}, coluna {col}: {error}",
+  "check_drop": "Também pode largar um ficheiro .json no campo.",
+  "check_file_failed": "Não foi possível ler este ficheiro.",
+  "ex_sign_marked": "Destacado: o que o pedido leva e o seu gémeo não tem, e o que o servidor responde."
 }
