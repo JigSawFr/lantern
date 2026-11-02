@@ -126,7 +126,7 @@
       wrap.appendChild(button);
     }
     article.addEventListener('click', (e) => {
-      const button = e.target.closest('.req-copy');
+      const button = e.target.closest('.req-copy:not(.head-copy)');
       if (!button) return;
       const id = button.parentNode.querySelector('a.req').id;
       const url = location.href.split('#')[0] + '#' + id;
@@ -136,6 +136,45 @@
         say(fill(d.copied, { id }));
       }, () => say(fill(d.copyFailed, { id })));
     });
+  }
+
+  // ---- Headings: a button after each, which copies the link to its section (the address names it too).
+  if (d.copy) {
+    for (const h of headings) {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'req-copy head-copy'; button.lang = d.ui || '';
+      const name = h.textContent.trim();
+      button.setAttribute('aria-label', fill(d.copy, { id: name }));
+      button.title = fill(d.copy, { id: name });
+      button.append(svg(['M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7', 'M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7'], 'copy'), svg(['M5 12.5l4.5 4.5L19 7.5'], 'done'));
+      button.addEventListener('click', () => {
+        copy(location.href.split('#')[0] + '#' + h.id).then(() => {
+          button.dataset.done = '';
+          setTimeout(() => button.removeAttribute('data-done'), 1600);
+          say(fill(d.copied, { id: name }));
+        }, () => say(fill(d.copyFailed, { id: name })));
+      });
+      h.append(' ', button);
+    }
+  }
+
+  // ---- How far the text is read: a thin bar under the contents' summary (decorative: the contents name the section).
+  if (toc && 'CSS' in window) {
+    const bar = document.createElement('span');
+    bar.className = 'toc-read'; bar.setAttribute('aria-hidden', 'true');
+    toc.appendChild(bar);
+    let pending = 0;
+    const measure = () => {
+      pending = 0;
+      const box_ = article.getBoundingClientRect();
+      const span = box_.height - innerHeight * 0.6;
+      const read = span > 0 ? Math.min(1, Math.max(0, (innerHeight * 0.3 - box_.top) / span)) : 0;
+      bar.style.setProperty('--read', read.toFixed(4));
+    };
+    const soon = () => { if (!pending) pending = requestAnimationFrame(measure); };
+    addEventListener('scroll', soon, { passive: true });
+    addEventListener('resize', soon);
+    measure();
   }
 
   // ---- On a phone the search field is far down the page: a link in the header of the text goes to it.
