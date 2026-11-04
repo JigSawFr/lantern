@@ -1051,12 +1051,7 @@ def compared(before: list, after: list) -> dict:
 
 
 def delta(b: dict, o: dict) -> str:
-    plus = minus = 0
-    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, b["words"], o["words"], autojunk=False).get_opcodes():
-        if op in ("replace", "delete"):
-            minus += i2 - i1
-        if op in ("replace", "insert"):
-            plus += j2 - j1
+    plus, minus = delta_counts(b, o)
     return f'<span class="delta"><span class="plus">+{plus}</span> <span class="minus">−{minus}</span> words</span>'
 
 
@@ -1084,16 +1079,9 @@ def atom_feed(notes: dict) -> str:
         lines = notes.get(v)
         if not lines:
             continue
-        head = re.match(r"- \d+\.\d+ \((\d{4}-\d{2}-\d{2})\):\s*(.*)", lines[0])
-        if not head:
+        date, text = draft_summary(lines)
+        if not date:
             continue
-        date, summary = head.group(1), [head.group(2)]
-        for line in lines[1:]:
-            if not line.strip() or re.match(r"\s*- ", line):
-                break
-            summary.append(line.strip())
-        text = " ".join(summary).strip()
-        text = re.sub(r"\*\*|`", "", text)
         entries.append(
             f"  <entry>\n    <id>tag:{urlparse(SITE_URL).hostname},{date}:spec-{v}</id>\n"
             f"    <title>Draft {v}</title>\n    <updated>{date}T00:00:00Z</updated>\n"
@@ -1108,61 +1096,133 @@ def atom_feed(notes: dict) -> str:
             f"  <author><name>Lantern</name></author>\n" + "".join(entries) + "</feed>\n")
 
 
+def version_key(v: str) -> tuple:
+    return tuple(int(n) for n in v.split("."))
+
+
+def draft_summary(lines: list | None) -> tuple:
+    """(date, the sentence) a "Changes" entry opens with, or (None, None): what the Atom feed and the cards of
+    spec/changes/ both say first."""
+    head = re.match(r"- \d+\.\d+ \((\d{4}-\d{2}-\d{2})\):\s*(.*)", (lines or [""])[0])
+    if not head:
+        return None, None
+    summary = [head.group(2)]
+    for line in lines[1:]:
+        if not line.strip() or re.match(r"\s*- ", line):
+            break
+        summary.append(line.strip())
+    return head.group(1), re.sub(r"\*\*|`", "", " ".join(summary).strip())
+
+
+def delta_counts(b: dict, o: dict) -> tuple:
+    plus = minus = 0
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, b["words"], o["words"], autojunk=False).get_opcodes():
+        if op in ("replace", "delete"):
+            minus += i2 - i1
+        if op in ("replace", "insert"):
+            plus += j2 - j1
+    return plus, minus
+
+
+def diff_groups(d: dict, link, at: str, was_at: str) -> list:
+    """The sections of a comparison (compared()) as (kind, label, [html]): `link(o, draft)` makes a section's
+    link; `at` is the draft the new sections are read in, `was_at` the one the old ones are."""
+    return [("added", "Added", [link(o, at) for o in d["added"]]),
+            ("changed", "Changed", [f"{link(o, at)} {delta(b, o)}" + (f' <span class="was">was §&nbsp;{b["number"]}</span>'
+                                    if b["number"] != o["number"] and b["number"] else "") for b, o in d["changed"]]),
+            ("renamed", "Renamed or moved", [f'{link(o, at)} <span class="was">was {link(b, was_at)}</span> {delta(b, o)}'
+                                             for b, o in d["renamed"]]),
+            ("removed", "Removed", [link(o, was_at) for o in d["removed"]]),
+            ("renumbered", "Renumbered only", [f'{link(o, at)} <span class="was">was §&nbsp;{b["number"]}</span>'
+                                               for b, o in d["renumbered"]])]
+
+
+def chip_lists(groups: list) -> str:
+    return "".join(f'<h4>{label} ({len(items)})</h4><ul class="sections-diff kind-{kind}">'
+                   + "".join(f"<li>{i}</li>" for i in items) + "</ul>" for kind, label, items in groups if items)
+
+
 def changes_body(drafts: list) -> str:
-    """spec/changes/: each draft, what its "Changes" says, and its sections against the draft before."""
+    """spec/changes/: a card for each draft, newest first, on a timeline: the sentence its "Changes" opens with, the
+    sections it added, changed, renamed and removed as counts and as lists, the text's own account; and, for an
+    author who implements an older draft, what has changed since it (the panels of "Since your draft")."""
     notes = changes_notes(SPEC.read_text(encoding="utf-8"))
-    rows, parts = [], []
-    previous = None
-    for v, commit, pr, spec in reversed(drafts):
-        rows.append(f'<tr><td><a href="#d-{v}">Draft {v}</a></td><td>{pull(pr)}</td>'
-                    f'<td class="num">{len(outline(spec["text"]))}</td>'
-                    f'<td class="num">{len(spec["text"].split()):,}</td></tr>')
+    latest_v, _, _, latest = drafts[-1]
+
+    def link(o, at):
+        number = f"§&nbsp;{o['number']} " if o["number"] and o["number"][0].isdigit() else ""
+        return f'<a href="../{at}/#{o["anchor"]}">{number}{html.escape(re.sub(r"^[0-9.]+ ", "", o["title"]))}</a>'
+
+    cards, previous = [], None
     for v, commit, pr, spec in drafts:
         here = outline(spec["text"])
         said = notes.get(v)
+        date, summary = draft_summary(said)
         said_html = (blocks(said, spec["sections"], ref=commit or "main").replace('href="#', f'href="../{v}/#')
                      if said else "<p>The text says nothing of its changes.</p>")
-
-        def link(o, at=v):
-            number = f"§&nbsp;{o['number']} " if o["number"] and o["number"][0].isdigit() else ""
-            return f'<a href="../{at}/#{o["anchor"]}">{number}{html.escape(re.sub(r"^[0-9.]+ ", "", o["title"]))}</a>'
-
-        part = [f'<h2 id="d-{v}">Draft {v}</h2>',
-                (f'<p class="meta"><a href="../{v}/">Read draft {v}</a> · {pull(pr, "lantern#")}'
-                 + (f' · <code>{commit[:7]}</code>' if commit else "") + '</p>'),
-                f'<h3 id="d-{v}-said">What the text says</h3>', said_html]
+        words = len(spec["text"].split())
+        stats, groups = [], []
         if previous is None:
-            part.append(f'<h3 id="d-{v}-sections">Its sections</h3><p>The first draft: {len(here)} sections and '
-                        f'parts, {len(spec["text"].split()):,} words.</p>')
+            stats.append(f'<span class="chip">{len(here)} sections</span>')
+            sections = f"<p>The first draft: {len(here)} sections and parts, {words:,} words.</p>"
+            heading_ = "Its sections"
         else:
             pv, before = previous
             d = compared(outline(before["text"]), here)
-            counts = ", ".join(f"{len(d[k])} {k}" for k in ("added", "changed", "renamed", "removed", "renumbered") if d[k])
-            part.append(f'<h3 id="d-{v}-sections">Its sections, against <a href="#d-{pv}">draft {pv}</a></h3>'
-                        f'<p>{counts or "No section changed"}, read from the two texts.</p>')
-            lists = [("Added", [link(o) for o in d["added"]]),
-                     ("Changed", [f"{link(o)} {delta(b, o)}" + (f' <span class="was">was §&nbsp;{b["number"]}</span>'
-                                  if b["number"] != o["number"] and b["number"] else "") for b, o in d["changed"]]),
-                     ("Renamed or moved", [f'{link(o)} <span class="was">was {link(b, pv)}</span> {delta(b, o)}'
-                                           for b, o in d["renamed"]]),
-                     ("Removed", [link(o, pv) for o in d["removed"]]),
-                     ("Renumbered only", [f'{link(o)} <span class="was">was §&nbsp;{b["number"]}</span>'
-                                          for b, o in d["renumbered"]])]
-            for name, items in lists:
+            groups = diff_groups(d, link, v, pv)
+            for kind, label, items in groups:
                 if items:
-                    part.append(f'<h4>{name} ({len(items)})</h4><ul class="sections-diff">'
-                                + "".join(f"<li>{i}</li>" for i in items) + "</ul>")
-        parts.append("\n".join(part))
+                    stats.append(f'<span class="chip kind-{kind}">{len(items)} {label.lower().split(" ")[0]}</span>')
+            plus = sum(delta_counts(b, o)[0] for b, o in d["changed"] + d["renamed"]) + sum(len(o["words"]) for o in d["added"])
+            minus = sum(delta_counts(b, o)[1] for b, o in d["changed"] + d["renamed"]) + sum(len(o["words"]) for o in d["removed"])
+            stats.append(f'<span class="chip words"><span class="plus">+{plus:,}</span> <span class="minus">−{minus:,}</span> words</span>')
+            sections = chip_lists(groups) if any(i for _, _, i in groups) else "<p>No section changed, read from the two texts.</p>"
+            heading_ = f"Its sections, against draft {pv}"
+        newest = v == latest_v
+        links = (f'<a href="../{v}/">Read draft {v}</a> · {pull(pr, "lantern#")}'
+                 + (f' · <code>{commit[:7]}</code>' if commit else ""))
+        cards.append(
+            f'<li class="draft" id="d-{v}">\n<header><h2><span class="v">Draft {v}</span>'
+            + (f' <time datetime="{date}">{date}</time>' if date else "") + "</h2>"
+            + ('<span class="now">current</span>' if newest else "") + "</header>\n"
+            + (f'<p class="summary">{html.escape(summary)}</p>\n' if summary else "")
+            + f'<p class="stats">{" ".join(stats)} <span class="chip words">{words:,} words</span></p>\n'
+            + f'<p class="meta">{links}</p>\n'
+            + f'<details class="fold" id="d-{v}-said"{" open" if newest else ""}><summary>What the text says</summary>{said_html}</details>\n'
+            + f'<details class="fold" id="d-{v}-sections"{" open" if newest else ""}><summary>{heading_}</summary>{sections}</details>\n</li>')
         previous = (v, spec)
-    return ('<section class="prose wide" lang="en">\n<p>Every draft of the specification as it was published, '
-            'newest first, and what it changed: what its section “Changes” says, then the sections it added, '
-            'changed, renamed, removed and renumbered against the draft before it, read from the two texts '
-            '(a renumbering alone is not a change). Each draft keeps its page; '
-            '<a href="../">the specification</a> is the current text.</p>\n'
+
+    # "Since your draft": for each older draft, what the current text has added, changed, renamed or removed
+    # against it, read from the two texts; a panel shows when its link is followed (:target), without script.
+    olders = [x for x in drafts if x[0] != latest_v]
+    panels = []
+    for v, _, _, spec in olders:
+        d = compared(outline(spec["text"]), outline(latest["text"]))
+        groups = diff_groups(d, link, latest_v, v)
+        counts = ", ".join(f"{len(i)} {label.lower()}" for _, label, i in groups if i) or "nothing"
+        between = ", ".join(f'<a href="#d-{x[0]}">{x[0]}</a>' for x in drafts if version_key(x[0]) > version_key(v))
+        panels.append(f'<section class="since" id="since-{v}" aria-label="Since draft {v}">'
+                      f'<h3>Since draft {v}: {counts}</h3>'
+                      f'<p class="meta">Drafts since: {between}. Read from draft {v} and draft {latest_v} side by side.</p>'
+                      + chip_lists(groups) + "</section>")
+    picker = "".join(f'<a href="#since-{v}">{v}</a>' for v, _, _, _ in reversed(olders))
+    rows = "".join(f'<tr><td><a href="#d-{v}">Draft {v}</a></td><td>{pull(pr)}</td>'
+                   f'<td class="num">{len(outline(spec["text"]))}</td><td class="num">{len(spec["text"].split()):,}</td></tr>'
+                   for v, commit, pr, spec in reversed(drafts))
+    return ('<section class="prose wide changes" lang="en">\n<p>Every draft of the specification as it was published, '
+            'newest first, and what it changed: the sentence its section “Changes” opens with, the sections it added, '
+            'changed, renamed and removed against the draft before it, read from the two texts '
+            '(a renumbering alone is not a change), and what the text itself says. Each draft keeps its page; '
+            '<a href="../">the specification</a> is the current text. <a href="../../feed.xml">Follow the drafts by Atom</a>.</p>\n'
+            '<nav class="since-pick" aria-label="Since your draft"><span class="label">I implement draft</span>'
+            f'<span class="picks">{picker}</span></nav>\n'
+            '<p class="note since-help">Pick the draft you implement: what the current text has changed since it.</p>\n'
+            + "\n".join(panels) + '\n<ol class="timeline">\n' + "\n".join(reversed(cards)) + "\n</ol>\n"
+            '<details class="fold sizes"><summary>The size of each draft</summary>'
             '<div class="table" tabindex="0" role="region" aria-label="Drafts"><table>\n'
             '<thead><tr><th scope="col">Draft</th><th scope="col">Pull request</th><th scope="col" class="num">'
-            'Sections</th><th scope="col" class="num">Words</th></tr></thead>\n<tbody>\n' + "\n".join(rows)
-            + "\n</tbody></table></div>\n" + "\n".join(reversed(parts)) + "\n</section>")
+            'Sections</th><th scope="col" class="num">Words</th></tr></thead>\n<tbody>\n' + rows
+            + "\n</tbody></table></div></details>\n</section>")
 
 
 def pull(pr: int | None, prefix: str = "#") -> str:
