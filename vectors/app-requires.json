@@ -1,0 +1,622 @@
+{
+ "schema": 1,
+ "about": "Lantern test vectors (https://lantern.boreale.dev/spec/). Fictional keys, tokens and names; MIT.",
+ "vectors": "app-requires",
+ "description": "An app's format, requires and includes (SPEC.md § 6.1): whether a client installs it (install: its decision, and how many reasons it gives), and which variant it prefers by default (Annex B.15, not a requirement); then what a server leaves out of what is missing when the request has formats or satisfies, and counts as installed through includes (§ 6.3). The library of the missing cases is `library`; each case lists the ids it gives.",
+ "install": [
+  {
+   "name": "No requires: installs",
+   "app": {
+    "id": "a_plain",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010000",
+    "type": "base",
+    "version_code": 0,
+    "size": 100,
+    "format": "nsp"
+   },
+   "formats": [
+    "nsp",
+    "nsz",
+    "xci",
+    "xcz"
+   ],
+   "satisfies": [
+    "fs-compression"
+   ],
+   "installed": [],
+   "decision": "install",
+   "reasons": 0
+  },
+  {
+   "name": "A token the device provides",
+   "app": {
+    "id": "a_one",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010000",
+    "type": "base",
+    "version_code": 0,
+    "size": 100,
+    "format": "nsp",
+    "requires": [
+     "fs-compression"
+    ]
+   },
+   "formats": [
+    "nsp",
+    "nsz",
+    "xci",
+    "xcz"
+   ],
+   "satisfies": [
+    "fs-compression"
+   ],
+   "installed": [],
+   "decision": "install",
+   "reasons": 0
+  },
+  {
+   "name": "A token the device lacks",
+   "app": {
+    "id": "a_two",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010000",
+    "type": "base",
+    "version_code": 0,
+    "size": 100,
+    "format": "nsp",
+    "requires": [
+     "fs-compression",
+     "sigpatch"
+    ]
+   },
+   "formats": [
+    "nsp",
+    "nsz",
+    "xci",
+    "xcz"
+   ],
+   "satisfies": [
+    "fs-compression"
+   ],
+   "installed": [],
+   "decision": "unavailable",
+   "reasons": 1
+  },
+  {
+   "name": "A token the client does not know",
+   "app": {
+    "id": "a_new",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010000",
+    "type": "base",
+    "version_code": 0,
+    "size": 100,
+    "format": "nsp",
+    "requires": [
+     "ncz-future"
+    ]
+   },
+   "formats": [
+    "nsp",
+    "nsz",
+    "xci",
+    "xcz"
+   ],
+   "satisfies": [],
+   "installed": [],
+   "decision": "unavailable",
+   "reasons": 1
+  },
+  {
+   "name": "A format the client does not know",
+   "app": {
+    "id": "a_fmt",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010000",
+    "type": "base",
+    "version_code": 0,
+    "size": 100,
+    "format": "zzz"
+   },
+   "formats": [
+    "nsp",
+    "nsz",
+    "xci",
+    "xcz"
+   ],
+   "satisfies": [
+    "fs-compression"
+   ],
+   "installed": [],
+   "decision": "unavailable",
+   "reasons": 1
+  },
+  {
+   "name": "An empty requires needs nothing",
+   "app": {
+    "id": "a_empty",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010000",
+    "type": "base",
+    "version_code": 0,
+    "size": 100,
+    "format": "nsp",
+    "requires": []
+   },
+   "formats": [
+    "nsp",
+    "nsz",
+    "xci",
+    "xcz"
+   ],
+   "satisfies": [],
+   "installed": [],
+   "decision": "install",
+   "reasons": 0
+  },
+  {
+   "name": "An update that an installed app includes, at its version",
+   "app": {
+    "id": "a_up",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010800",
+    "type": "update",
+    "version_code": 196608,
+    "size": 100,
+    "format": "nsp"
+   },
+   "formats": [
+    "nsp",
+    "nsz",
+    "xci",
+    "xcz"
+   ],
+   "satisfies": [
+    "fs-compression"
+   ],
+   "installed": [
+    {
+     "id": "a_lz4",
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "app_id": "0100ABCD00010000",
+     "type": "base",
+     "version_code": 65536,
+     "size": 100,
+     "format": "nsp",
+     "requires": [
+      "fs-compression",
+      "sigpatch"
+     ],
+     "includes": [
+      {
+       "app_id": "0100ABCD00010800",
+       "version_code": 196608
+      }
+     ]
+    }
+   ],
+   "decision": "unavailable",
+   "reasons": 1
+  },
+  {
+   "name": "An update below the version an installed app includes",
+   "app": {
+    "id": "a_old",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010800",
+    "type": "update",
+    "version_code": 131072,
+    "size": 100,
+    "format": "nsp"
+   },
+   "formats": [
+    "nsp",
+    "nsz",
+    "xci",
+    "xcz"
+   ],
+   "satisfies": [
+    "fs-compression"
+   ],
+   "installed": [
+    {
+     "id": "a_lz4",
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "app_id": "0100ABCD00010000",
+     "type": "base",
+     "version_code": 65536,
+     "size": 100,
+     "format": "nsp",
+     "requires": [
+      "fs-compression",
+      "sigpatch"
+     ],
+     "includes": [
+      {
+       "app_id": "0100ABCD00010800",
+       "version_code": 196608
+      }
+     ]
+    }
+   ],
+   "decision": "unavailable",
+   "reasons": 1
+  },
+  {
+   "name": "An update above the version an installed app includes",
+   "app": {
+    "id": "a_new_up",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010800",
+    "type": "update",
+    "version_code": 262144,
+    "size": 100,
+    "format": "nsp"
+   },
+   "formats": [
+    "nsp",
+    "nsz",
+    "xci",
+    "xcz"
+   ],
+   "satisfies": [
+    "fs-compression"
+   ],
+   "installed": [
+    {
+     "id": "a_lz4",
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "app_id": "0100ABCD00010000",
+     "type": "base",
+     "version_code": 65536,
+     "size": 100,
+     "format": "nsp",
+     "requires": [
+      "fs-compression",
+      "sigpatch"
+     ],
+     "includes": [
+      {
+       "app_id": "0100ABCD00010800",
+       "version_code": 196608
+      }
+     ]
+    }
+   ],
+   "decision": "install",
+   "reasons": 0
+  },
+  {
+   "name": "Included, but by an app not installed",
+   "app": {
+    "id": "a_up2",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010800",
+    "type": "update",
+    "version_code": 196608,
+    "size": 100,
+    "format": "nsp"
+   },
+   "formats": [
+    "nsp",
+    "nsz",
+    "xci",
+    "xcz"
+   ],
+   "satisfies": [
+    "fs-compression"
+   ],
+   "installed": [
+    {
+     "id": "a_plain",
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "app_id": "0100ABCD00010000",
+     "type": "base",
+     "version_code": 0,
+     "size": 100,
+     "format": "nsp"
+    }
+   ],
+   "decision": "install",
+   "reasons": 0
+  },
+  {
+   "name": "A base is never an included update",
+   "app": {
+    "id": "a_base",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010000",
+    "type": "base",
+    "version_code": 196608,
+    "size": 100,
+    "format": "nsp"
+   },
+   "formats": [
+    "nsp",
+    "nsz",
+    "xci",
+    "xcz"
+   ],
+   "satisfies": [
+    "fs-compression"
+   ],
+   "installed": [
+    {
+     "id": "a_lz4",
+     "platform": "switch",
+     "title_id": "0100ABCD00010000",
+     "app_id": "0100ABCD00010000",
+     "type": "base",
+     "version_code": 65536,
+     "size": 100,
+     "format": "nsp",
+     "requires": [
+      "fs-compression",
+      "sigpatch"
+     ],
+     "includes": [
+      {
+       "app_id": "0100ABCD00010800",
+       "version_code": 196608
+      }
+     ]
+    }
+   ],
+   "decision": "install",
+   "reasons": 0
+  }
+ ],
+ "variants": {
+  "apps": [
+   {
+    "id": "a_big",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010000",
+    "type": "base",
+    "version_code": 0,
+    "size": 900,
+    "format": "nsz"
+   },
+   {
+    "id": "a_req",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010000",
+    "type": "base",
+    "version_code": 0,
+    "size": 10,
+    "format": "nsp",
+    "requires": [
+     "sigpatch"
+    ]
+   },
+   {
+    "id": "a_small",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010000",
+    "type": "base",
+    "version_code": 0,
+    "size": 500,
+    "format": "nsz"
+   },
+   {
+    "id": "a_tie",
+    "platform": "switch",
+    "title_id": "0100ABCD00010000",
+    "app_id": "0100ABCD00010000",
+    "type": "base",
+    "version_code": 0,
+    "size": 500,
+    "format": "xci"
+   }
+  ],
+  "preferred": "a_small"
+ },
+ "library": [
+  {
+   "id": "b_base",
+   "platform": "switch",
+   "title_id": "0100ABCD00010000",
+   "app_id": "0100ABCD00010000",
+   "type": "base",
+   "version_code": 0,
+   "size": 100,
+   "format": "nsp"
+  },
+  {
+   "id": "b_lz4",
+   "platform": "switch",
+   "title_id": "0100ABCD00010000",
+   "app_id": "0100ABCD00010000",
+   "type": "base",
+   "version_code": 65536,
+   "size": 100,
+   "format": "nsp",
+   "requires": [
+    "fs-compression",
+    "sigpatch"
+   ],
+   "includes": [
+    {
+     "app_id": "0100ABCD00010800",
+     "version_code": 196608
+    }
+   ]
+  },
+  {
+   "id": "b_up1",
+   "platform": "switch",
+   "title_id": "0100ABCD00010000",
+   "app_id": "0100ABCD00010800",
+   "type": "update",
+   "version_code": 131072,
+   "size": 100,
+   "format": "nsp"
+  },
+  {
+   "id": "b_up2",
+   "platform": "switch",
+   "title_id": "0100ABCD00010000",
+   "app_id": "0100ABCD00010800",
+   "type": "update",
+   "version_code": 196608,
+   "size": 100,
+   "format": "nsz"
+  },
+  {
+   "id": "b_up2x",
+   "platform": "switch",
+   "title_id": "0100ABCD00010000",
+   "app_id": "0100ABCD00010800",
+   "type": "update",
+   "version_code": 196608,
+   "size": 100,
+   "format": "xcz",
+   "requires": [
+    "ncz-lz4"
+   ]
+  }
+ ],
+ "missing": [
+  {
+   "name": "A base game installed: its newest updates, every variant",
+   "installed": [
+    {
+     "app_id": "0100ABCD00010000",
+     "version_code": 0
+    }
+   ],
+   "want": [
+    "update"
+   ],
+   "missing": [
+    "b_up2",
+    "b_up2x"
+   ]
+  },
+  {
+   "name": "The installed app includes the newest update: nothing to offer",
+   "installed": [
+    {
+     "app_id": "0100ABCD00010000",
+     "version_code": 65536
+    }
+   ],
+   "want": [
+    "update"
+   ],
+   "missing": []
+  },
+  {
+   "name": "Only the formats the device reads",
+   "installed": [
+    {
+     "app_id": "0100ABCD00010000",
+     "version_code": 0
+    }
+   ],
+   "want": [
+    "update"
+   ],
+   "formats": [
+    "nsz"
+   ],
+   "missing": [
+    "b_up2"
+   ]
+  },
+  {
+   "name": "Only the tokens the device provides: no requires always passes",
+   "installed": [
+    {
+     "app_id": "0100ABCD00010000",
+     "version_code": 0
+    }
+   ],
+   "want": [
+    "update"
+   ],
+   "satisfies": [],
+   "missing": [
+    "b_up2"
+   ]
+  },
+  {
+   "name": "Both filters",
+   "installed": [
+    {
+     "app_id": "0100ABCD00010000",
+     "version_code": 0
+    }
+   ],
+   "want": [
+    "update"
+   ],
+   "formats": [
+    "nsz",
+    "xcz"
+   ],
+   "satisfies": [
+    "ncz-lz4"
+   ],
+   "missing": [
+    "b_up2",
+    "b_up2x"
+   ]
+  },
+  {
+   "name": "An empty formats leaves out everything",
+   "installed": [
+    {
+     "app_id": "0100ABCD00010000",
+     "version_code": 0
+    }
+   ],
+   "want": [
+    "update"
+   ],
+   "formats": [],
+   "missing": []
+  },
+  {
+   "name": "Nothing installed: the base games, every variant",
+   "installed": [],
+   "want": [
+    "base"
+   ],
+   "missing": [
+    "b_base",
+    "b_lz4"
+   ]
+  },
+  {
+   "name": "Base games the device can install, without a token",
+   "installed": [],
+   "want": [
+    "base"
+   ],
+   "satisfies": [],
+   "missing": [
+    "b_base"
+   ]
+  }
+ ]
+}
