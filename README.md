@@ -9,8 +9,10 @@ backups and cheats.
 
 Website: <https://lantern.boreale.dev/?utm_source=github&utm_medium=readme>.
 
-**Status: draft 0.8**: a reading guide, a glossary and a checklist on top of
-0.7's differential updates and browser clients, on a core ready for 1.0. The text may still change before 1.0; comments and issues are
+**Status: draft 0.9**: packages a device may not be able to use, and
+variants of one game, on top of 0.8's reading guide and 0.7's differential
+updates and browser clients, on a core ready for 1.0. The text may still
+change before 1.0; comments and issues are
 welcome, from client and server authors especially.
 
 - **[The specification](SPEC.md)**: REST and JSON, versioned by path (`/v1/`)
@@ -87,6 +89,12 @@ welcome, from client and server authors especially.
     sums and build provenance attestations (below);
   - a suite that reads the mirrors' bytes (`--fetch-mirrors`) and fills a
     peer's slots, and unit tests that run in a few minutes.
+- **What 0.9 adds**: `requires` and `includes` on an app (what a device must
+  provide to install it, and the versions of the game its package already
+  contains), variants of one game that share an `app_id` and a
+  `version_code`, a `format` filter on the listing, and `formats` and
+  `satisfies` in what is missing, so that a server leaves out what a device
+  cannot install. Additions only: `schema` stays 1.
 - **What 0.8 adds**: Annex D, a reading guide (what to read first for a static
   client, a client with accounts, a homebrew installer, a server, a peer…), a
   glossary and a checklist of the requirements that protect a client and a
@@ -245,7 +253,7 @@ with a device key.
 **[Test vectors](vectors/)** give the bytes libraries must agree on:
 signature bases and signatures of requests, homebrew signatures, SPKI
 fingerprints, paths accepted and refused, `version_code` per profile,
-requirements' decisions, rating caps, encrypted backups and recovery
+requirements' decisions, an app's `requires` and `includes`, rating caps, encrypted backups and recovery
 phrases, grants, sync's merge rule, canonical JSON, the static layout, and
 chunks and their indexes;
 `tools/make_vectors.py` writes them, and the tests check them against the
@@ -260,7 +268,7 @@ and their SHA-256 sums. The release workflow builds them reproducibly from
 the tag and has GitHub attest their provenance; to check a file:
 
 ```sh
-gh attestation verify lantern-0.8.zip --repo JigSawFr/lantern
+gh attestation verify lantern-0.9.zip --repo JigSawFr/lantern
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 

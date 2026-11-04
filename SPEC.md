@@ -919,6 +919,7 @@ An app is one installable package: a base game, an update or an add-on.
   has those versions too: a server counts them as installed (§ 6.3), and a
   client MUST NOT install an app of type `update` that an installed app
   `includes` at a `version_code` equal to the update's or above it. [L-6.1-5]
+  Test vectors: `vectors/app-requires.json`.
 - `sha256`: of the file as served, lower-case hex. A server MUST give it,
   having hashed the file before it lists it. [L-6.1-1]
 - `atlas`, optional: the game's id in [Atlas](https://atlas.boreale.dev/),
@@ -2115,7 +2116,7 @@ registry by a pull request with its report.
 **Test vectors** (`vectors/`), for the libraries of clients and servers:
 signed requests (§ 5.4), homebrew signatures (§ 8.4), SPKI fingerprints
 (§ 5.3), paths (§ 8.2), `version_code` per profile (Annex A),
-requirements (§ 8.7), rating caps (§ 5.6), encrypted backups and recovery
+requirements (§ 8.7), an app's `requires` and `includes` (§ 6.1, § 6.3), rating caps (§ 5.6), encrypted backups and recovery
 phrases (§ 9.4), grants (§ 19.3), sync's merge rule (§ 20.4), canonical
 JSON (§ 2.3), the static layout (§ 21.1) and chunks and their indexes
 (§ 22), each case with what a reader decides.
@@ -3657,3 +3658,6 @@ A reading aid for § 15 and § 16, from the requirements that carry the weight. 
     `satisfies` in the request of `/v1/apps/missing` (§ 6.3, `L-6.3-1`,
     `L-6.3-2`, `L-6.3-3`): a server that gets them leaves out what the
     device cannot install, and one that does not gets every variant.
+  - Vectors: `vectors/app-requires.json`. The suite's `conformance/checks_v09.py`
+    checks each new requirement against a server that lists such apps, and
+    names the client rules it cannot see.
