@@ -532,7 +532,7 @@ class Texts(Live):
         apps = json.loads(self.srv.get("/api/lantern/v1/apps?page_size=500")[2])["items"]
         frost = next(a for a in apps if a["title_id"] == FROSTLINE_TITLE and a["type"] == "base")
         self.assertEqual(frost["atlas"], "Q900001")
-        moss = next(a for a in apps if a["title_id"] == MOSS_TITLE and a["type"] == "base")
+        moss = next(a for a in apps if a["title_id"] == MOSS_TITLE and a["type"] == "base" and a["format"] == "xci")
         self.assertEqual(moss["installed_size"], 8192)
         title = json.loads(self.srv.get(f"/api/lantern/v1/titles/{FROSTLINE_TITLE}",
                                         headers={"Lantern-Platform": "switch"})[2])
