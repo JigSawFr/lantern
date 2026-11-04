@@ -5,18 +5,18 @@ changé dans SPEC.md depuis `commit`, puis donner ici le nouveau commit et la
 somme SHA-256 de SPEC.md à ce commit (sha256sum SPEC.md).
 language: fr
 commit: 5ac42b8c73d60d44df6d2557fccb0c92abd00324
-sha256: 5d643fffda67070d3fe501ddda963047b8c0276f08a30f04ab1567a24d0d6606
+sha256: 8ad05addab5c33bb3650a5b803ac0eb777a06dc2565991b8c7343519001f693b
 banner: Traduction informative ; seul le texte anglais fait foi.
 english: Lire le texte anglais, qui fait référence
 source: SPEC.fr.md sur GitHub
 -->
 # Lantern — un protocole ouvert pour les serveurs de bibliothèques de jeux
 
-Brouillon 0.8, 2026-11-01. Statut : **brouillon**, susceptible de changer jusqu'à la 1.0
+Brouillon 0.10, 2026-11-04. Statut : **brouillon**, susceptible de changer jusqu'à la 1.0
 (l'annexe C dit ce qu'elle attend).
 Ce texte est publié sous licence [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
-**Traduction informative.** Ce texte traduit en français le brouillon 0.8
+**Traduction informative.** Ce texte traduit en français le brouillon 0.10
 de la spécification. Seul le texte anglais fait foi : en cas de doute ou
 d'écart, c'est lui qui s'applique. Les identifiants d'exigence
 (`[L-5.2-3]`), le code, les noms de champs, les documents JSON et les mots
@@ -52,7 +52,7 @@ une possibilité laissée au choix de l'implémentation. Chaque exigence porte
 un identifiant stable, écrit à côté d'elle entre crochets, comme
 `[L-5.2-3]` : le § 3.5 dit comment les identifiants sont tenus, et la suite
 de conformité (§ 17) nomme ceux que couvre chacun de ses contrôles.
-L'annexe B donne des conseils aux auteurs de clients, sans exigences ; l'annexe D est un guide de lecture, un glossaire et une liste de contrôle, elle aussi sans exigences.
+L'annexe B donne des conseils aux auteurs de clients, sans exigences ; l'annexe D est un guide de lecture, un glossaire et une liste de contrôle, et l'annexe E la liste des documents sur lesquels le texte s'appuie, elles aussi sans exigences.
 
 ## 1. Principes
 
@@ -88,8 +88,10 @@ L'annexe B donne des conseils aux auteurs de clients, sans exigences ; l'annexe 
 
 ## 2. Transport
 
-- HTTPS. Un client MUST vérifier le certificat auprès de son magasin
-  d'autorités de certification, ou par rapport à la clé qu'il a épinglée à
+- HTTPS (RFC 9110 § 4.2.2). TLS 1.2 et 1.3 (RFC 8446) sont les versions en
+  usage, les plus anciennes étant retirées (RFC 8996), et la RFC 9325 dit
+  comment les configurer. Un client MUST vérifier le certificat auprès de son
+  magasin d'autorités de certification, ou par rapport à la clé qu'il a épinglée à
   l'appairage (§ 5.3). [L-2-1]
 - HTTP en clair n'est permis que sur les adresses de bouclage
   (`127.0.0.0/8`, `::1`), pour les tests. Un client MUST NOT parler HTTP en
@@ -100,7 +102,7 @@ L'annexe B donne des conseils aux auteurs de clients, sans exigences ; l'annexe 
 - Toutes les routes vivent sous un chemin de base que le serveur choisit
   (par défaut `/api/lantern`), annoncé par la découverte (§ 4.1) et la
   poignée de main (§ 4.2). Plus bas, les chemins sont relatifs à `<base>`.
-- Les corps JSON MUST être en UTF-8, envoyés avec
+- Les corps JSON (RFC 8259) MUST être en UTF-8 (RFC 3629), envoyés avec
   `Content-Type: application/json` (erreurs : `application/problem+json`,
   § 12). [L-2-4]
 - Le client MUST envoyer `User-Agent: <Name>/<version>`, sauf un client
@@ -359,6 +361,8 @@ Sunset: Sun, 01 Aug 2027 00:00:00 GMT
 Link: <https://lantern.boreale.dev/spec/#34-deprecation-and-sunset>; rel="deprecation"
 ```
 
+`Link` est celui de la RFC 8288.
+
 - `Deprecation` (RFC 9745) : depuis quand l'élément est déprécié, une date
   au format Structured Fields (`@` suivi de secondes Unix). Un serveur MUST
   l'envoyer sur chaque réponse d'une route, ou dans un schéma, qu'il a
@@ -413,7 +417,7 @@ sa section « Modifications » le dit.
 ### 3.6 Versions publiées
 
 Chaque version de ce texte est publiée sur le dépôt, par une étiquette
-`spec-v<version>` (`spec-v0.8`) : sa release contient SPEC.md, les
+`spec-v<version>` (`spec-v0.9`) : sa release contient SPEC.md, les
 schémas, leurs exemples, les vecteurs de test, `openapi.yaml` et la suite
 de conformité, chacun comme un fichier à part et tous dans un zip, avec
 leurs sommes SHA-256 dans `SHA256SUMS`. GitHub atteste que chaque fichier a
@@ -422,7 +426,7 @@ dépôt (une attestation de provenance de build, SLSA). Pour vérifier un
 fichier :
 
 ```sh
-gh attestation verify lantern-0.8.zip --repo JigSawFr/lantern
+gh attestation verify lantern-0.9.zip --repo JigSawFr/lantern
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
@@ -470,7 +474,8 @@ Lantern a sa propre découverte, sur le port UDP **47115** :
 
 ### 4.2 Poignée de main
 
-`GET /.well-known/lantern` (à la racine de l'origine) et `GET <base>/v1/`
+`GET /.well-known/lantern` (à la racine de l'origine, une URI bien connue,
+RFC 8615) et `GET <base>/v1/`
 MUST renvoyer le même document, avec ou sans jeton. [L-4.2-1]
 
 ```json
@@ -738,7 +743,8 @@ délivre. Un appareil qui s'appaire de nouveau crée une nouvelle clé.
   délivrés auparavant, avec `401` `signature_required`.
   `auth.bearer_only` (§ 4.2) dit s'il en délivre et en accepte encore.
 
-**Signer une requête** (RFC 9421, signatures de messages HTTP). Une requête
+**Signer une requête** (RFC 9421, signatures de messages HTTP, qui écrivent
+leurs champs en Structured Field Values, RFC 9651). Une requête
 qui porte un jeton lié porte une signature de ces composants, dans cet
 ordre :
 
@@ -1039,7 +1045,27 @@ contenu additionnel.
   connaît (ceux d'un `nsz`, décompressé), qu'un client compare à son espace
   libre (§ 6.3).
 - `format` : un mot en minuscules tiré de la liste des formats de paquet du
-  profil.
+  profil. Un client MUST NOT installer une app dont il ne connaît pas le
+  `format` : un serveur plus récent que le client, ou un profil qui s'est
+  enrichi, peut en lister un. [L-6.1-3]
+- `requires`, facultatif : ce que l'appareil doit fournir pour installer et
+  faire tourner l'app, un tableau d'au plus 8 jetons en minuscules
+  (`^[a-z0-9][a-z0-9-]{0,31}$`), chacun au plus une fois. Le profil liste ses
+  jetons et ce que chacun signifie (annexe A) ; une app qui n'en a aucun
+  n'a besoin de rien au-delà de son `format`. Ce n'est pas le `requires` d'un
+  homebrew (§ 8.7), qui est un objet. Un client MUST NOT installer une app
+  qui porte un jeton qu'il ne connaît pas ou ne peut pas satisfaire.
+  [L-6.1-4] Il MAY quand même la lister, comme indisponible, en disant
+  pourquoi (le format, le jeton) : la cacher laisse l'utilisateur se demander
+  où est passé le jeu.
+- `includes`, facultatif : les versions du même jeu que ce paquet contient
+  déjà, un tableau d'au plus 16 `{app_id, version_code}` (un `app_id` comme
+  ci-dessus, un `version_code` comme ci-dessus), comme un jeu de base stocké
+  avec sa mise à jour fusionnée. Une fois l'app installée, l'appareil a aussi
+  ces versions : un serveur les compte comme installées (§ 6.3), et un client
+  MUST NOT installer une app de type `update` qu'une app installée
+  `includes` à un `version_code` égal à celui de la mise à jour ou supérieur.
+  [L-6.1-5] Vecteurs de test : `vectors/app-requires.json`.
 - `sha256` : celui du fichier tel qu'il est servi, en hexadécimal
   minuscule. Un serveur MUST le donner, après avoir haché le fichier avant
   de le lister. [L-6.1-1]
@@ -1059,9 +1085,19 @@ contenu additionnel.
 - `chunks`, facultatif : où se trouve l'index de morceaux du fichier, pour
   une mise à jour qui ne télécharge que ce qui a changé (§ 22).
 
+**Variantes.** Un même jeu peut être proposé en plusieurs paquets qui
+diffèrent par leur `format` ou leur `requires` : un paquet simple, et un
+autre stocké avec une compression que l'appareil ne sait peut-être pas lire.
+Des apps MAY partager un `app_id` et un `version_code` quand elles diffèrent
+par leur `format` ou leur `requires`. Ce sont des apps distinctes, chacune
+avec son `id`, sa `size`, son `sha256` et son `file`, et la bibliothèque
+les liste toutes : le client choisit (annexe B.15). Deux apps de même
+`app_id`, `version_code`, `format` et `requires` sont un seul paquet listé
+deux fois.
+
 ### 6.2 Listage
 
-`GET <base>/v1/apps?platform=&type=&title_id=&q=&sort=&page_size=&cursor=` →
+`GET <base>/v1/apps?platform=&type=&format=&title_id=&q=&sort=&page_size=&cursor=` →
 
 ```json
 {"schema": 1, "items": [App, …], "total": 4123, "next": "c_…"}
@@ -1071,6 +1107,11 @@ contenu additionnel.
   `title_id` MUST filtrer, et `q` garder les apps dont le `name` le
   contient, comparés comme le dit le § 2.3. [L-6.2-1] `q` fait 256 octets
   au plus.
+- `format`, facultatif, est un mot de format (§ 6.1) et garde les apps de ce
+  format : un serveur MUST filtrer par lui quand il est donné. Une valeur qui
+  n'est le format d'aucune app donne une liste vide, jamais une erreur, pour
+  qu'un client puisse demander un format qu'un serveur ne connaît pas.
+  [L-6.2-7]
 - `sort` : `name` (par défaut), selon le `name` comparé comme le dit le
   § 2.3 ; `added`, du plus récent au plus ancien ; ou `release`, du plus
   récent au plus ancien selon la date de sortie du titre de l'app, celles
@@ -1101,7 +1142,9 @@ contenu additionnel.
 {"schema": 1,
  "installed": [{"app_id": "0100ABCD00010000", "version_code": 0},
                {"app_id": "0100ABCD00010800", "version_code": 131072}],
- "want": ["update", "dlc"]}
+ "want": ["update", "dlc"],
+ "formats": ["nsp", "nsz"],
+ "satisfies": ["fs-compression"]}
 ```
 
 → un listage (§ 6.2), pour cette plateforme, qui MUST contenir exactement :
@@ -1114,7 +1157,13 @@ contenu additionnel.
   récent remplace le jeu de base, une app de type `base` du même `app_id` ;
 - avec `dlc` : les contenus additionnels des jeux installés qui ne sont pas
   installés ;
-- avec `base` : les jeux qui ne sont pas installés.
+- avec `base` : les jeux qui ne sont pas installés ;
+
+et, quand la requête porte `formats` ou `satisfies` (ci-dessous), seulement
+les apps que l'appareil peut installer : celles dont le `format` est dans
+`formats` et dont tous les `requires` sont dans `satisfies`. Le filtre
+s'applique en dernier à ce que donnent les règles ci-dessus : il écarte des
+apps, il ne choisit jamais une autre version à leur place.
 
 Un serveur connaît le jeu d'une app installée par sa bibliothèque, ou par
 la règle du profil quand il en a une. Paginé avec `cursor` dans la requête.
@@ -1122,9 +1171,31 @@ la règle du profil quand il en a une. Paginé avec `cursor` dans la requête.
 `installed` est toujours envoyé, et peut être vide (une console sur
 laquelle rien n'est encore installé) ; `want` contient une ou plusieurs
 des valeurs `base`, `update` et `dlc`. Un serveur MUST répondre `400` à un
-`want` vide ou contenant une autre valeur, et ignorer un `app_id` installé
-qu'il ne connaît pas ; un `app_id` listé deux fois compte pour son
-`version_code` le plus élevé. [L-6.3-2]
+`want` vide ou contenant une autre valeur, et à un `formats` ou un
+`satisfies` qui n'est pas un tableau d'au plus 16 mots (ci-dessous) ; il
+ignore un `app_id` installé qu'il ne connaît pas ; un `app_id` listé deux
+fois compte pour son `version_code` le plus élevé. [L-6.3-2]
+
+`formats` et `satisfies` sont facultatifs et disent ce que l'appareil peut
+installer. `formats` est un tableau d'au plus 16 mots de format (§ 6.1) : les
+formats qu'il lit. `satisfies` est un tableau d'au plus 16 jetons de
+`requires` (§ 6.1) : ceux qu'il fournit. Quand l'un est présent, un serveur
+MUST écarter du listage les apps dont le `format` n'est pas dans `formats`,
+et les apps dont les `requires` ne sont pas tous dans `satisfies` ; une app
+sans `requires` passe toujours le second test, et un tableau vide est
+présent (`formats: []` écarte toutes les apps). [L-6.3-3] Quand l'un est
+absent, ce filtre n'est pas appliqué : un client qui ne l'envoie pas reçoit
+toutes les variantes. Un mot de `formats` a la forme d'un mot de format
+(`^[a-z0-9]{1,16}$`), un mot de `satisfies` celle d'un jeton
+(`^[a-z0-9][a-z0-9-]{0,31}$`) ; un mot qui ne l'a pas est mal formé (`400`,
+ci-dessus), tandis qu'un mot ou un jeton qu'aucune app ne porte n'est pas
+une erreur.
+
+**Versions incluses.** Un `{app_id, version_code}` installé qui égale celui
+d'une app, quelle que soit sa variante, installe aussi les `includes` de
+cette app (§ 6.1) : un serveur MUST les traiter eux aussi comme installés,
+pour toutes les règles ci-dessus, afin de ne jamais proposer une mise à jour
+que l'appareil a déjà dans un jeu de base. [L-6.3-4]
 
 **Espace libre.** C'est le client qui décide de ce qui tient, pas le
 serveur : il compare son espace libre à l'`installed_size` de chaque app
@@ -1926,7 +1997,7 @@ tableau :
 ## 12. Erreurs
 
 Toute erreur MUST être du `application/problem+json` (RFC 9457) avec un vrai
-code d'état, jamais `2xx`. [L-12-1]
+code d'état, jamais `2xx`. [L-12-1] `429` est celui de la RFC 6585 § 4.
 
 ```json
 {"schema": 1, "type": "https://lantern.boreale.dev/errors/account-frozen",
@@ -1995,6 +2066,8 @@ ses propres limites plus basses, avec `400` ou `413`, sans jamais défaillir
 à cause de lui. [L-13-3]
 
 ## 14. Mise en cache
+
+La mise en cache propre à HTTP (RFC 9111) s'applique à chaque route : ce qui suit dit seulement sur quoi s'appuient un serveur et un client Lantern.
 
 Chaque `GET` qui renvoie du JSON SHOULD porter un `ETag` et honorer
 `If-None-Match` avec `304`. [L-14-1] Un serveur qui envoie un `ETag` MUST
@@ -2315,7 +2388,7 @@ sur un serveur public). Chaque niveau d'un serveur exige `Lantern Core` ;
 
 **Le nom.** Seule une implémentation qui passe la suite à un niveau peut se
 dire « Lantern compatible » et afficher le badge, avec ce niveau et la
-version du texte : « Lantern compatible 0.8 · Core +titles ». Les badges et
+version du texte : « Lantern compatible 0.9 · Core +titles ». Les badges et
 le registre des implémentations sont
 [sur le site](https://lantern.boreale.dev/conformance/) ; une
 implémentation rejoint le registre par une pull request accompagnée de son
@@ -2324,7 +2397,7 @@ rapport.
 **Vecteurs de test** (`vectors/`), pour les bibliothèques de clients et de
 serveurs : requêtes signées (§ 5.4), signatures de homebrews (§ 8.4),
 empreintes SPKI (§ 5.3), chemins (§ 8.2), `version_code` par profil
-(annexe A), exigences (§ 8.7), plafonds de classification (§ 5.6),
+(annexe A), exigences (§ 8.7), `requires` et `includes` d'une app (§ 6.1, § 6.3), plafonds de classification (§ 5.6),
 sauvegardes chiffrées et phrases de récupération (§ 9.4), autorisations
 (§ 19.3), règle de fusion de la synchronisation (§ 20.4), JSON canonique
 (§ 2.3), organisation statique (§ 21.1) et morceaux et leurs index (§ 22),
@@ -3026,7 +3099,22 @@ encore de profil (annexe A.8).
 - **Versions.** `version_code` : la version entière du titre, telle que le
   système la lit (`196608` pour `v196608`) ; `version_name` : la version
   d'affichage des données de contrôle du jeu (`1.3.0`).
-- **Formats** : `nsp`, `nsz`, `xci`, `xcz`.
+- **Formats** : `nsp`, `nsz`, `xci`, `xcz`. Les extensions des paquets
+  compressés (`nsz`, `xcz`) que la plupart des installeurs ne savent pas lire
+  ne sont pas des formats à part : une app les dit par `requires`
+  (ci-dessous), si bien que la liste des formats reste ces quatre-là.
+- **Jetons `requires`** (§ 6.1). Un paquet peut être stocké d'une façon que
+  la console ne lit qu'avec de l'aide ; les jetons disent ce qu'il faut :
+
+  | Jeton | L'appareil doit fournir |
+  |---|---|
+  | `fs-compression` | Le paquet est stocké avec la couche de compression propre au micrologiciel (un `nsp` simple dont le programme est compressé ainsi, signé hors des outils du fabricant de la plateforme) : micrologiciel 12.0.0 ou plus récent. La mise à jour est en général fusionnée dans le paquet (`includes`), et les mises à jour officielles de la plateforme ne doivent pas être installées par-dessus. |
+  | `sigpatch` | Un système qui exécute des paquets dont les signatures n'ont pas été faites par les outils du fabricant de la plateforme, c'est-à-dire dont les contrôles de signature sont modifiés. |
+  | `ncz-sparse` | Un `nsz` ou `xcz` qui contient des fichiers NCZ à décalages de compteur, pour un jeu de base stocké en fichier creux. |
+  | `ncz-lz4` | Un `nsz` ou `xcz` qui contient des fichiers NCZ dont les blocs LZ4 de la plateforme restent décompressés. |
+
+  Un client qui ne connaît pas un jeton n'installe pas l'app (§ 6.1). Un
+  paquet simple, et un `nsz` ou `xcz` standard, n'ont pas de `requires`.
 - **Chemins** : `/` est la racine de la carte SD.
 - **Codes de triche.** Le format texte d'Atmosphère. `build_id` :
   hexadécimal en majuscules, 1 à 64 chiffres ; Atmosphère nomme ses
@@ -3514,13 +3602,31 @@ de l'appareil.
   serveur autorise son origine (§ 2.5) : le dire, avec cette origine, quand
   une requête préliminaire échoue.
 
+### B.15 Variantes et paquets qu'un appareil ne peut pas utiliser
+
+- Envoyer `formats` et `satisfies` à `/v1/apps/missing` (§ 6.3) avec ce que
+  l'appareil lit et fournit réellement, pour que le serveur ne liste pas ce
+  qui ne peut pas s'installer. Pour un listage (§ 6.2), garder toute la
+  réponse : un utilisateur qui ne peut pas installer un jeu peut quand même
+  vouloir savoir qu'il existe.
+- Parmi les variantes d'un même `app_id` et `version_code` (§ 6.1),
+  préférer celle qui a le moins de `requires`, puis la plus petite `size` :
+  un paquet simple plutôt qu'un paquet qui demande un système modifié, un
+  petit fichier plutôt qu'un gros.
+- Montrer un paquet que l'appareil ne peut pas installer comme indisponible,
+  et dire ce qui lui manque (le format, ou le jeton) ; ne jamais l'installer
+  pour voir.
+- Un jeu qui arrive avec sa mise à jour dedans (`includes`) est à jour pour
+  ces versions-là : ne pas proposer la mise à jour officielle par-dessus,
+  elle remplacerait ce que le paquet a fusionné.
+
 ## Annexe C — La route vers la 1.0
 
 Non normatif : ce dont ce texte a besoin avant sa version 1.0, quand
 `/v1/` et le `schema` 1 cesseront de changer de forme, et où en est chaque
-critère à ce brouillon, le 0.8.
+critère à ce brouillon, le 0.10.
 
-| | Critère | Où il en est au 0.8 |
+| | Critère | Où il en est au 0.10 |
 |---|---|---|
 | 1 | **Deux serveurs et deux clients indépendants** atteignent `Lantern Core` avec la suite de conformité, chacun écrit à partir de ce texte par des personnes qui n'ont pas écrit les autres, et chaque paire d'entre eux fonctionne ensemble : appairage, listage, téléchargement, ce qui manque. | Ouvert. Un serveur passe la suite, le serveur de référence de ce dépôt ; les bibliothèques de lantern-sdk sont écrites par les auteurs de ce texte et ne comptent pas. Le registre du site liste qui passe la suite. |
 | 2 | **Un cœur sans question ouverte** : chaque section du § 2 au § 14, et le § 17, sans partie marquée « à vérifier », et aucun ticket étiqueté comme question à leur sujet encore ouvert. | Rempli. Le 0.6 a tranché ce que le cœur laissait ouvert, et le 0.7 ce que les navigateurs lui demandent (§ 2.5) et la forme canonique des nombres (§ 2.3) ; leurs Modifications listent chaque point. Aucune de ces sections n'est marquée « à vérifier », et la liste ci-dessous ne contient aucune question à leur sujet. Il le reste tant qu'aucun ticket étiqueté comme question à leur sujet n'est ouvert. |
@@ -3549,7 +3655,7 @@ différences (§ 22), sur la liste jusqu'au 0.6, sont tranchés par le 0.7.
 
 **Où en est chaque partie.** Ce n'est pas une promesse : l'état du texte à ce brouillon.
 
-| Partie | État au 0.8 |
+| Partie | État au 0.10 |
 |---|---|
 | § 2 à § 14, et § 17 : le cœur | Tranché : aucune partie marquée « à vérifier » (critère 2). |
 | § 5.4, § 9.4 et § 19 : les requêtes signées, les sauvegardes chiffrées, les autorisations et les pairs | Tranché dans ce texte, et encore à faire relire par quelqu'un qui ne les a pas écrits (critère 4). |
@@ -3613,6 +3719,7 @@ Une aide à la lecture du § 15 et du § 16, tirée des exigences qui portent le
 - montre l'empreinte courte de la clé à l'appairage, épingle le SHA-256 entier et échoue devant une autre clé (`L-5.3-1`, `L-5.3-3`, `L-5.3-4`) ;
 - signe chaque requête qui porte un jeton lié, et n'envoie jamais sa clé privée (`L-5.4-3`, `L-5.4-4`) ;
 - vérifie le SHA-256 d'un téléchargement, et pour un fichier reconstitué à partir de blocs, chaque bloc puis l'ensemble (`L-6.6-5`, `L-22.3-2`) ;
+- n'installe une app que s'il connaît son `format` et chaque jeton de `requires` et peut les satisfaire, et jamais une mise à jour qu'une app installée inclut déjà (`L-6.1-3`, `L-6.1-4`, `L-6.1-5`) ;
 - traite un miroir ou un pair comme non fiable et ne lui envoie aucun identifiant (`L-19.1-1`, `L-19.1-2`) ;
 - vérifie la signature d'un homebrew et épingle la clé de son auteur (`L-8.4-2`, `L-8.4-3`) ;
 - n'envoie jamais la clé des sauvegardes à un serveur ou à un pair, et refuse une phrase mal saisie (`L-9.4-2`, `L-9.4-7`) ;
@@ -3629,6 +3736,38 @@ Une aide à la lecture du § 15 et du § 16, tirée des exigences qui portent le
 - garde les octets d'une sauvegarde chiffrée tels qu'envoyés (`L-9.4-4`).
 
 **Un pair** ne sert qu'avec une autorisation qui se vérifie, que des fichiers qu'il détient en entier, et qu'aux adresses de ses propres réseaux (`L-19.4-1`, `L-19.4-2`, `L-19.4-3`).
+
+## Annexe E — Références
+
+Non normatif : les documents sur lesquels ce texte s'appuie, et pour quoi. Les exigences sont dans les sections ; là où une RFC est nommée, son texte vaut tel qu'il est écrit, pour ce que la section en prend.
+
+### E.1 Documents sur lesquels le texte s'appuie
+
+| Document | Utilisé pour |
+|---|---|
+| RFC 2119, RFC 8174 | Les mots clés (avant le § 1). |
+| RFC 3629 | UTF-8, l'encodage de tout document (§ 2). |
+| RFC 8259, RFC 7493, RFC 8785 | JSON ; I-JSON, le profil que garde tout document ; la forme canonique que prennent les textes signés (§ 2.3, § 8.4). |
+| RFC 3339, RFC 3986, RFC 4648 | Les instants, les URI, base64 et base64url (§ 2.3). |
+| RFC 9110, RFC 9111, RFC 9113 | La sémantique de HTTP, sa mise en cache, et HTTP/2 (§ 2, § 14). |
+| RFC 8446, RFC 9325, RFC 8996 | TLS 1.3, bien employer TLS 1.2 et 1.3, et le retrait de TLS 1.0 et 1.1 (§ 2). |
+| RFC 8615 | L'URI bien connue `/.well-known/lantern` (§ 4.2). |
+| RFC 6585 | `429 Too Many Requests` (§ 12). |
+| RFC 8288, RFC 8594, RFC 9745 | `Link`, `Sunset` et `Deprecation` (§ 3.4). |
+| RFC 7932, RFC 8878 | Les codages de contenu Brotli et Zstandard (§ 2.1). |
+| RFC 9421, RFC 9530, RFC 9651 | Les signatures de messages HTTP, `Content-Digest` et `Repr-Digest`, et les Structured Field Values dans lesquelles elles sont écrites (§ 5.4, § 6.6). |
+| RFC 9457 | `application/problem+json` (§ 12). |
+| RFC 8032, RFC 5869, RFC 8439 | Ed25519, HKDF et ChaCha20-Poly1305 (§ 5.4, § 9.4). |
+| RFC 6762, RFC 6763 | Le DNS multicast et DNS-SD (§ 4.1). |
+
+### E.2 Travaux voisins, dont le texte ne dépend pas
+
+- La RFC 9449, OAuth 2.0 Demonstrating Proof of Possession (DPoP), lie un jeton à une clé que le client détient, comme le fait le § 5.4. La liaison de Lantern utilise à la place les signatures de messages HTTP, qui couvrent aussi l'empreinte du corps de la requête, et ne demande aucun serveur d'autorisation : un serveur de bibliothèque sur un réseau local n'en a pas.
+- La RFC 6750 et la RFC 8628, les jetons porteurs et l'autorisation d'appareil, sont ce dont part le § 5 : le jeton est porteur seul jusqu'à ce qu'un appareil le lie à sa clé, et l'appairage fonctionne comme le flux d'appareil.
+
+### E.3 Noms enregistrés
+
+Le suffixe d'URI bien connue `lantern` (§ 4.2) et les en-têtes de requête et de réponse `Lantern-*` (§ 2, § 8, § 9) sont propres à Lantern. Le texte ne demande aucun enregistrement des en-têtes ; l'enregistrement du suffixe au registre des URI bien connues de l'IANA est demandé à part, et ce texte le dira quand il sera fait.
 
 ## Modifications {#changes}
 
@@ -4012,3 +4151,38 @@ Une aide à la lecture du § 15 et du § 16, tirée des exigences qui portent le
     exigences qui protègent un client et un serveur, par leurs
     identifiants (D.3).
   - Annexe C : l'état de chaque partie du texte à ce brouillon.
+- 0.9 (2026-11-04) : des paquets qu'un appareil ne peut peut-être pas utiliser,
+  et des variantes d'un même jeu. Des ajouts seulement : `schema` reste 1.
+  - `requires` sur une app (§ 6.1) : des jetons en minuscules, définis par le
+    profil, pour ce que l'appareil doit fournir ; un client n'installe pas une
+    app dont il ne connaît pas le `format` ou le jeton, ou qu'il ne peut pas
+    satisfaire (`L-6.1-3`, `L-6.1-4`). L'annexe A.1 liste les quatre jetons de
+    la Switch, et dit que les extensions NCZ de `nsz` et `xcz` sont des
+    `requires`, non de nouveaux formats.
+  - `includes` sur une app (§ 6.1) : des versions du même jeu que le paquet
+    contient déjà ; le serveur les compte comme installées dans ce qui manque
+    (`L-6.3-4`) et un client n'installe aucune mise à jour qu'une app
+    installée inclut (`L-6.1-5`).
+  - Variantes (§ 6.1) : des apps peuvent partager `app_id` et `version_code`
+    quand elles diffèrent par `format` ou `requires` ; l'annexe B.15 dit
+    comment un client peut choisir.
+  - Filtre `format` sur `/v1/apps` (§ 6.2, `L-6.2-7`) ; `formats` et
+    `satisfies` dans la requête de `/v1/apps/missing` (§ 6.3, `L-6.3-1`,
+    `L-6.3-2`, `L-6.3-3`) : un serveur qui les reçoit écarte ce que
+    l'appareil ne peut pas installer, et un serveur qui ne les reçoit pas
+    donne toutes les variantes.
+  - Vecteurs : `vectors/app-requires.json`. `conformance/checks_v09.py`, dans
+    la suite, vérifie chaque nouvelle exigence auprès d'un serveur qui liste
+    de telles apps, et nomme les règles de client qu'elle ne peut pas voir.
+- 0.10 (2026-11-04) : les RFC sur lesquelles le texte s'appuie, nommées et
+  listées ; rien d'autre. Aucune route, aucun champ, aucun code ni aucune
+  exigence ne change, et la suite, le serveur de référence et `openapi.yaml`
+  ne changent que de version.
+  - Citées là où elles s'appliquent : la RFC 3629 et la RFC 8259 (§ 2), la
+    RFC 8446, la RFC 9325 et la RFC 8996 pour TLS (§ 2), la RFC 8615 pour
+    `/.well-known/lantern` (§ 4.2), la RFC 8288 pour `Link` (§ 3.4), la
+    RFC 9651 pour les Structured Field Values des signatures (§ 5.4), la
+    RFC 6585 pour `429` (§ 12) et la RFC 9111 pour la mise en cache (§ 14).
+  - Annexe E (nouvelle, non normative) : les documents sur lesquels le texte
+    s'appuie et pour quoi, les travaux voisins (RFC 9449) et les noms
+    enregistrés.

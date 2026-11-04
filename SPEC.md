@@ -1,6 +1,6 @@
 # Lantern — an open protocol for game library servers
 
-Draft 0.9, 2026-11-04. Status: **draft**, open to change until 1.0 (Annex C says what it
+Draft 0.10, 2026-11-04. Status: **draft**, open to change until 1.0 (Annex C says what it
 waits for).
 This text is licensed under [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
@@ -22,7 +22,7 @@ The key words MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT and MAY are used
 as in RFC 2119 and RFC 8174, in capitals only. Each requirement has a stable
 id written next to it in brackets, such as `[L-5.2-3]`: § 3.5 says how ids are
 kept, and the conformance suite (§ 17) names the ones each of its checks
-covers. Annex B is advice to client authors, without requirements; Annex D is a reading guide, a glossary and a checklist, also without requirements.
+covers. Annex B is advice to client authors, without requirements; Annex D is a reading guide, a glossary and a checklist, and Annex E the list of the documents relied on, also without requirements.
 
 ## 1. Principles
 
@@ -51,7 +51,8 @@ covers. Annex B is advice to client authors, without requirements; Annex D is a 
 
 ## 2. Transport
 
-- HTTPS. A client MUST verify the certificate against its CA store, or
+- HTTPS (RFC 9110 § 4.2.2). TLS 1.2 and 1.3 (RFC 8446) are the versions in use, the older ones being
+  retired (RFC 8996), and RFC 9325 says how to set them up. A client MUST verify the certificate against its CA store, or
   against the key it pinned at pairing (§ 5.3). [L-2-1]
 - Plain HTTP is allowed only on loopback addresses (`127.0.0.0/8`, `::1`),
   for testing. A client MUST NOT speak plain HTTP to any other address,
@@ -60,7 +61,7 @@ covers. Annex B is advice to client authors, without requirements; Annex D is a 
 - All routes live under a base path the server chooses (default
   `/api/lantern`), announced by discovery (§ 4.1) and the handshake (§ 4.2).
   Below, paths are relative to `<base>`.
-- JSON bodies MUST be UTF-8, sent with `Content-Type: application/json`
+- JSON bodies (RFC 8259) MUST be UTF-8 (RFC 3629), sent with `Content-Type: application/json`
   (errors: `application/problem+json`, § 12). [L-2-4]
 - The client MUST send `User-Agent: <Name>/<version>`, but a client in a
   browser, whose browser writes it (Annex A.7). [L-2-5] It SHOULD send
@@ -293,6 +294,8 @@ Sunset: Sun, 01 Aug 2027 00:00:00 GMT
 Link: <https://lantern.boreale.dev/spec/#34-deprecation-and-sunset>; rel="deprecation"
 ```
 
+`Link` is the one of RFC 8288.
+
 - `Deprecation` (RFC 9745): since when it is deprecated, a Structured
   Fields date (`@` and Unix seconds). A server MUST send it on every
   response of a route, or in a schema, that it has deprecated. [L-3.4-1]
@@ -394,7 +397,7 @@ Lantern has its own discovery, on UDP port **47115**:
 
 ### 4.2 Handshake
 
-`GET /.well-known/lantern` (at the origin's root) and `GET <base>/v1/` MUST
+`GET /.well-known/lantern` (at the origin's root, a well-known URI, RFC 8615) and `GET <base>/v1/` MUST
 return the same document, with or without a token. [L-4.2-1]
 
 ```json
@@ -634,7 +637,7 @@ device that pairs again makes a new key.
   `signature_required`. `auth.bearer_only` (§ 4.2) says whether it still
   issues and takes them.
 
-**Signing a request** (RFC 9421, HTTP Message Signatures). A request that
+**Signing a request** (RFC 9421, HTTP Message Signatures, which write their fields as Structured Field Values, RFC 9651). A request that
 carries a bound token carries a signature of these components, in this
 order:
 
@@ -1764,7 +1767,7 @@ or declines, and says why.
 ## 12. Errors
 
 Every error MUST be `application/problem+json` (RFC 9457) with a real
-status code, never `2xx`. [L-12-1]
+status code, never `2xx`. [L-12-1] `429` is the one of RFC 6585 § 4.
 
 ```json
 {"schema": 1, "type": "https://lantern.boreale.dev/errors/account-frozen",
@@ -1831,6 +1834,8 @@ A server MUST refuse a request document beyond these limits, or beyond
 its own lower ones, with `400` or `413`, never fail on it. [L-13-3]
 
 ## 14. Caching
+
+HTTP's own caching (RFC 9111) applies to every route: what follows only says what a Lantern server and client rely on.
 
 Every `GET` returning JSON SHOULD carry an `ETag` and honour
 `If-None-Match` with `304`. [L-14-1] A server that sends an `ETag` MUST
@@ -3207,9 +3212,9 @@ device's own zone.
 
 Not normative: what this text needs before its version 1.0, when `/v1/`
 and `schema` 1 stop changing shape, and where each criterion stands at this
-draft, 0.9.
+draft, 0.10.
 
-| | Criterion | Where it stands at 0.9 |
+| | Criterion | Where it stands at 0.10 |
 |---|---|---|
 | 1 | **Two independent servers and two independent clients** reach `Lantern Core` with the conformance suite, each written from this text by people who did not write the other ones, and each pair of them works together: pairing, listing, downloading, what is missing. | Open. One server passes the suite, the reference server of this repository; the libraries of lantern-sdk are written by this text's authors and do not count. The registry on the site lists who passes. |
 | 2 | **A core with no open question**: every section from § 2 to § 14, and § 17, without a part marked "to check", and no issue labelled as a question on them left open. | Met. 0.6 settled what the core left open, and 0.7 what browsers ask of it (§ 2.5) and the canonical form of numbers (§ 2.3); their Changes list each point. None of those sections is marked "to check", and the list below holds no question on them. It stays met while no issue labelled as a question on them is open. |
@@ -3236,7 +3241,7 @@ on the list until 0.6, are settled by 0.7.
 
 **Where each part stands.** Not a promise: the state of the text at this draft.
 
-| Part | State at 0.9 |
+| Part | State at 0.10 |
 |---|---|
 | § 2 to § 14, and § 17: the core | Settled: no part marked "to check" (criterion 2). |
 | § 5.4, § 9.4 and § 19: signed requests, encrypted backups, grants and peers | Settled in this text, and still to be reviewed by someone who did not write them (criterion 4). |
@@ -3317,6 +3322,38 @@ A reading aid for § 15 and § 16, from the requirements that carry the weight. 
 - keeps an encrypted backup's bytes as sent (`L-9.4-4`).
 
 **A peer** serves only with a grant that verifies, only files it holds whole, and only to the addresses of its own networks (`L-19.4-1`, `L-19.4-2`, `L-19.4-3`).
+
+## Annex E — References
+
+Not normative: the documents this text relies on, and for what. The requirements are in the sections; where an RFC is named there, its text holds as it is written, for what the section takes from it.
+
+### E.1 Relied on
+
+| Document | Used for |
+|---|---|
+| RFC 2119, RFC 8174 | The key words (above § 1). |
+| RFC 3629 | UTF-8, the encoding of every document (§ 2). |
+| RFC 8259, RFC 7493, RFC 8785 | JSON; I-JSON, the profile every document keeps; the canonical form signed texts take (§ 2.3, § 8.4). |
+| RFC 3339, RFC 3986, RFC 4648 | Times, URIs, base64 and base64url (§ 2.3). |
+| RFC 9110, RFC 9111, RFC 9113 | HTTP's semantics, its caching, and HTTP/2 (§ 2, § 14). |
+| RFC 8446, RFC 9325, RFC 8996 | TLS 1.3, how to use TLS 1.2 and 1.3 well, and the retirement of TLS 1.0 and 1.1 (§ 2). |
+| RFC 8615 | The well-known URI `/.well-known/lantern` (§ 4.2). |
+| RFC 6585 | `429 Too Many Requests` (§ 12). |
+| RFC 8288, RFC 8594, RFC 9745 | `Link`, `Sunset` and `Deprecation` (§ 3.4). |
+| RFC 7932, RFC 8878 | The Brotli and Zstandard content codings (§ 2.1). |
+| RFC 9421, RFC 9530, RFC 9651 | HTTP Message Signatures, `Content-Digest` and `Repr-Digest`, and the Structured Field Values they are written in (§ 5.4, § 6.6). |
+| RFC 9457 | `application/problem+json` (§ 12). |
+| RFC 8032, RFC 5869, RFC 8439 | Ed25519, HKDF and ChaCha20-Poly1305 (§ 5.4, § 9.4). |
+| RFC 6762, RFC 6763 | Multicast DNS and DNS-SD (§ 4.1). |
+
+### E.2 Related work, not relied on
+
+- RFC 9449, OAuth 2.0 Demonstrating Proof of Possession (DPoP), binds a token to a key the client holds, as § 5.4 does. Lantern's binding uses HTTP Message Signatures instead, which also cover the request's body digest, and asks for no authorization server: a library server on a LAN has none.
+- RFC 6750 and RFC 8628, bearer tokens and the device authorization grant, are what § 5 starts from: the token is bearer-only until a device binds it to its key, and pairing works as the device flow does.
+
+### E.3 Registered names
+
+The well-known URI suffix `lantern` (§ 4.2) and the `Lantern-*` request and response headers (§ 2, § 8, § 9) are Lantern's own. The text asks no registration of the headers; a registration of the suffix with IANA's well-known URI registry is requested separately, and this text will say so when it is made.
 
 ## Changes
 
@@ -3661,3 +3698,13 @@ A reading aid for § 15 and § 16, from the requirements that carry the weight. 
   - Vectors: `vectors/app-requires.json`. The suite's `conformance/checks_v09.py`
     checks each new requirement against a server that lists such apps, and
     names the client rules it cannot see.
+- 0.10 (2026-11-04): the RFCs the text relies on, named and listed; nothing else. No route,
+  field, code or requirement changes, and the suite, the reference server and
+  `openapi.yaml` only change their version.
+  - Cited where they apply: RFC 3629 and RFC 8259 (§ 2), RFC 8446, RFC 9325 and
+    RFC 8996 for TLS (§ 2), RFC 8615 for `/.well-known/lantern` (§ 4.2),
+    RFC 8288 for `Link` (§ 3.4), RFC 9651 for the Structured Field Values
+    of signatures (§ 5.4), RFC 6585 for `429` (§ 12) and RFC 9111 for caching
+    (§ 14).
+  - Annex E (new, not normative): the documents relied on and for what, the
+    related work (RFC 9449) and the names registered.

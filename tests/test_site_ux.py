@@ -77,5 +77,16 @@ class ChangesPage(unittest.TestCase):
         self.assertNotIn("style=", page, "the CSP forbids style attributes")
 
 
+class References(unittest.TestCase):
+    def test_every_rfc_the_text_names_is_in_annex_e_and_each_one_listed_is_named(self):
+        import re
+        spec = (ROOT / "SPEC.md").read_text(encoding="utf-8")
+        start, end = spec.index("\n## Annex E"), spec.index("\n## Changes")
+        named = set(re.findall(r"RFC (\d+)", spec[:start] + spec[end:]))
+        listed = set(re.findall(r"RFC (\d+)", spec[start:end]))
+        self.assertEqual(named - listed, set(), "named in the text, missing from Annex E")
+        self.assertEqual(listed - named, set(), "listed in Annex E, named nowhere")
+
+
 if __name__ == "__main__":
     unittest.main()

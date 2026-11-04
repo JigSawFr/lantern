@@ -29,7 +29,7 @@
 openapi: 3.1.0
 info:
   title: Lantern protocol
-  version: 0.9.0
+  version: 0.10.0
   summary: An open protocol between homebrews and apps on every platform and self-hosted game library servers.
   license:
     name: MIT
