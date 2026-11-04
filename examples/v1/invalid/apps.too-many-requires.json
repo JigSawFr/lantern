@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "items": [
+    {
+      "id": "a_Fs6Ym4",
+      "platform": "switch",
+      "title_id": "0100ABCD00010000",
+      "app_id": "0100ABCD00010000",
+      "type": "base",
+      "version_code": 196608,
+      "version_name": "1.3.0",
+      "name": "Frostline Tales",
+      "size": 4294967296,
+      "format": "nsp",
+      "sha256": "c92d6f1a7b3e5a48024f9b1d5e8c6a37b2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d7",
+      "added": "2026-10-28T19:02:11Z",
+      "file": "/api/lantern/v1/files/f_Rd93Hy",
+      "requires": [
+        "token-0",
+        "token-1",
+        "token-2",
+        "token-3",
+        "token-4",
+        "token-5",
+        "token-6",
+        "token-7",
+        "token-8"
+      ],
+      "includes": [
+        {
+          "app_id": "0100ABCD00010800",
+          "version_code": 196608
+        }
+      ]
+    }
+  ],
+  "total": 1,
+  "next": null
+}

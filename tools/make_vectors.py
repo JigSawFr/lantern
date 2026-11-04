@@ -17,6 +17,9 @@ decides.
 - version-codes.json: version_code and version_name per profile (Annex A);
 - requires.json: requirements and devices, and whether a client offers the
   package, warns or refuses (§ 8.7);
+- app-requires.json: an app's `format`, `requires` and `includes` (SPEC.md
+  § 6.1, § 6.3): whether a client installs it, and what a server leaves out
+  of what is missing;
 - rating-caps.json: ratings and caps, and whether a server hides (§ 5.6);
 - ed25519-refused.json: Ed25519 signatures a verifier refuses whatever the
   equation says (§ 8.4, § 5.4): keys and R of small order (each pair of the
@@ -49,6 +52,8 @@ import json
 import subprocess
 import sys
 import tempfile
+import threading
+import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -282,6 +287,83 @@ def requires_vectors():
     return doc("requires", "Requirements (SPEC.md § 8.7) and what a client knows of its device: offer, warn (a "
                "condition it cannot read: it still offers, naming it) or refuse (a condition the device fails); "
                "conditions counts those it names.", cases=out)
+
+
+def app_requires_vectors():
+    def app(i, kind="base", version=0, fmt="nsp", requires=None, includes=None, size=100):
+        base = {"base": "0100ABCD00010000", "update": "0100ABCD00010800"}[kind]
+        a = {"id": i, "platform": "switch", "title_id": "0100ABCD00010000", "app_id": base, "type": kind,
+             "version_code": version, "size": size, "format": fmt}
+        if requires is not None:
+            a["requires"] = requires
+        if includes is not None:
+            a["includes"] = includes
+        return a
+
+    known, provided = ["nsp", "nsz", "xci", "xcz"], ["fs-compression"]
+    merged = [{"app_id": "0100ABCD00010800", "version_code": 196608}]
+    plain, lz4 = app("a_plain"), app("a_lz4", version=65536, requires=["fs-compression", "sigpatch"], includes=merged)
+    cases = [
+        ("No requires: installs", plain, known, provided, []),
+        ("A token the device provides", app("a_one", requires=["fs-compression"]), known, provided, []),
+        ("A token the device lacks", app("a_two", requires=["fs-compression", "sigpatch"]), known, provided, []),
+        ("A token the client does not know", app("a_new", requires=["ncz-future"]), known, [], []),
+        ("A format the client does not know", app("a_fmt", fmt="zzz"), known, provided, []),
+        ("An empty requires needs nothing", app("a_empty", requires=[]), known, [], []),
+        ("An update that an installed app includes, at its version", app("a_up", "update", 196608), known, provided, [lz4]),
+        ("An update below the version an installed app includes", app("a_old", "update", 131072), known, provided, [lz4]),
+        ("An update above the version an installed app includes", app("a_new_up", "update", 262144), known, provided, [lz4]),
+        ("Included, but by an app not installed", app("a_up2", "update", 196608), known, provided, [plain]),
+        ("A base is never an included update", app("a_base", version=196608), known, provided, [lz4]),
+    ]
+    install = []
+    for name, a, formats, satisfies, installed in cases:
+        decision, why = client.install_decision(a, formats, satisfies, installed)
+        install.append({"name": name, "app": a, "formats": formats, "satisfies": satisfies, "installed": installed,
+                        "decision": decision, "reasons": len(why)})
+    variants = [app("a_big", fmt="nsz", size=900), app("a_req", requires=["sigpatch"], size=10),
+                app("a_small", fmt="nsz", size=500), app("a_tie", fmt="xci", size=500)]
+    chosen = client.prefer_variant(variants)["id"]
+    # A server's side (SPEC.md § 6.3): the library, what the device has, what it can install, what is left.
+    library = [app("b_base"), app("b_lz4", version=65536, requires=["fs-compression", "sigpatch"], includes=merged),
+               app("b_up1", "update", 131072), app("b_up2", "update", 196608, fmt="nsz"),
+               app("b_up2x", "update", 196608, fmt="xcz", requires=["ncz-lz4"])]
+    installed_base = [{"app_id": "0100ABCD00010000", "version_code": 0}]
+    installed_lz4 = [{"app_id": "0100ABCD00010000", "version_code": 65536}]
+    asks = [
+        ("A base game installed: its newest updates, every variant", installed_base, ["update"], None, None),
+        ("The installed app includes the newest update: nothing to offer", installed_lz4, ["update"], None, None),
+        ("Only the formats the device reads", installed_base, ["update"], ["nsz"], None),
+        ("Only the tokens the device provides: no requires always passes", installed_base, ["update"], None, []),
+        ("Both filters", installed_base, ["update"], ["nsz", "xcz"], ["ncz-lz4"]),
+        ("An empty formats leaves out everything", installed_base, ["update"], [], None),
+        ("Nothing installed: the base games, every variant", [], ["base"], None, None),
+        ("Base games the device can install, without a token", [], ["base"], None, []),
+    ]
+    missing = []
+    for name, have, want, formats, satisfies in asks:
+        got = [a["id"] for a in server_missing(library, have, want, formats, satisfies)]
+        entry = {"name": name, "installed": have, "want": want}
+        if formats is not None:
+            entry["formats"] = formats
+        if satisfies is not None:
+            entry["satisfies"] = satisfies
+        missing.append({**entry, "missing": sorted(got)})
+    return doc("app-requires", "An app's format, requires and includes (SPEC.md § 6.1): whether a client installs it "
+               "(install: its decision, and how many reasons it gives), and which variant it prefers by default "
+               "(Annex B.15, not a requirement); then what a server leaves out of what is missing when the request "
+               "has formats or satisfies, and counts as installed through includes (§ 6.3). The library of the "
+               "missing cases is `library`; each case lists the ids it gives.",
+               install=install, variants={"apps": variants, "preferred": chosen}, library=library, missing=missing)
+
+
+def server_missing(library, installed, want, formats, satisfies):
+    """§ 6.3 as the reference server computes it, on `library` (a list of apps of the Switch)."""
+    lib = types.SimpleNamespace(lock=threading.RLock(), apps={a["id"]: {"doc": a} for a in library})
+    found = ls.Library.missing(lib, "switch", installed, set(want),
+                                                  None if formats is None else set(formats),
+                                                  None if satisfies is None else set(satisfies))
+    return [e["doc"] for e in found]
 
 
 def cap_vectors():
@@ -679,7 +761,7 @@ def static_vectors():
 def everything():
     return {"signatures": signature_vectors(), "homebrew-signatures": homebrew_vectors(), "spki": spki_vectors(),
             "paths": path_vectors(), "version-codes": version_vectors(), "requires": requires_vectors(),
-            "rating-caps": cap_vectors(), "ed25519-refused": ed25519_vectors(), "encrypted-saves": e2e_vectors(),
+            "app-requires": app_requires_vectors(), "rating-caps": cap_vectors(), "ed25519-refused": ed25519_vectors(), "encrypted-saves": e2e_vectors(),
             "grants": grant_vectors(), "sync-merge": sync_vectors(), "static-layout": static_vectors(),
             "canonical-json": canonical_vectors(), "chunks": chunk_vectors()}
 

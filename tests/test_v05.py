@@ -335,7 +335,7 @@ class Peers(Live):
         capped = self.srv.pair_keyed("lea", rating_cap={"age": 12})[:2]
         self.assertEqual(self.call(f"/api/lantern/v1/grants/sha256/{moss['sha256']}", who=capped)[0], 404)
         self.assertEqual(self.call("/api/lantern/v1/grants/sha256/" + "0" * 64)[0], 404)
-        update = next(a for a in apps if a["app_id"] == "0100EFEF00020800")
+        update = next(a for a in apps if a["app_id"] == "0100EFEF00020800" and a["format"] == "nsp")   # not its variant
         self.assertEqual(len(update["mirrors"]), 2)                               # L-19.2-2: library.json's
 
     def test_peer(self):
@@ -593,7 +593,7 @@ class StaticLibraries(unittest.TestCase):
         self.assertEqual((hello["base"], hello["static"]["page_size"], hello["features"]["pairing"]), (".", 3, 0))
         code, report = run_suite("--static", str(out))
         self.assertEqual(code, 0, report)
-        self.assertIn("Levels reached (SPEC.md § 17, draft 0.8): Lantern Static\n", report)
+        self.assertIn("Levels reached (SPEC.md § 17, draft 0.9): Lantern Static\n", report)
         class Quiet(http.server.SimpleHTTPRequestHandler):
             def log_message(self, *args):
                 pass

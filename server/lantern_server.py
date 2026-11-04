@@ -24,6 +24,12 @@ served only when library.json gives its identity. library.json:
       {"file": "android/frostline.apk", "platform": "android",
        "title_id": "org.example.frostlinetales", "version_code": 12, "name": "Frostline Tales"}]}
 
+An .nsp whose name holds `[LZ4]` (any case) is a package stored with the
+firmware's compression layer: its app says `requires` `fs-compression` and
+`sigpatch` (SPEC.md Annex A.1). An entry may also give `requires` (tokens) and
+`includes` ([{"app_id", "version_code"}]) itself, which replace that; the same
+game may be listed in several variants (SPEC.md § 6.1).
+
 An entry's other fields (publisher, developer, genres, tags, players,
 ratings, languages, summary, description, icon, banner, screenshots, video)
 make its title's sheet (feature `titles`, SPEC.md § 7); summary and
@@ -259,7 +265,7 @@ try:                    # Python 3.14 and later: zstd in the standard library (S
 except ImportError:
     zstd = None
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 BASE = "/api/lantern"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
             "signatures", "admin", "events", "peers", "sync", "encrypted_saves", "deltas")
@@ -342,6 +348,11 @@ BUILD_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 DOTTED = re.compile(r"^[0-9]+(?:\.[0-9]+){0,3}$")
 TID_IN_NAME = re.compile(r"\[([0-9A-Fa-f]{16})\]")
 VERSION_IN_NAME = re.compile(r"\[v(\d+)\]")
+LZ4_IN_NAME = re.compile(r"\[LZ4\]", re.IGNORECASE)    # a plain .nsp stored with the firmware's compression layer
+FORMAT_WORD = re.compile(r"^[a-z0-9]{1,16}$")            # a package format (SPEC.md § 6.1)
+REQUIRES_TOKEN = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")  # a token of an app's requires (SPEC.md § 6.1)
+REQUIRES_MAX, INCLUDES_MAX, ARRAY_MAX = 8, 16, 16        # requires, includes (§ 6.1); formats, satisfies (§ 6.3)
+SWITCH_LZ4 = ["fs-compression", "sigpatch"]             # what a [LZ4] .nsp takes (SPEC.md Annex A.1)
 # The profiles of SPEC.md's Annex A, as far as this server needs them: the
 # id's form, the types and formats of apps, whether a newer base replaces the
 # old one (§ 6.3), and for homebrew, each format's place (a single file's
@@ -1179,6 +1190,24 @@ class Library:
             app["installed_size"] = entry["installed_size"]
         if isinstance(entry.get("atlas"), str) and ATLAS.match(entry["atlas"]):
             app["atlas"] = entry["atlas"]
+        requires = entry.get("requires") if "requires" in entry else \
+            SWITCH_LZ4 if platform == "switch" and ext == "nsp" and LZ4_IN_NAME.search(name) else None
+        if requires is not None:
+            if isinstance(requires, list) and len(requires) <= REQUIRES_MAX and all(
+                    isinstance(t, str) and REQUIRES_TOKEN.fullmatch(t) for t in requires):
+                if requires:
+                    app["requires"] = list(dict.fromkeys(requires))
+            else:
+                self.skip(rel + " (requires)", f"requires is at most {REQUIRES_MAX} tokens of a-z, 0-9 and - (SPEC.md § 6.1)")
+        includes = entry.get("includes")
+        if includes is not None:
+            if isinstance(includes, list) and len(includes) <= INCLUDES_MAX and all(
+                    isinstance(i, dict) and CORE_ID.match(str(i.get("app_id", ""))) and is_int(i.get("version_code"))
+                    for i in includes):
+                if includes:
+                    app["includes"] = [{"app_id": i["app_id"], "version_code": i["version_code"]} for i in includes]
+            else:
+                self.skip(rel + " (includes)", f"includes is at most {INCLUDES_MAX} of {{app_id, version_code}} (SPEC.md § 6.1)")
         mirrors = mirrors_of(entry.get("mirrors"))
         if mirrors is False:
             self.skip(rel + " (mirrors)", "mirrors are [{url}], HTTPS, or HTTP on a private network (SPEC.md § 19.2)")
@@ -1947,10 +1976,18 @@ class Library:
             total = len(entries)
         return {"schema": 1, "items": [view(e) for e in items], "total": total, "next": nxt}
 
-    def missing(self, platform, installed, want):
-        """SPEC.md § 6.3, on one platform, from the console's installed apps."""
+    def missing(self, platform, installed, want, formats=None, satisfies=None):
+        """SPEC.md § 6.3, on one platform, from the console's installed apps. `formats` and `satisfies`, when not
+        None, leave out the apps the device cannot install (L-6.3-3)."""
         with self.lock:
             apps = [e for e in self.apps.values() if e["doc"]["platform"] == platform]
+            # An installed app that is one of ours also installs what it includes (L-6.3-4).
+            installed = list(installed)
+            for item in list(installed):
+                for e in apps:
+                    doc = e["doc"]
+                    if doc["app_id"] == item["app_id"] and doc["version_code"] == item["version_code"]:
+                        installed += doc.get("includes", [])
             replaces = PROFILES.get(platform, {}).get("replaces", False)
             by_app = {e["doc"]["app_id"]: e["doc"] for e in apps}
             have = {}
@@ -1979,6 +2016,10 @@ class Library:
                     out += [e for e in mine if e["doc"]["type"] == "dlc" and e["doc"]["app_id"] not in ids]
             if "base" in want:
                 out += [e for e in apps if e["doc"]["type"] == "base" and e["doc"]["title_id"] not in have]
+            if formats is not None:
+                out = [e for e in out if e["doc"]["format"] in formats]
+            if satisfies is not None:
+                out = [e for e in out if set(e["doc"].get("requires", ())) <= satisfies]
             return out
 
     def since(self, prefix, since):
@@ -3241,6 +3282,7 @@ class Handler(BaseHTTPRequestHandler):
             raise bad_request("type is a lower-case word, such as base, update or dlc.")
         if title_id is not None and not CORE_ID.match(title_id):
             raise bad_request("title_id is 1 to 128 letters, digits, '.', '_' and '-'.")
+        fmt = query.get("format")       # a format no app has gives an empty list, never an error (L-6.2-7)
         sort, size, cursor = self.listing_args(query)
         lib = self.server.library
         with lib.lock:
@@ -3248,9 +3290,10 @@ class Handler(BaseHTTPRequestHandler):
                        if (platform is None or e["doc"]["platform"] == platform)
                        and (kind is None or e["doc"]["type"] == kind)
                        and (title_id is None or e["doc"]["title_id"] == title_id)
+                       and (fmt is None or e["doc"]["format"] == fmt)
                        and (not q or fold(q) in fold(e["doc"]["name"]))
                        and not self.app_hidden(e["doc"])]
-            self.send_doc(200, lib.page(entries, sort, size, cursor, ("apps", platform, kind, title_id, q,
+            self.send_doc(200, lib.page(entries, sort, size, cursor, ("apps", platform, kind, fmt, title_id, q,
                                                                       json.dumps(self.cap()))))
 
     def missing(self, query):
@@ -3263,13 +3306,28 @@ class Handler(BaseHTTPRequestHandler):
             raise bad_request("installed is a list of {app_id, version_code}.")
         if not (isinstance(want, list) and want and all(w in ("base", "update", "dlc") for w in want)):
             raise bad_request("want lists base, update or dlc.")
+        formats, satisfies = (self.word_list(doc, name, pattern) for name, pattern in
+                              (("formats", FORMAT_WORD), ("satisfies", REQUIRES_TOKEN)))
         sort, size, cursor = self.listing_args(query)
         lib = self.server.library
-        scope = ("missing", platform, hashlib.sha256(json.dumps([installed, sorted(set(want)), self.cap()],
+        scope = ("missing", platform, hashlib.sha256(json.dumps([installed, sorted(set(want)), None if formats is None else sorted(formats),
+                                                                None if satisfies is None else sorted(satisfies), self.cap()],
                                                                 sort_keys=True).encode()).hexdigest())
         with lib.lock:
-            found = [e for e in lib.missing(platform, installed, set(want)) if not self.app_hidden(e["doc"])]
+            found = [e for e in lib.missing(platform, installed, set(want), formats, satisfies) if not self.app_hidden(e["doc"])]
             self.send_doc(200, lib.page(found, sort, size, cursor, scope))
+
+    @staticmethod
+    def word_list(doc, name, pattern):
+        """The set of words of an optional array of a request (`formats`, `satisfies`: SPEC.md § 6.3), None when it
+        is absent; 400 when it is not an array of at most 16 words of `pattern`."""
+        if name not in doc:
+            return None
+        words = doc[name]
+        if not (isinstance(words, list) and len(words) <= ARRAY_MAX
+                and all(isinstance(w, str) and pattern.fullmatch(w) for w in words)):
+            raise bad_request(f"{name} is an array of at most {ARRAY_MAX} words of the form {pattern.pattern}.")
+        return set(words)
 
     def request_document(self, body):
         """A client's JSON document: 400 when malformed, 422 for a schema this server cannot read."""

@@ -1,6 +1,6 @@
 # Lantern — an open protocol for game library servers
 
-Draft 0.8, 2026-11-01. Status: **draft**, open to change until 1.0 (Annex C says what it
+Draft 0.9, 2026-11-04. Status: **draft**, open to change until 1.0 (Annex C says what it
 waits for).
 This text is licensed under [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
@@ -341,7 +341,7 @@ a shape another draft wrote, and its section "Changes" says so.
 ### 3.6 Releases
 
 Each version of this text is released on the repository, by a tag
-`spec-v<version>` (`spec-v0.8`): its release holds SPEC.md, the schemas,
+`spec-v<version>` (`spec-v0.9`): its release holds SPEC.md, the schemas,
 their examples, the test vectors, `openapi.yaml` and the conformance suite,
 each as an asset of its own and all in one zip, with their SHA-256 sums in
 `SHA256SUMS`. GitHub attests that each asset was built from that tag by the
@@ -349,7 +349,7 @@ repository's release workflow (a build provenance attestation, SLSA). To
 check an asset:
 
 ```sh
-gh attestation verify lantern-0.8.zip --repo JigSawFr/lantern
+gh attestation verify lantern-0.9.zip --repo JigSawFr/lantern
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
@@ -901,6 +901,25 @@ An app is one installable package: a base game, an update or an add-on.
   the app takes once installed, when the server knows them (an `nsz`'s,
   decompressed), which a client compares with its free space (§ 6.3).
 - `format`: a lower-case word from the profile's list of package formats.
+  A client MUST NOT install an app whose `format` it does not know: a
+  server newer than the client, or a profile that grew, may list one. [L-6.1-3]
+- `requires`, optional: what the device must provide to install and run the
+  app, as an array of at most 8 lower-case tokens (`^[a-z0-9][a-z0-9-]{0,31}$`),
+  each at most once. The profile lists its tokens and what each means
+  (Annex A); an app with none needs nothing beyond its `format`. It is
+  not the `requires` of a homebrew (§ 8.7), which is an object. A client
+  MUST NOT install an app that has a token it does not know or cannot
+  satisfy. [L-6.1-4] It MAY still list such an app, as unavailable, and
+  say why (the format, the token): hiding it leaves the user wondering
+  where the game went.
+- `includes`, optional: the versions of the same game that this package
+  already contains, as an array of at most 16 `{app_id, version_code}`
+  (an `app_id` as above, a `version_code` as above), such as a base game
+  stored with its update merged in. Once a device has installed the app, it
+  has those versions too: a server counts them as installed (§ 6.3), and a
+  client MUST NOT install an app of type `update` that an installed app
+  `includes` at a `version_code` equal to the update's or above it. [L-6.1-5]
+  Test vectors: `vectors/app-requires.json`.
 - `sha256`: of the file as served, lower-case hex. A server MUST give it,
   having hashed the file before it lists it. [L-6.1-1]
 - `atlas`, optional: the game's id in [Atlas](https://atlas.boreale.dev/),
@@ -917,9 +936,17 @@ An app is one installable package: a base game, an update or an add-on.
 - `chunks`, optional: where the file's chunk index is, for an update that
   downloads only what changed (§ 22).
 
+**Variants.** One game may be offered in several packages that differ in
+`format` or in `requires`: a plain one, and one stored with a compression
+the device may not read. Apps MAY share an `app_id` and a `version_code`
+when they differ in `format` or in `requires`. They are separate apps, each
+with its own `id`, `size`, `sha256` and `file`, and the library lists each
+of them: the client chooses (Annex B.15). Two apps with the same `app_id`, `version_code`,
+`format` and `requires` are one package listed twice.
+
 ### 6.2 Listing
 
-`GET <base>/v1/apps?platform=&type=&title_id=&q=&sort=&page_size=&cursor=` →
+`GET <base>/v1/apps?platform=&type=&format=&title_id=&q=&sort=&page_size=&cursor=` →
 
 ```json
 {"schema": 1, "items": [App, …], "total": 4123, "next": "c_…"}
@@ -928,6 +955,10 @@ An app is one installable package: a base game, an update or an add-on.
 - `platform` overrides `Lantern-Platform` (§ 4.3); `type` and `title_id`
   MUST filter, and `q` keep the apps whose `name` holds it, compared as
   § 2.3 says. [L-6.2-1] `q` is 256 bytes at most.
+- `format`, optional, is one format word (§ 6.1) and keeps the apps of that
+  format: a server MUST filter by it when it is given. A value that is no
+  app's format gives an empty list, never an error, so that a client may ask
+  for a format a server does not know. [L-6.2-7]
 - `sort`: `name` (the default), by `name` compared as § 2.3 says;
   `added`, newest first; or `release`, newest first by the release of the
   app's title, those without one last. Ties MUST be broken by `id`,
@@ -955,7 +986,9 @@ An app is one installable package: a base game, an update or an add-on.
 {"schema": 1,
  "installed": [{"app_id": "0100ABCD00010000", "version_code": 0},
                {"app_id": "0100ABCD00010800", "version_code": 131072}],
- "want": ["update", "dlc"]}
+ "want": ["update", "dlc"],
+ "formats": ["nsp", "nsz"],
+ "satisfies": ["fs-compression"]}
 ```
 
 → a listing (§ 6.2), for that platform, which MUST hold exactly: [L-6.3-1]
@@ -966,16 +999,42 @@ An app is one installable package: a base game, an update or an add-on.
   newer package replaces the base, an app of type `base` of the same
   `app_id`;
 - with `dlc`: the add-ons of installed games not installed;
-- with `base`: the games not installed.
+- with `base`: the games not installed;
+
+and, when the request has `formats` or `satisfies` (below), only the apps
+the device can install: the apps whose `format` is in `formats` and whose
+`requires` all are in `satisfies`. The filter applies to what the rules
+above give, last: it leaves apps out, it never picks another version in
+their place.
 
 A server knows an installed app's game from its library, or from the
 profile's rule when it has one. Paginated with `cursor` in the query.
 
 `installed` is always sent, and may be empty (a console with nothing yet);
 `want` holds one or more of `base`, `update` and `dlc`. A server MUST
-answer `400` to a `want` empty or with another value, and ignore an
+answer `400` to a `want` empty or with another value, and to a `formats`
+or `satisfies` that is not an array of at most 16 words (below); it ignores an
 installed `app_id` it does not know; an `app_id` listed twice counts by its
 highest `version_code`. [L-6.3-2]
+
+`formats` and `satisfies` are optional and say what the device can install.
+`formats` is an array of at most 16 format words (§ 6.1): the formats it
+reads. `satisfies` is an array of at most 16 `requires` tokens (§ 6.1): the
+ones it provides. When one is present, a server MUST leave out of the listing
+the apps whose `format` is not in `formats`, and the apps whose `requires`
+are not all in `satisfies`; an app without `requires` always passes the
+second test, and an empty array is present (`formats: []` leaves out every
+app). [L-6.3-3] When one is absent, that filter is not applied: a client
+that does not send it gets every variant. A word of `formats` has the form
+of a format word (`^[a-z0-9]{1,16}$`), a word of `satisfies` that of a token
+(`^[a-z0-9][a-z0-9-]{0,31}$`); one that has not is malformed (`400`,
+above), while a word or token no app has is no error.
+
+**Included versions.** An installed `{app_id, version_code}` that equals an
+app's own, whatever its variant, also installs that app's `includes`
+(§ 6.1): a server MUST treat those as installed as well, for every rule
+above, so that it never offers an update the device already has inside
+a base game. [L-6.3-4]
 
 **Free space.** The client decides what fits, not the server: it compares
 its free space with each app's `installed_size` (its `size` when there is
@@ -2049,7 +2108,7 @@ read with `--static`.
 
 **The name.** Only an implementation that passes the suite at a level may
 call itself "Lantern compatible" and show the badge, with that level and
-the version of the text: "Lantern compatible 0.8 · Core +titles". The
+the version of the text: "Lantern compatible 0.9 · Core +titles". The
 badges and the registry of implementations are
 [on the site](https://lantern.boreale.dev/conformance/); an implementation joins the
 registry by a pull request with its report.
@@ -2057,7 +2116,7 @@ registry by a pull request with its report.
 **Test vectors** (`vectors/`), for the libraries of clients and servers:
 signed requests (§ 5.4), homebrew signatures (§ 8.4), SPKI fingerprints
 (§ 5.3), paths (§ 8.2), `version_code` per profile (Annex A),
-requirements (§ 8.7), rating caps (§ 5.6), encrypted backups and recovery
+requirements (§ 8.7), an app's `requires` and `includes` (§ 6.1, § 6.3), rating caps (§ 5.6), encrypted backups and recovery
 phrases (§ 9.4), grants (§ 19.3), sync's merge rule (§ 20.4), canonical
 JSON (§ 2.3), the static layout (§ 21.1) and chunks and their indexes
 (§ 22), each case with what a reader decides.
@@ -2686,7 +2745,22 @@ platforms are open: no profile yet (Annex A.8).
 - **Versions.** `version_code`: the integer title version, as the system
   reads it (`196608` for `v196608`); `version_name`: the display version of
   the game's control data (`1.3.0`).
-- **Formats**: `nsp`, `nsz`, `xci`, `xcz`.
+- **Formats**: `nsp`, `nsz`, `xci`, `xcz`. The extensions of the compressed
+  packages (`nsz`, `xcz`) that most installers cannot read are not formats of
+  their own: an app says them with `requires` (below), so that the list of
+  formats stays these four.
+- **`requires` tokens** (§ 6.1). A package may be stored in a way the
+  console reads only with help; the tokens say what it takes:
+
+  | Token | The device must provide |
+  |---|---|
+  | `fs-compression` | The package is stored with the firmware's own compression layer (a plain `nsp` whose program is compressed that way, signed outside the platform maker's tools): firmware 12.0.0 or later. The update is usually merged into the package (`includes`), and the platform's official updates must not be installed over it. |
+  | `sigpatch` | A system that runs packages whose signatures were not made by the platform maker's tools, that is, with its signature checks patched. |
+  | `ncz-sparse` | An `nsz` or `xcz` that holds NCZ files with counter offsets, for a base stored sparse. |
+  | `ncz-lz4` | An `nsz` or `xcz` that holds NCZ files which keep the platform's LZ4 blocks decompressed. |
+
+  A client that does not know a token does not install the app (§ 6.1). A
+  plain package, and a standard `nsz` or `xcz`, have no `requires`.
 - **Paths**: `/` is the SD card's root.
 - **Cheats.** Atmosphère's text format. `build_id`: upper-case hex, 1 to 64
   digits; Atmosphère names its files with the first 16, those of the main
@@ -3114,13 +3188,28 @@ device's own zone.
   all; one served elsewhere needs the server's owner to allow its origin
   (§ 2.5): say so, with that origin, when a preflight fails.
 
+### B.15 Variants and packages a device cannot use
+
+- Send `formats` and `satisfies` to `/v1/apps/missing` (§ 6.3) with what the
+  device really reads and provides, so that the server does not list what
+  cannot be installed. For a listing (§ 6.2), keep the whole answer: a user
+  who cannot install a game may still want to know it exists.
+- Among variants of one `app_id` and `version_code` (§ 6.1), prefer the one
+  with the fewest `requires`, then the smallest `size`: a plain package over
+  one that needs a patched system, a smaller file over a larger one.
+- Show a package the device cannot install as unavailable, and say what it
+  lacks (the format, or the token); never install it to see.
+- A game that arrives with its update inside (`includes`) is up to date as
+  far as those versions go: do not offer the official update over it, as it
+  would replace what the package merged.
+
 ## Annex C — The road to 1.0
 
 Not normative: what this text needs before its version 1.0, when `/v1/`
 and `schema` 1 stop changing shape, and where each criterion stands at this
-draft, 0.8.
+draft, 0.9.
 
-| | Criterion | Where it stands at 0.8 |
+| | Criterion | Where it stands at 0.9 |
 |---|---|---|
 | 1 | **Two independent servers and two independent clients** reach `Lantern Core` with the conformance suite, each written from this text by people who did not write the other ones, and each pair of them works together: pairing, listing, downloading, what is missing. | Open. One server passes the suite, the reference server of this repository; the libraries of lantern-sdk are written by this text's authors and do not count. The registry on the site lists who passes. |
 | 2 | **A core with no open question**: every section from § 2 to § 14, and § 17, without a part marked "to check", and no issue labelled as a question on them left open. | Met. 0.6 settled what the core left open, and 0.7 what browsers ask of it (§ 2.5) and the canonical form of numbers (§ 2.3); their Changes list each point. None of those sections is marked "to check", and the list below holds no question on them. It stays met while no issue labelled as a question on them is open. |
@@ -3147,7 +3236,7 @@ on the list until 0.6, are settled by 0.7.
 
 **Where each part stands.** Not a promise: the state of the text at this draft.
 
-| Part | State at 0.8 |
+| Part | State at 0.9 |
 |---|---|
 | § 2 to § 14, and § 17: the core | Settled: no part marked "to check" (criterion 2). |
 | § 5.4, § 9.4 and § 19: signed requests, encrypted backups, grants and peers | Settled in this text, and still to be reviewed by someone who did not write them (criterion 4). |
@@ -3211,6 +3300,7 @@ A reading aid for § 15 and § 16, from the requirements that carry the weight. 
 - shows the key's short fingerprint at pairing, pins the whole SHA-256 and fails on another key (`L-5.3-1`, `L-5.3-3`, `L-5.3-4`);
 - signs every request that carries a bound token, and never sends its private key (`L-5.4-3`, `L-5.4-4`);
 - checks a download's SHA-256, and for a file put together from chunks, each chunk and then the whole (`L-6.6-5`, `L-22.3-2`);
+- installs an app only when it knows its `format` and every `requires` token and can satisfy them, and never an update that an installed app already includes (`L-6.1-3`, `L-6.1-4`, `L-6.1-5`);
 - treats a mirror or a peer as untrusted and sends it no credential (`L-19.1-1`, `L-19.1-2`);
 - checks a homebrew's signature and pins its author's key (`L-8.4-2`, `L-8.4-3`);
 - never sends the save key to a server or a peer, and refuses a mistyped phrase (`L-9.4-2`, `L-9.4-7`);
@@ -3551,3 +3641,23 @@ A reading aid for § 15 and § 16, from the requirements that carry the weight. 
     a glossary (D.2) and a checklist of the requirements that protect a
     client and a server, by their ids (D.3).
   - Annex C: the state of each part of the text at this draft.
+- 0.9 (2026-11-04): packages a device may not be able to use, and variants of
+  one game. Additions only: `schema` stays 1.
+  - `requires` on an app (§ 6.1): lower-case tokens, defined by the profile,
+    for what the device must provide; a client does not install an app
+    whose `format` or token it does not know or cannot satisfy
+    (`L-6.1-3`, `L-6.1-4`). Annex A.1 lists the Switch's four, and says that
+    the NCZ extensions of `nsz` and `xcz` are `requires`, not new formats.
+  - `includes` on an app (§ 6.1): versions of the same game that the package
+    already contains; the server counts them as installed in what is missing
+    (`L-6.3-4`) and a client installs no update that an installed app
+    includes (`L-6.1-5`).
+  - Variants (§ 6.1): apps may share `app_id` and `version_code` when they
+    differ in `format` or `requires`; Annex B.15 says how a client may choose.
+  - `format` filter on `/v1/apps` (§ 6.2, `L-6.2-7`); `formats` and
+    `satisfies` in the request of `/v1/apps/missing` (§ 6.3, `L-6.3-1`,
+    `L-6.3-2`, `L-6.3-3`): a server that gets them leaves out what the
+    device cannot install, and one that does not gets every variant.
+  - Vectors: `vectors/app-requires.json`. The suite's `conformance/checks_v09.py`
+    checks each new requirement against a server that lists such apps, and
+    names the client rules it cannot see.

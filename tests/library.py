@@ -36,6 +36,10 @@ FILES = [
     ("Frostline Tales Harbor Pack [0100ABCD00011001][v0].nsp", 700),
     ("Moss and Ember [0100EFEF00020000][v0].xci", 4096),
     ("Moss and Ember [0100EFEF00020800][v131072].nsp", 900),
+    # Variants (SPEC.md § 6.1): the base stored with the firmware's compression layer, its update merged in
+    # ([LZ4] gives its requires, library.json its includes); and the update again, with other requires.
+    ("Moss and Ember [0100EFEF00020000][v65536][LZ4].nsp", 2000),
+    ("Moss and Ember [0100EFEF00020800][v131072] (alt).nsz", 800),
     ("Paper Comets [0100A1B200030000][v0].xcz", 3300),
     ("Paper Comets [0100A1B200030000][v0].nsp", 3100),
     ("Quiet Orchard [0100E5F600050000][v0].nsp", 0),
@@ -64,6 +68,10 @@ META = {"schema": 1, "apps": [
      "version_name": "1.2.0",
      "mirrors": [{"url": "https://mirror.example.org/moss-and-ember-1.2.0.nsp"},     # SPEC.md § 19.2
                  {"url": "http://192.168.1.20:8000/moss-and-ember-1.2.0.nsp"}]},
+    {"file": "Moss and Ember [0100EFEF00020000][v65536][LZ4].nsp", "name": "Moss & Ember", "version_name": "1.2.0",
+     "includes": [{"app_id": "0100EFEF00020800", "version_code": 131072}]},
+    {"file": "Moss and Ember [0100EFEF00020800][v131072] (alt).nsz", "name": "Moss & Ember", "version_name": "1.2.0",
+     "requires": ["ncz-lz4"]},
     {"file": "more/Tidewalker [0100C3D400040000][v0].nsp", "release": "2026-01-20",
      "ratings": [{"system": "CERO", "rating": "A"}],
      "x-example-shelf": "unknown fields are ignored"},
@@ -72,8 +80,8 @@ META = {"schema": 1, "apps": [
      "summary": "Frostline Tales, on a phone."},
 ]}
 
-SERVED = 11         # the apps the server should list, every platform
-SWITCH = 10         # of which on the Switch
+SERVED = 13         # the apps the server should list, every platform
+SWITCH = 12         # of which on the Switch
 PLATFORMS = ["android", "switch"]
 FROSTLINE = "org.example.frostline"
 

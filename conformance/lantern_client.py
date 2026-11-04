@@ -37,7 +37,10 @@ for the conformance suite to apply to what a server serves.
   chunk by chunk, then whole;
 - static libraries (§ 21.3): find_library(), the server or the static
   library an address names;
-- version codes (Annex A): version_code() and version_name() per profile.
+- version codes (Annex A): version_code() and version_name() per profile;
+- packages a device cannot use (§ 6.1): install_decision(), the format and
+  `requires` tokens a client knows and meets, and included(), the update an
+  installed app already contains; prefer_variant(), Annex B.15's choice.
 
 The roots are those of the Switch's profile, and of the draft Linux one
 (Annex A.6). A client installs nothing of a platform it has no profile for
@@ -511,6 +514,36 @@ def requires_problems(entry):
 def _dotted(value):
     parts = [int(p) for p in value.split(".")]
     return parts + [0] * (4 - len(parts))
+
+
+def install_decision(app, formats, satisfies, installed=()):
+    """Whether a client installs an app (SPEC.md § 6.1): ("install", []) or ("unavailable", [why…]).
+    `formats`: the package formats the client knows; `satisfies`: the `requires` tokens it knows and the device
+    provides; `installed`: the apps the device has installed (documents of § 6.1). A format or a token the client
+    does not know is refused as one it cannot satisfy (L-6.1-3, L-6.1-4), and so is an update that an installed
+    app includes (L-6.1-5)."""
+    why = []
+    if app.get("format") not in formats:
+        why.append(f"format {app.get('format')!r}")
+    why += [f"requires {t!r}" for t in app.get("requires") or [] if t not in satisfies]
+    if included(app, installed):
+        why.append("already included by an installed app")
+    return ("unavailable", why) if why else ("install", [])
+
+
+def included(app, installed):
+    """Whether an app of type `update` is one that an installed app `includes` at its version or above (L-6.1-5)."""
+    if app.get("type") != "update":
+        return False
+    return any(i.get("app_id") == app.get("app_id") and isinstance(i.get("version_code"), int)
+               and i["version_code"] >= app["version_code"]
+               for a in installed for i in a.get("includes") or [])
+
+
+def prefer_variant(variants):
+    """The variant a client installs by default among apps that share an app_id and a version_code (Annex B.15):
+    the fewest `requires`, then the smallest `size`, then the smaller `id` so that two clients agree."""
+    return min(variants, key=lambda a: (len(a.get("requires") or []), a["size"], a["id"]))
 
 
 def offer(entry, device):

@@ -24,7 +24,10 @@ pairing, last; what 0.6 settles (checks_v06.py); and what 0.7 adds
 (checks_v07.py): differential updates (chunk indexes, their chunks, and a
 newer version put together from an older one), the answers to a browser's
 page of the origin --origin names (preflights, the headers of every
-answer), the web platform, and a pairing's poll after a slow_down. With --static, it checks a static library instead
+answer), the web platform, and a pairing's poll after a slow_down; and what 0.9
+adds (checks_v09.py): the format filter of the listing, and what is missing
+for a device that says the formats it reads and the requires it provides,
+with the versions an app includes counted as installed. With --static, it checks a static library instead
 (static_check.py). Each check prints PASS, FAIL, WARN (a SHOULD not met) or
 SKIP, with the SPEC.md section it comes from and the requirement ids it
 covers (SPEC.md § 3.5); the exit code is 1 when one fails. At the end it
@@ -90,6 +93,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import checks_v05
 import checks_v06
 import checks_v07
+import checks_v09
 import lantern_client as client
 import static_check
 
@@ -102,7 +106,7 @@ except ImportError:
 # alone say what the server would send.
 READABLE = "zstd, gzip" if zstd is not None else "gzip"
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
             "signatures", "admin", "events", "peers", "sync", "encrypted_saves", "deltas")
 LEVELS = ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
@@ -238,6 +242,9 @@ REQS = {
     "cors.preflight": ["L-2.5-3"], "cors.max-age": ["L-2.5-4"], "cors.responses": ["L-2.5-2"],
     "cors.other-origin": ["L-2.5-2"], "cors.credentials": ["L-2.5-5"], "platforms.web": ["L-A.7-1"],
     "pairing.after-slow-down": ["L-5.2-15"], "static.chunks": ["L-22.1-1", "L-21.1-1"], "static.cors": ["L-21.3-4"],
+    # Draft 0.9 (checks_v09.py).
+    "apps.format": ["L-6.2-7"], "missing.formats": ["L-6.3-1", "L-6.3-3"], "missing.satisfies": ["L-6.3-1", "L-6.3-3"],
+    "missing.arrays": ["L-6.3-2"], "missing.includes": ["L-6.3-4"],
 }
 # Rules only a client keeps: the suite cannot see them (SPEC.md § 17).
 CLIENT_RULES = [
@@ -259,6 +266,9 @@ CLIENT_RULES = [
     ("5.4", ["L-5.4-8"], "A stale signature is signed again once, at the server's Date"),
     ("5.7", ["L-5.7-5"], "An admin app shows each waiting pairing's code and the server's fingerprint"),
     ("6.1", ["L-6.1-2"], "Nothing is installed or matched by an Atlas id alone"),
+    ("6.1", ["L-6.1-3", "L-6.1-4"], "An app of a format, or with a requires token, the client does not know or "
+     "cannot satisfy is not installed (it may be listed as unavailable)"),
+    ("6.1", ["L-6.1-5"], "An update that an installed app includes, at its version or above, is not installed"),
     ("6.6", ["L-6.6-5"], "A download's SHA-256 is checked before installing"),
     ("7.1", ["L-7.1-4", "L-7.1-5"], "No token or credential is sent to an external address; a video opens on request"),
     ("8.1", ["L-8.1-1"], "A kind the client does not know is read as app"),
@@ -461,7 +471,7 @@ class Client:
         return res
 
 
-class Suite(checks_v05.NewFamilies, checks_v06.Sweep, checks_v07.Seven, static_check.StaticChecks):
+class Suite(checks_v05.NewFamilies, checks_v06.Sweep, checks_v07.Seven, checks_v09.Nine, static_check.StaticChecks):
     version = VERSION
 
     def __init__(self, args):
@@ -673,6 +683,15 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, checks_v07.Seven, static_c
             self.check("missing.up-to-date", "6.3", "Missing: nothing for an up-to-date game", self.c_missing_current)
             self.check("missing.base", "6.3", "Missing: with base, the games not installed", self.c_missing_base)
             self.check("missing.malformed", "12", "A malformed body gives 400 bad_request", self.c_malformed)
+            self.check("apps.format", "6.2", "format filters; a format no app has gives an empty list", self.c_apps_format)
+            self.check("missing.formats", "6.3", "Missing with formats: only the apps of those formats",
+                       self.c_missing_formats)
+            self.check("missing.satisfies", "6.3", "Missing with satisfies: only the apps whose requires are provided",
+                       self.c_missing_satisfies)
+            self.check("missing.arrays", "6.3", "formats or satisfies malformed or above 16 words: 400",
+                       self.c_missing_arrays)
+            self.check("missing.includes", "6.3", "Missing: the versions an installed app includes are installed too",
+                       self.c_missing_includes)
             self.check("limits.depth", "13", "A body nested deeper than 16 gives 400 or 413, not a failure",
                        self.c_depth)
             self.check("files.whole", "6.6", "Whole files and HEAD: length, ETag, sha256 and Repr-Digest",
@@ -1328,7 +1347,8 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, checks_v07.Seven, static_c
         mine = self.of_title(apps, base)
         updates = [a for a in mine if a["type"] == "update"]
         newest = max((a["version_code"] for a in updates), default=-1)
-        expected = {a["id"] for a in updates if a["version_code"] == newest and newest > base["version_code"]}
+        have = self.installed_version(apps, base)
+        expected = {a["id"] for a in updates if a["version_code"] == newest and newest > have}
         expected |= {a["id"] for a in mine if a["type"] == "dlc"}
         got = self.missing(base["platform"], [{"app_id": base["app_id"], "version_code": base["version_code"]}],
                            ["update", "dlc"], size=1 if len(expected) > 1 else None)
@@ -2841,6 +2861,7 @@ def bind_checks():
     checks_v06.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r),
                     TITLES_AT_ONCE=TITLES_AT_ONCE)
     checks_v07.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
+    checks_v09.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
 
 
 bind_checks()
