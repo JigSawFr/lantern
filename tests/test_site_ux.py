@@ -46,5 +46,36 @@ class Pages(unittest.TestCase):
         self.assertTrue((ROOT / "site" / "assets" / "code.js").is_file())
 
 
+class ChangesPage(unittest.TestCase):
+    """spec/changes/: a card for each draft, and what changed since each older one."""
+
+
+    def test_versions_sort_as_numbers(self):
+        self.assertLess(build_site.version_key("0.9"), build_site.version_key("0.10"))
+        self.assertEqual(build_site.version_key("1.2"), (1, 2))
+
+    def test_the_summary_is_the_sentence_the_entry_opens_with(self):
+        date, said = build_site.draft_summary(["- 0.8 (2026-11-01): a guide; nothing else.", "  more."])
+        self.assertEqual(date, "2026-11-01")
+        self.assertTrue(said.startswith("a guide"))
+        self.assertEqual(build_site.draft_summary(None), (None, None))
+        self.assertEqual(build_site.draft_summary(["no head"]), (None, None))
+
+    def test_the_built_page_has_a_card_a_panel_and_the_feed(self):
+        out = ROOT / "build" / "spec" / "changes" / "index.html"
+        if not out.is_file():
+            self.skipTest("site not built")
+        page = out.read_text(encoding="utf-8")
+        notes = build_site.changes_notes((ROOT / "SPEC.md").read_text(encoding="utf-8"))
+        for v in notes:
+            self.assertIn(f'id="d-{v}"', page, v)
+            if v != build_site.DRAFT:
+                self.assertIn(f'id="since-{v}"', page, v)
+                self.assertIn(f'href="#since-{v}"', page, v)
+        self.assertNotIn(f'id="since-{build_site.DRAFT}"', page)
+        self.assertIn('href="../../feed.xml"', page)
+        self.assertNotIn("style=", page, "the CSP forbids style attributes")
+
+
 if __name__ == "__main__":
     unittest.main()

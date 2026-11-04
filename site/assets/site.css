@@ -697,3 +697,43 @@ svg.dg .mono { font-family: var(--mono); font-size: 12px; }
 pre mark { background: rgb(0 255 204 / 0.16); color: inherit; border-radius: 4px; padding: 1px 4px; margin-inline: -4px; box-shadow: 0 0 0 1px rgb(0 255 204 / 0.35); }
 #signed-request, #pairing, #grant { scroll-margin-top: 80px; }
 @media print { pre mark { background: none; box-shadow: none; font-weight: 700; } }
+
+/* spec/changes/: a card for each draft on a timeline, what changed since the draft one implements, section chips. */
+.changes .since-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 22px 0 6px; }
+.changes .since-pick .label { font: 500 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--aurora); }
+.changes .picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.changes .picks a { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border: 1px solid var(--night-line); border-radius: 99px;
+  font: 500 0.8125rem var(--mono); color: var(--mist); text-decoration: none; }
+.changes .picks a:hover, .changes .picks a:focus-visible { color: var(--snow); border-color: var(--mist); }
+.changes .since-help { margin: 0 0 18px; }
+.changes .since { margin: 0 0 28px; padding: 16px 20px 8px; border: 1px solid rgb(0 255 204 / 0.4); border-radius: 14px; background: rgb(0 255 204 / 0.05); scroll-margin-top: 80px; }
+.changes .since:not(:target) { display: none; }
+.changes .since h3 { margin: 0 0 6px; }
+.changes .timeline { list-style: none; margin: 32px 0 0; padding: 0 0 0 26px; border-left: 2px solid var(--night-line); display: grid; gap: 28px; }
+.changes .draft { position: relative; padding: 18px 20px 12px; border: 1px solid var(--night-line); border-radius: 14px; background: var(--night); scroll-margin-top: 80px; }
+.changes .draft::before { content: ""; position: absolute; left: -36px; top: 26px; width: 14px; height: 14px; border-radius: 50%; background: var(--abyss); border: 2px solid var(--mist); }
+.changes .draft:first-child { border-color: rgb(0 255 204 / 0.45); }
+.changes .draft:first-child::before { border-color: var(--aurora); background: var(--aurora); }
+.changes .draft:target { box-shadow: 0 0 0 2px rgb(0 255 204 / 0.5); }
+.changes .draft header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px; }
+.changes .draft h2 { margin: 0; font-size: 1.5rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.changes .draft time { font: 400 0.875rem var(--mono); color: var(--mist); letter-spacing: 0; }
+.changes .now { padding: 2px 10px; border: 1px solid rgb(0 255 204 / 0.5); border-radius: 99px; font: 500 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--aurora); }
+.changes .summary { margin: 10px 0 8px; }
+.changes .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.changes .chip { display: inline-flex; align-items: center; min-height: 24px; padding: 0 10px; border: 1px solid var(--night-line); border-radius: 99px; font: 500 0.8125rem var(--mono); color: var(--mist); }
+.changes .chip.kind-added { color: var(--aurora); border-color: rgb(0 255 204 / 0.4); }
+.changes .chip.kind-changed { color: var(--ice); border-color: rgb(120 200 255 / 0.4); }
+.changes .chip.kind-renamed, .changes .chip.kind-renumbered { color: #ffd479; border-color: rgb(255 212 121 / 0.4); }
+.changes .chip.kind-removed { color: #ff8fa3; border-color: rgb(255 143 163 / 0.4); }
+.changes .plus { color: var(--aurora); }
+.changes .minus { color: #ff8fa3; }
+.changes .fold { margin: 10px 0; border-top: 1px solid var(--night-line); padding-top: 4px; }
+.changes .fold > summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; font: 600 0.9375rem var(--display); color: var(--snow); }
+.changes .fold > summary:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; border-radius: 6px; }
+.changes .sections-diff.kind-added li > a:first-child { box-shadow: inset 3px 0 0 var(--aurora); padding-left: 10px; }
+.changes .sections-diff.kind-removed li > a:first-child { box-shadow: inset 3px 0 0 #ff8fa3; padding-left: 10px; }
+.changes .sections-diff.kind-changed li > a:first-child { box-shadow: inset 3px 0 0 var(--ice); padding-left: 10px; }
+.changes .sections-diff.kind-renamed li > a:first-child, .changes .sections-diff.kind-renumbered li > a:first-child { box-shadow: inset 3px 0 0 #ffd479; padding-left: 10px; }
+@media (max-width: 600px) { .changes .timeline { padding-left: 18px; } .changes .draft { padding: 14px 14px 8px; } .changes .draft::before { left: -28px; } }
+@media print { .changes .since-pick, .changes .since-help, .changes .since { display: none; } .changes .fold:not([open]) > :not(summary) { display: block; } }
