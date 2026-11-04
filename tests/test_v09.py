@@ -250,7 +250,7 @@ class SuiteAgainstReference(unittest.TestCase):
         self.assertEqual(code, 0, report)
         for cid in ("apps.format", "missing.formats", "missing.satisfies", "missing.arrays", "missing.includes"):
             self.assertRegex(report, rf"PASS  § \S+\s+{cid} ", report)
-        self.assertIn("Levels reached (SPEC.md § 17, draft 0.9)", report)
+        self.assertIn("Levels reached (SPEC.md § 17, draft 0.10)", report)
 
 
 if __name__ == "__main__":

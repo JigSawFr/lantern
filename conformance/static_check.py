@@ -115,7 +115,7 @@ class StaticChecks:
         print(f"\n{counts['PASS']} passed, {counts['FAIL']} failed, {counts['WARN']} warning(s), "
               f"{counts['SKIP']} skipped.", file=self.out)
         reached = bool(self.results) and not counts["FAIL"] and self.results[0][0] == "PASS"
-        print(f"Levels reached (SPEC.md § 17, draft {self.version[:3]}): " + ("Lantern Static" if reached else "none"),
+        print(f"Levels reached (SPEC.md § 17, draft {self.version.rsplit(".", 1)[0]}): " + ("Lantern Static" if reached else "none"),
               file=self.out)
         return 1 if counts["FAIL"] or not self.results else 0
 

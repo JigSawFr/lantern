@@ -96,6 +96,7 @@ DRAFTS = [
     ("0.7", "8f34dd69ef50b4952b6231a56276bb1236b2051b", 15),
     ("0.8", "5ac42b8c73d60d44df6d2557fccb0c92abd00324", 30),
     ("0.9", "71c23bc936adb718b32033a9d71d4916e64737e9", 42),
+    ("0.10", None, None),
 ]
 # The specification's informative translations (site/translations/), by
 # the catalogs whose spec/ page shows them; each says the English commit it
@@ -103,7 +104,7 @@ DRAFTS = [
 TRANSLATIONS = {"fr": "SPEC.fr.md", "fr-CA": "SPEC.fr.md"}
 
 REQ = re.compile(r"\[(L-(?:\d+(?:\.\d+)?|[A-Z](?:\.\d+)?)-\d+)\]")
-DRAFT = "0.9"   # the draft the badges name (SPEC.md § 17)
+DRAFT = "0.10"   # the draft the badges name (SPEC.md § 17)
 LEVELS = [("core", "Core"), ("titles", "+titles"), ("homebrew", "+homebrew"), ("saves", "+saves"),
           ("cheats", "+cheats"), ("requests", "+requests"), ("admin", "+admin"), ("events", "+events"),
           ("peers", "+peers"), ("sync", "+sync"), ("encrypted_saves", "+encrypted_saves"), ("deltas", "+deltas"),

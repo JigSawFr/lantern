@@ -9,9 +9,9 @@ backups and cheats.
 
 Website: <https://lantern.boreale.dev/?utm_source=github&utm_medium=readme>.
 
-**Status: draft 0.9**: packages a device may not be able to use, and
-variants of one game, on top of 0.8's reading guide and 0.7's differential
-updates and browser clients, on a core ready for 1.0. The text may still
+**Status: draft 0.10**: the RFCs the text relies on, named and listed, on top
+of 0.9's packages a device may not be able to use, 0.8's reading guide and
+0.7's differential updates and browser clients, on a core ready for 1.0. The text may still
 change before 1.0; comments and issues are
 welcome, from client and server authors especially.
 
@@ -89,7 +89,9 @@ welcome, from client and server authors especially.
     sums and build provenance attestations (below);
   - a suite that reads the mirrors' bytes (`--fetch-mirrors`) and fills a
     peer's slots, and unit tests that run in a few minutes.
-- **What 0.9 adds**: `requires` and `includes` on an app (what a device must
+- **What 0.10 adds**: nothing to the protocol; the text names the RFCs it relies on where it uses them, and
+  Annex E lists them with what each is used for.
+- **What 0.9 added**: `requires` and `includes` on an app (what a device must
   provide to install it, and the versions of the game its package already
   contains), variants of one game that share an `app_id` and a
   `version_code`, a `format` filter on the listing, and `formats` and
@@ -268,7 +270,7 @@ and their SHA-256 sums. The release workflow builds them reproducibly from
 the tag and has GitHub attest their provenance; to check a file:
 
 ```sh
-gh attestation verify lantern-0.9.zip --repo JigSawFr/lantern
+gh attestation verify lantern-0.10.zip --repo JigSawFr/lantern
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 

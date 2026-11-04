@@ -106,7 +106,7 @@ except ImportError:
 # alone say what the server would send.
 READABLE = "zstd, gzip" if zstd is not None else "gzip"
 
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
             "signatures", "admin", "events", "peers", "sync", "encrypted_saves", "deltas")
 LEVELS = ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
@@ -957,7 +957,7 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, checks_v07.Seven, checks_v
         if self.hello is not None:
             levels = self.levels()
             reached = [LEVEL_NAMES[x] for x in LEVELS if levels[x] is None]
-            print(f"Levels reached (SPEC.md § 17, draft {VERSION[:3]}): " + (" ".join(reached) or "none"), file=self.out)
+            print(f"Levels reached (SPEC.md § 17, draft {VERSION.rsplit(".", 1)[0]}): " + (" ".join(reached) or "none"), file=self.out)
             for x in LEVELS:
                 if levels[x] is not None:
                     print(f"  not {LEVEL_NAMES[x]}: {levels[x]}", file=self.out)
