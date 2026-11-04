@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "installed": [
+    {
+      "app_id": "0100ABCD00010000",
+      "version_code": 0
+    },
+    {
+      "app_id": "0100ABCD00010800",
+      "version_code": 131072
+    }
+  ],
+  "want": [
+    "update",
+    "dlc"
+  ],
+  "formats": [
+    "nsp",
+    "nsz"
+  ],
+  "satisfies": [
+    "Sig_Patch"
+  ]
+}

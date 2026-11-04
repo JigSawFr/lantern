@@ -13,5 +13,12 @@
   "want": [
     "update",
     "dlc"
+  ],
+  "formats": [
+    "nsp",
+    "nsz"
+  ],
+  "satisfies": [
+    "fs-compression"
   ]
 }

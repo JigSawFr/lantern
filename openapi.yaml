@@ -29,7 +29,7 @@
 openapi: 3.1.0
 info:
   title: Lantern protocol
-  version: 0.8.0
+  version: 0.9.0
   summary: An open protocol between homebrews and apps on every platform and self-hosted game library servers.
   license:
     name: MIT
@@ -227,6 +227,7 @@ paths:
         - { $ref: "#/components/parameters/Platform" }
         - { $ref: "#/components/parameters/PlatformQuery" }
         - { name: type, in: query, schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,31}$" } }
+        - { name: format, in: query, description: "One package format (§ 6.1): keeps the apps of that format. A value no app has gives an empty list, never an error (§ 6.2).", schema: { type: string } }
         - { $ref: "#/components/parameters/TitleIdQuery" }
         - { name: q, in: query, schema: { type: string } }
         - { name: sort, in: query, schema: { enum: [name, added, release] } }
@@ -239,7 +240,7 @@ paths:
   /v1/apps/missing:
     post:
       summary: What the device is missing, on its platform (§ 6.3)
-      description: "A platform is required: Lantern-Platform or ?platform=, else 400."
+      description: "A platform is required: Lantern-Platform or ?platform=, else 400. With formats or satisfies, apps the device cannot install (a format not in formats, a requires token not in satisfies) are left out; a malformed array gives 400. An app's requires and includes (§ 6.1) are in schemas/v1/common.json."
       parameters: [ { $ref: "#/components/parameters/Platform" }, { $ref: "#/components/parameters/PlatformQuery" }, { $ref: "#/components/parameters/PageSize" }, { $ref: "#/components/parameters/Cursor" } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "schemas/v1/missing-request.json" } } } }
       responses:
