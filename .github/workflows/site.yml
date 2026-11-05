@@ -32,7 +32,7 @@ jobs:
     permissions:
       contents: read
       pages: read   # asked by the reusable workflow (the site's address)
-    uses: JigSawFr/boreale-site/.github/workflows/site.yml@49844b1a733f738afdabcc1c903bbf8696028d96 # v1.0.0
+    uses: JigSawFr/boreale-site/.github/workflows/site.yml@5d96c0446ad6bbfce20b977f699b6884643d055a # v1.1.0
     with:
       # The specification's drafts are SPEC.md at their commits (git show): the whole history.
       fetch_depth: 0
