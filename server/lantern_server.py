@@ -24,6 +24,8 @@ served only when library.json gives its identity. library.json:
       {"file": "android/frostline.apk", "platform": "android",
        "title_id": "org.example.frostlinetales", "version_code": 12, "name": "Frostline Tales"}]}
 
+An .nsz whose NCZ files carry the magic NCZSECT2 or NCZSECT3 (server/ncz.py) says
+`requires` `ncz-sparse` or `ncz-lz4`; an entry's own `requires` replaces that.
 An .nsp whose name holds `[LZ4]` (any case) is a package stored with the
 firmware's compression layer: its app says `requires` `fs-compression` and
 `sigpatch` (SPEC.md Annex A.1). An entry may also give `requires` (tokens) and
@@ -251,11 +253,12 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 try:
-    from server import cdc, ed25519, mdns, nro, signatures, texts
+    from server import cdc, ed25519, mdns, ncz, nro, signatures, texts
 except ImportError:     # run as server/lantern_server.py
     import cdc
     import ed25519
     import mdns
+    import ncz
     import nro
     import signatures
     import texts
@@ -1192,7 +1195,8 @@ class Library:
         if isinstance(entry.get("atlas"), str) and ATLAS.match(entry["atlas"]):
             app["atlas"] = entry["atlas"]
         requires = entry.get("requires") if "requires" in entry else \
-            SWITCH_LZ4 if platform == "switch" and ext == "nsp" and LZ4_IN_NAME.search(name) else None
+            SWITCH_LZ4 if platform == "switch" and ext == "nsp" and LZ4_IN_NAME.search(name) else \
+            ncz.requires(self.root / rel) if platform == "switch" and ext == "nsz" else None
         if requires is not None:
             if isinstance(requires, list) and len(requires) <= REQUIRES_MAX and all(
                     isinstance(t, str) and REQUIRES_TOKEN.fullmatch(t) for t in requires):

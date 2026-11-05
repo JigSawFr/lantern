@@ -8,6 +8,7 @@ reads and the tokens it provides (§ 6.3).
 Each test names the requirements it checks (SPEC.md § 3.5).
 """
 import json
+import struct
 import sys
 import tempfile
 import threading
@@ -194,6 +195,20 @@ class Reference(unittest.TestCase):
         self.assertEqual(self.srv.request(f"{API}/v1/apps/missing", headers=SWITCH, data=body)[0], 200)
 
 
+def pfs0(files):
+    """A PFS0 container of {name: bytes}, as an .nsz is."""
+    names = b"".join(n.encode() + b"\0" for n in files)
+    table, offset, at = b"", 0, 0
+    for name, data in files.items():
+        table += struct.pack("<QQII", offset, len(data), at, 0)
+        offset, at = offset + len(data), at + len(name) + 1
+    return b"PFS0" + struct.pack("<II", len(files), len(names)) + b"\0" * 4 + table + names + b"".join(files.values())
+
+
+def ncz(magic):
+    return b"\0" * 0x4000 + magic + b"\0" * 64
+
+
 class Scanning(unittest.TestCase):
     """How the reference server reads a folder's names and library.json (server/lantern_server.py, identify())."""
 
@@ -217,6 +232,53 @@ class Scanning(unittest.TestCase):
         self.assertNotIn("requires", by_name["B"], "an nsz is not stored with the firmware's layer")
         self.assertEqual(by_name["C"]["requires"], ["fs-compression", "sigpatch"])
         self.assertNotIn("requires", by_name["D"], "a tag is exactly [LZ4]")
+
+    def test_an_nsz_says_the_ncz_extensions_it_holds(self):
+        """Annex A.1: NCZSECT2 is ncz-sparse, NCZSECT3 is ncz-lz4, NCZSECTN (standard) nothing; read from the file."""
+        from server import ncz as reader
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        made = {
+            "std": pfs0({"a.nca": b"x" * 20, "b.ncz": ncz(b"NCZSECTN")}),
+            "sparse": pfs0({"a.ncz": ncz(b"NCZSECT2")}),
+            "lz4": pfs0({"a.ncz": ncz(b"NCZSECT3")}),
+            "both": pfs0({"a.ncz": ncz(b"NCZSECT3"), "b.ncz": ncz(b"NCZSECT2")}),
+            "unknown": pfs0({"a.ncz": ncz(b"NCZSECT9")}),
+            "short": pfs0({"a.ncz": b"\0" * 100}),
+            "not-pfs0": b"HFS0" + b"\0" * 100,
+            "cut": pfs0({"a.ncz": ncz(b"NCZSECT2")})[:0x4010],
+            "huge-count": b"PFS0" + struct.pack("<II", 1 << 30, 0) + b"\0" * 4,
+            "empty": b"",
+        }
+        got = {}
+        for key, data in made.items():
+            path = Path(tmp.name) / key
+            path.write_bytes(data)
+            got[key] = reader.requires(path)
+        self.assertEqual(got, {"std": [], "sparse": ["ncz-sparse"], "lz4": ["ncz-lz4"],
+                               "both": ["ncz-sparse", "ncz-lz4"], "unknown": [], "short": [], "not-pfs0": [],
+                               "cut": [], "huge-count": [], "empty": []})
+        self.assertEqual(reader.requires(Path(tmp.name) / "missing"), [])
+
+    def test_the_server_lists_a_sparse_nsz_with_its_requires(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name) / "shelf"
+        root.mkdir()
+        files = {"A [0100ABCD00010000][v0].nsz": pfs0({"a.ncz": ncz(b"NCZSECT2")}),
+                 "B [0100ABCD00030000][v0].nsz": pfs0({"a.ncz": ncz(b"NCZSECTN")}),
+                 "C [0100ABCD00050000][v0].nsz": pfs0({"a.ncz": ncz(b"NCZSECT3")}),
+                 "D [0100ABCD00070000][v0].nsp": pfs0({"a.ncz": ncz(b"NCZSECT2")})}
+        for name, data in files.items():
+            (root / name).write_bytes(data)
+        (root / "library.json").write_text(json.dumps({"schema": 1, "apps": [
+            {"file": "C [0100ABCD00050000][v0].nsz", "requires": ["sigpatch"]}]}), encoding="utf-8")
+        lib = ls.Library(root, Path(tmp.name) / "state.json")
+        by_name = {a["doc"]["name"]: a["doc"] for a in lib.apps.values()}
+        self.assertEqual(by_name["A"]["requires"], ["ncz-sparse"])
+        self.assertNotIn("requires", by_name["B"])
+        self.assertEqual(by_name["C"]["requires"], ["sigpatch"], "an entry replaces what the file says")
+        self.assertNotIn("requires", by_name["D"], "only an .nsz is read")
 
     def test_an_entry_replaces_what_the_tag_says(self):
         file = "A [0100ABCD00010000][v0][LZ4].nsp"
