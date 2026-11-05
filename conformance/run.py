@@ -94,6 +94,7 @@ import checks_v05
 import checks_v06
 import checks_v07
 import checks_v09
+import checks_v11
 import lantern_client as client
 import static_check
 
@@ -106,7 +107,7 @@ except ImportError:
 # alone say what the server would send.
 READABLE = "zstd, gzip" if zstd is not None else "gzip"
 
-VERSION = "0.10.0"
+VERSION = "0.11.0"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
             "signatures", "admin", "events", "peers", "sync", "encrypted_saves", "deltas")
 LEVELS = ("core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync",
@@ -245,12 +246,16 @@ REQS = {
     # Draft 0.9 (checks_v09.py).
     "apps.format": ["L-6.2-7"], "missing.formats": ["L-6.3-1", "L-6.3-3"], "missing.satisfies": ["L-6.3-1", "L-6.3-3"],
     "missing.arrays": ["L-6.3-2"], "missing.includes": ["L-6.3-4"],
+    # Draft 0.11 (checks_v11.py).
+    "transport.tls": ["L-2-10"], "transport.hsts": ["L-2-11"], "handshake.uid": ["L-4.2-9"],
+    "cache.immutable": ["L-14-5"],
 }
 # Rules only a client keeps: the suite cannot see them (SPEC.md § 17).
 CLIENT_RULES = [
     ("2", ["L-2-1", "L-2-2"], "Certificates are verified; plain HTTP only to a loopback address"),
     ("2", ["L-2-5", "L-2-6", "L-2-7"], "User-Agent, Accept-Language and Lantern-Platform on every call"),
     ("2", ["L-2-8"], "Tokens and signatures go to the server's origin alone"),
+    ("2", ["L-2-9"], "A client offers no protocol older than TLS 1.2"),
     ("2.3", ["L-2.3-3"], "A time's fraction of 1 to 9 digits is read"),
     ("2.4", ["L-2.4-2"], "No redirect of a route is followed"),
     ("3.2", ["L-3.2-2"], "A reader ignores the fields it does not know"),
@@ -471,7 +476,7 @@ class Client:
         return res
 
 
-class Suite(checks_v05.NewFamilies, checks_v06.Sweep, checks_v07.Seven, checks_v09.Nine, static_check.StaticChecks):
+class Suite(checks_v05.NewFamilies, checks_v06.Sweep, checks_v07.Seven, checks_v09.Nine, checks_v11.Eleven, static_check.StaticChecks):
     version = VERSION
 
     def __init__(self, args):
@@ -575,6 +580,9 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, checks_v07.Seven, checks_v
               + (" and its device key" if self.seed else ""), file=self.out)
         self.level = "core"
         self.check("transport.https", "2", "HTTPS, or plain HTTP on loopback only", self.c_https)
+        self.check("transport.tls", "2", "No protocol older than TLS 1.2 is negotiated", self.c_tls_floor)
+        self.check("transport.hsts", "2", "HTTPS: Strict-Transport-Security with a long max-age", self.c_hsts,
+                   level="should")
         if not self.check("handshake.well-known", "4.2", "GET /.well-known/lantern is a valid handshake",
                           self.c_well_known):
             print("No handshake: nothing else can be checked.", file=self.out)
@@ -584,6 +592,7 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, checks_v07.Seven, checks_v
         if self.args.pin:
             self.check("transport.pin", "5.3", "The server's certificate carries the pinned key", self.c_pin)
         self.check("handshake.v1", "4.2", "GET <base>/v1/ is the same handshake", self.c_v1)
+        self.check("handshake.uid", "4.2", "uid: a random UUID of version 4 or 7, in lower case", self.c_uid)
         self.check("handshake.versions", "3.1", "The server serves version 1", self.c_versions)
         self.check("handshake.anonymous", "4.2", "Without credentials: account anonymous", self.c_anonymous)
         self.check("handshake.account", "4.2", "With a token: the account and its state", self.c_account)
@@ -858,6 +867,8 @@ class Suite(checks_v05.NewFamilies, checks_v06.Sweep, checks_v07.Seven, checks_v
         if mine["deltas"]:
             self.check("deltas.index", "22.1", "Chunk indexes: their bytes as chunks gives, of their file, in "
                        "canonical JSON, a client can use them", self.c_deltas_index)
+            self.check("cache.immutable", "14", "Chunk indexes: a long lifetime and immutable", self.c_immutable,
+                       level="should")
             self.check("deltas.cut", "22.2", "Files cut again by lantern-cdc-1: the same index; chunks read as "
                        "ranges", self.c_deltas_cut)
             self.check("deltas.route", "22.1", "<base>/v1/chunks/sha256/{hex}: the index of a file; an unknown one "
@@ -2862,6 +2873,7 @@ def bind_checks():
                     TITLES_AT_ONCE=TITLES_AT_ONCE)
     checks_v07.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
     checks_v09.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
+    checks_v11.bind(Fail=Fail, Skip=Skip, Blind=Blind, Warn=Warn, problem_detail=lambda r: problem_detail(r))
 
 
 bind_checks()

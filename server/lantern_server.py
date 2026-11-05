@@ -265,7 +265,7 @@ try:                    # Python 3.14 and later: zstd in the standard library (S
 except ImportError:
     zstd = None
 
-VERSION = "0.10.0"
+VERSION = "0.11.0"
 BASE = "/api/lantern"
 FAMILIES = ("library", "titles", "changes", "sections", "homebrew", "saves", "cheats", "requests", "pairing",
             "signatures", "admin", "events", "peers", "sync", "encrypted_saves", "deltas")
@@ -308,6 +308,7 @@ ORIGIN = re.compile(r"^https?://[A-Za-z0-9.-]+(?::[0-9]{1,5})?$|^https?://\[[0-9
 IMAGE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}
 IMAGE_LIMIT = 4 << 20
 IMAGE_CACHE = "max-age=31536000, immutable"
+HSTS_AGE = 31536000     # a year; SPEC.md § 2 asks for six months at least
 # Sync (SPEC.md § 20).
 SYNC_COLLECTIONS = ("wishes", "installed")
 SYNC_ITEMS = 10000      # limits.sync_items
@@ -3554,7 +3555,9 @@ class Handler(BaseHTTPRequestHandler):
         if raw is None:
             raise not_found("This file has no chunk index: read it whole.")
         self.kept_bytes = raw
-        self.send_doc(200, json.loads(raw))
+        # What an address names by a SHA-256 never changes (SPEC.md § 14, L-14-5).
+        cache = ("private, " if self.authenticated else "public, ") + IMAGE_CACHE
+        self.send_doc(200, json.loads(raw), {"Cache-Control": cache})
 
     # Titles (SPEC.md § 7).
 
@@ -4436,6 +4439,8 @@ code{{font-size:1.1em}}.error{{color:#b00020}}input{{font:inherit}}</style></hea
         self.send_response(status)
         for k, v in headers.items():
             self.send_header(k, v)
+        if isinstance(self.connection, ssl.SSLSocket):    # SPEC.md § 2 (L-2-11); a browser ignores it for an IP address
+            self.send_header("Strict-Transport-Security", f"max-age={HSTS_AGE}")
         if length is not None:
             self.send_header("Content-Length", str(length))
         cors = getattr(self, "cors", None)
@@ -4681,8 +4686,9 @@ class LanternServer(ThreadingHTTPServer):
 
     def handle_error(self, request, client_address):
         """A client that went away (it read what it wanted of a file, then closed) is not an error of this
-        server: only the others are logged."""
-        if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError)):
+        server: only the others are logged. Nor is a client that offers no protocol of TLS 1.2 or later
+        (SPEC.md § 2, L-2-10): it is refused, as the text asks."""
+        if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError, ssl.SSLError)):
             return
         super().handle_error(request, client_address)
 

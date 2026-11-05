@@ -87,6 +87,7 @@ class Running:
         if tls:
             cert, key = self_signed(self.tmp.name)
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.minimum_version = ssl.TLSVersion.TLSv1_2     # as the command line sets it (SPEC.md § 2)
             context.load_cert_chain(cert, key)
             spki, self.cafile = ls.spki_sha256(cert.read_text()), str(cert)
         self.server = ls.LanternServer(("127.0.0.1", 0), self.lib, ls.Accounts(users_path), rescan=0,
@@ -230,7 +231,7 @@ class SuiteAgainstReference(unittest.TestCase):
                                      "admin.users", "admin.users-write", "admin.pairings", "admin.rating-cap",
                                      "admin.refuse", "admin.devices", "admin.invitations", "language.problem",
                                      "compression.files", "limits.depth", "budget.cold-start"])
-        self.assertIn("Levels reached (SPEC.md § 17, draft 0.10): Lantern Core +titles +homebrew +saves +cheats "
+        self.assertIn("Levels reached (SPEC.md § 17, draft 0.11): Lantern Core +titles +homebrew +saves +cheats "
                       "+requests +admin +events +peers +sync +encrypted_saves +deltas\n", report)
         self.assertIn("4 backup(s) deleted", report)                     # two in clear, two encrypted (§ 9.4)
         self.assertIn("for another architecture", report)                # the Linux port's packages, read

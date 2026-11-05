@@ -9,8 +9,9 @@ backups and cheats.
 
 Website: <https://lantern.boreale.dev/?utm_source=github&utm_medium=readme>.
 
-**Status: draft 0.10**: the RFCs the text relies on, named and listed, on top
-of 0.9's packages a device may not be able to use, 0.8's reading guide and
+**Status: draft 0.11**: what the RFCs it relies on ask of a server and a client (TLS 1.2
+at least, a lower-case random `uid`, a long lifetime for what an address names by its SHA-256), on top
+of 0.10's list of the RFCs, 0.9's packages a device may not be able to use, 0.8's reading guide and
 0.7's differential updates and browser clients, on a core ready for 1.0. The text may still
 change before 1.0; comments and issues are
 welcome, from client and server authors especially.
@@ -89,7 +90,10 @@ welcome, from client and server authors especially.
     sums and build provenance attestations (below);
   - a suite that reads the mirrors' bytes (`--fetch-mirrors`) and fills a
     peer's slots, and unit tests that run in a few minutes.
-- **What 0.10 adds**: nothing to the protocol; the text names the RFCs it relies on where it uses them, and
+- **What 0.11 adds**: TLS 1.2 at least on both sides, `Strict-Transport-Security` for a server that browsers
+  reach, a `uid` that is a random UUID of version 4 or 7 in lower case, and `immutable` for what an address names
+  by its SHA-256; the suite checks them. Annex E says that no name is registered with IANA.
+- **What 0.10 added**: nothing to the protocol; the text names the RFCs it relies on where it uses them, and
   Annex E lists them with what each is used for.
 - **What 0.9 added**: `requires` and `includes` on an app (what a device must
   provide to install it, and the versions of the game its package already
@@ -270,7 +274,7 @@ and their SHA-256 sums. The release workflow builds them reproducibly from
 the tag and has GitHub attest their provenance; to check a file:
 
 ```sh
-gh attestation verify lantern-0.10.zip --repo JigSawFr/lantern
+gh attestation verify lantern-0.11.zip --repo JigSawFr/lantern
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 

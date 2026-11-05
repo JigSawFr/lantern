@@ -12,11 +12,11 @@ source: SPEC.fr.md sur GitHub
 -->
 # Lantern — un protocole ouvert pour les serveurs de bibliothèques de jeux
 
-Brouillon 0.10, 2026-11-04. Statut : **brouillon**, susceptible de changer jusqu'à la 1.0
+Brouillon 0.11, 2026-11-05. Statut : **brouillon**, susceptible de changer jusqu'à la 1.0
 (l'annexe C dit ce qu'elle attend).
 Ce texte est publié sous licence [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
-**Traduction informative.** Ce texte traduit en français le brouillon 0.10
+**Traduction informative.** Ce texte traduit en français le brouillon 0.11
 de la spécification. Seul le texte anglais fait foi : en cas de doute ou
 d'écart, c'est lui qui s'applique. Les identifiants d'exigence
 (`[L-5.2-3]`), le code, les noms de champs, les documents JSON et les mots
@@ -99,6 +99,12 @@ L'annexe B donne des conseils aux auteurs de clients, sans exigences ; l'annexe 
   auprès d'un miroir ou d'un pair sur un réseau privé, comme le permet le
   § 19. [L-2-2] Un serveur MUST NOT servir Lantern en HTTP en clair sur une
   telle adresse. [L-2-3]
+- Un client MUST NOT proposer de protocole plus ancien que TLS 1.2, [L-2-9]
+  et un serveur MUST NOT en négocier un (RFC 8996). [L-2-10]
+- Un serveur que des navigateurs atteignent en HTTPS depuis internet SHOULD
+  envoyer `Strict-Transport-Security` (RFC 6797) avec un `max-age` de
+  15552000 secondes (six mois) ou plus, pour qu'un navigateur ne l'essaie
+  jamais en HTTP en clair. [L-2-11]
 - Toutes les routes vivent sous un chemin de base que le serveur choisit
   (par défaut `/api/lantern`), annoncé par la découverte (§ 4.1) et la
   poignée de main (§ 4.2). Plus bas, les chemins sont relatifs à `<base>`.
@@ -130,7 +136,7 @@ L'annexe B donne des conseils aux auteurs de clients, sans exigences ; l'annexe 
   § 8.8.3). [L-2.1-3]
 - Un client envoie ses corps de requête sans `Content-Encoding`. Les limites
   du § 13 s'appliquent à un document une fois décompressé.
-- Lantern fonctionne de la même façon en HTTP/1.1 et en HTTP/2 (RFC 9113) ;
+- Lantern fonctionne de la même façon en HTTP/1.1, en HTTP/2 (RFC 9113) et en HTTP/3 (RFC 9114) ;
   rien n'y dépend de la version. Un serveur MAY proposer HTTP/2 par ALPN et
   un client MAY l'utiliser : une seule connexion porte alors à la fois une
   page, ses titres et leurs images, et la compression des en-têtes rend peu
@@ -502,7 +508,10 @@ MUST renvoyer le même document, avec ou sans jeton. [L-4.2-1]
 
 - `uid` : un UUID qui ne change jamais pour ce serveur. Un client s'en sert
   pour reconnaître le même serveur sur le réseau local et sur internet, et
-  pour retrouver la clé qu'il a épinglée (§ 5.3).
+  pour retrouver la clé qu'il a épinglée (§ 5.3). Un serveur MUST en faire
+  un UUID aléatoire, de version 4 ou 7, écrit en minuscules comme le donne
+  la RFC 9562 § 4, jamais un UUID tiré d'une adresse matérielle (versions 1
+  et 6) : le § 1 tient les identifiants matériels à l'écart. [L-4.2-9]
 - `platforms` : les plateformes pour lesquelles le serveur a quelque chose
   (§ 4.3). Il MUST lister toutes les plateformes des apps, homebrews ou lots
   de codes de triche qu'il sert, et être le même pour chaque appelant.
@@ -2083,6 +2092,13 @@ réponses qui dépendent de la plateforme ou de la langue varient aussi selon
 `Lantern-Platform` et `Accept-Language`, et les réponses compressées selon
 `Accept-Encoding` (§ 2.1). [L-14-2]
 
+Ce qu'une adresse nomme par le SHA-256 de ce qu'elle porte ne change jamais :
+les images du § 7.1, les index de morceaux du § 22.1 et les fichiers d'une
+bibliothèque statique ou d'un pair (§ 19.2, § 21). Un serveur SHOULD y
+répondre avec un `max-age` long et `immutable` (RFC 8246), `private` comme
+les autres quand les autorisations de l'appelant décident de qui peut les
+lire, pour qu'un client ne les revalide jamais. [L-14-5]
+
 ## 15. Sécurité et vie privée
 
 - Aucun identifiant matériel, aucun en-tête de pistage. Un serveur ne
@@ -3624,9 +3640,9 @@ de l'appareil.
 
 Non normatif : ce dont ce texte a besoin avant sa version 1.0, quand
 `/v1/` et le `schema` 1 cesseront de changer de forme, et où en est chaque
-critère à ce brouillon, le 0.10.
+critère à ce brouillon, le 0.11.
 
-| | Critère | Où il en est au 0.10 |
+| | Critère | Où il en est au 0.11 |
 |---|---|---|
 | 1 | **Deux serveurs et deux clients indépendants** atteignent `Lantern Core` avec la suite de conformité, chacun écrit à partir de ce texte par des personnes qui n'ont pas écrit les autres, et chaque paire d'entre eux fonctionne ensemble : appairage, listage, téléchargement, ce qui manque. | Ouvert. Un serveur passe la suite, le serveur de référence de ce dépôt ; les bibliothèques de lantern-sdk sont écrites par les auteurs de ce texte et ne comptent pas. Le registre du site liste qui passe la suite. |
 | 2 | **Un cœur sans question ouverte** : chaque section du § 2 au § 14, et le § 17, sans partie marquée « à vérifier », et aucun ticket étiqueté comme question à leur sujet encore ouvert. | Rempli. Le 0.6 a tranché ce que le cœur laissait ouvert, et le 0.7 ce que les navigateurs lui demandent (§ 2.5) et la forme canonique des nombres (§ 2.3) ; leurs Modifications listent chaque point. Aucune de ces sections n'est marquée « à vérifier », et la liste ci-dessous ne contient aucune question à leur sujet. Il le reste tant qu'aucun ticket étiqueté comme question à leur sujet n'est ouvert. |
@@ -3655,7 +3671,7 @@ différences (§ 22), sur la liste jusqu'au 0.6, sont tranchés par le 0.7.
 
 **Où en est chaque partie.** Ce n'est pas une promesse : l'état du texte à ce brouillon.
 
-| Partie | État au 0.10 |
+| Partie | État au 0.11 |
 |---|---|
 | § 2 à § 14, et § 17 : le cœur | Tranché : aucune partie marquée « à vérifier » (critère 2). |
 | § 5.4, § 9.4 et § 19 : les requêtes signées, les sauvegardes chiffrées, les autorisations et les pairs | Tranché dans ce texte, et encore à faire relire par quelqu'un qui ne les a pas écrits (critère 4). |
@@ -3751,6 +3767,9 @@ Non normatif : les documents sur lesquels ce texte s'appuie, et pour quoi. Les e
 | RFC 3339, RFC 3986, RFC 4648 | Les instants, les URI, base64 et base64url (§ 2.3). |
 | RFC 9110, RFC 9111, RFC 9113 | La sémantique de HTTP, sa mise en cache, et HTTP/2 (§ 2, § 14). |
 | RFC 8446, RFC 9325, RFC 8996 | TLS 1.3, bien employer TLS 1.2 et 1.3, et le retrait de TLS 1.0 et 1.1 (§ 2). |
+| RFC 9114, RFC 6797 | HTTP/3 (§ 2), et `Strict-Transport-Security` (§ 2). |
+| RFC 9562 | Les UUID : la forme de `uid` (§ 4.2). |
+| RFC 8246 | `immutable` dans `Cache-Control` (§ 14). |
 | RFC 8615 | L'URI bien connue `/.well-known/lantern` (§ 4.2). |
 | RFC 6585 | `429 Too Many Requests` (§ 12). |
 | RFC 8288, RFC 8594, RFC 9745 | `Link`, `Sunset` et `Deprecation` (§ 3.4). |
@@ -3767,7 +3786,7 @@ Non normatif : les documents sur lesquels ce texte s'appuie, et pour quoi. Les e
 
 ### E.3 Noms enregistrés
 
-Le suffixe d'URI bien connue `lantern` (§ 4.2) et les en-têtes de requête et de réponse `Lantern-*` (§ 2, § 8, § 9) sont propres à Lantern. Le texte ne demande aucun enregistrement des en-têtes ; l'enregistrement du suffixe au registre des URI bien connues de l'IANA est demandé à part, et ce texte le dira quand il sera fait.
+Aucun. Le suffixe d'URI bien connue `lantern` (§ 4.2) et les en-têtes de requête et de réponse `Lantern-*` (§ 2, § 8, § 9) sont propres à Lantern, ne figurent dans aucun registre de l'IANA, et aucun enregistrement n'est demandé : un nom qu'une autre partie aurait pris serait découvert par la poignée de main (§ 4.2), que tout client lit en premier.
 
 ## Modifications {#changes}
 
@@ -4186,3 +4205,20 @@ Le suffixe d'URI bien connue `lantern` (§ 4.2) et les en-têtes de requête et 
   - Annexe E (nouvelle, non normative) : les documents sur lesquels le texte
     s'appuie et pour quoi, les travaux voisins (RFC 9449) et les noms
     enregistrés.
+- 0.11 (2026-11-05) : ce que les RFC demandent à un serveur et à un client,
+  repris ; des ajouts seulement. L'annexe E ne dit plus qu'un enregistrement
+  de `lantern` est demandé : il n'y en a aucun.
+  - TLS 1.2 au moins, des deux côtés (§ 2, `L-2-9`, `L-2-10`, RFC 8996) ;
+    `Strict-Transport-Security` pour un serveur que des navigateurs atteignent
+    depuis internet, en recommandation (§ 2, `L-2-11`, RFC 6797) ; HTTP/3
+    nommé à côté de HTTP/1.1 et de HTTP/2 (§ 2).
+  - `uid` est un UUID aléatoire de version 4 ou 7, en minuscules, jamais tiré
+    d'une adresse matérielle (§ 4.2, `L-4.2-9`, RFC 9562).
+  - Ce qu'une adresse nomme par son SHA-256 est servi avec une longue durée de
+    vie et `immutable`, en recommandation (§ 14, `L-14-5`, RFC 8246). Le
+    serveur de référence le fait pour ses index de morceaux, comme il le
+    faisait pour ses images.
+  - Annexe E : les RFC 9114, 6797, 9562 et 8246 ; l'E.3 dit que rien n'est
+    enregistré.
+  - La suite vérifie les quatre règles qu'un serveur montre
+    (`conformance/checks_v11.py`).

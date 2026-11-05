@@ -1,6 +1,6 @@
 # Lantern — an open protocol for game library servers
 
-Draft 0.10, 2026-11-04. Status: **draft**, open to change until 1.0 (Annex C says what it
+Draft 0.11, 2026-11-05. Status: **draft**, open to change until 1.0 (Annex C says what it
 waits for).
 This text is licensed under [CC BY 4.0](LICENSES/CC-BY-4.0.txt).
 
@@ -58,6 +58,9 @@ covers. Annex B is advice to client authors, without requirements; Annex D is a 
   for testing. A client MUST NOT speak plain HTTP to any other address,
   but to fetch a file by its SHA-256 from a mirror or a peer on a private
   network, as § 19 allows. [L-2-2] A server MUST NOT serve Lantern in plain HTTP on one. [L-2-3]
+- A client MUST NOT offer a protocol older than TLS 1.2, [L-2-9] and a server MUST NOT negotiate one (RFC 8996). [L-2-10]
+- A server that browsers reach in HTTPS from the internet SHOULD send `Strict-Transport-Security` (RFC 6797) with a
+  `max-age` of 15552000 seconds (six months) or more, so that a browser never tries it in plain HTTP. [L-2-11]
 - All routes live under a base path the server chooses (default
   `/api/lantern`), announced by discovery (§ 4.1) and the handshake (§ 4.2).
   Below, paths are relative to `<base>`.
@@ -86,7 +89,7 @@ covers. Annex B is advice to client authors, without requirements; Annex D is a 
   `ETag` other than the uncompressed one's (RFC 9110 § 8.8.3). [L-2.1-3]
 - A client sends its request bodies without `Content-Encoding`. The limits
   of § 13 apply to a document once decompressed.
-- Lantern works the same over HTTP/1.1 and HTTP/2 (RFC 9113); nothing in it
+- Lantern works the same over HTTP/1.1, HTTP/2 (RFC 9113) and HTTP/3 (RFC 9114); nothing in it
   depends on the version. A server MAY offer HTTP/2 through ALPN and a
   client MAY use it: one connection then carries a page, its titles and
   their images at once, and its header compression makes the headers every
@@ -424,7 +427,9 @@ return the same document, with or without a token. [L-4.2-1]
 
 - `uid`: a UUID that never changes for this server. A client uses it to
   recognise the same server on the LAN and on the WAN, and to find the key
-  it pinned (§ 5.3).
+  it pinned (§ 5.3). A server MUST make it a random UUID, version 4 or 7,
+  written in lower case as RFC 9562 § 4 gives it, never one made from a
+  hardware address (versions 1 and 6): § 1 keeps hardware identifiers out. [L-4.2-9]
 - `platforms`: the platforms the server has something for (§ 4.3). It MUST
   list every platform of an app, a homebrew or a cheat set it serves, and
   be the same for every caller. [L-4.2-2]
@@ -1850,6 +1855,8 @@ that depend on the platform or the language also vary on
 `Lantern-Platform` and `Accept-Language`, and compressed ones on
 `Accept-Encoding` (§ 2.1). [L-14-2]
 
+What an address names by the SHA-256 of what it carries never changes: the images of § 7.1, the chunk indexes of § 22.1 and the files of a static library or a peer (§ 19.2, § 21). A server SHOULD answer these with a long `max-age` and `immutable` (RFC 8246), `private` as the others when the caller's grants decide who may read them, so that a client never revalidates them. [L-14-5]
+
 ## 15. Security and privacy
 
 - No hardware identifier, no tracking header. A server knows a device only
@@ -3212,9 +3219,9 @@ device's own zone.
 
 Not normative: what this text needs before its version 1.0, when `/v1/`
 and `schema` 1 stop changing shape, and where each criterion stands at this
-draft, 0.10.
+draft, 0.11.
 
-| | Criterion | Where it stands at 0.10 |
+| | Criterion | Where it stands at 0.11 |
 |---|---|---|
 | 1 | **Two independent servers and two independent clients** reach `Lantern Core` with the conformance suite, each written from this text by people who did not write the other ones, and each pair of them works together: pairing, listing, downloading, what is missing. | Open. One server passes the suite, the reference server of this repository; the libraries of lantern-sdk are written by this text's authors and do not count. The registry on the site lists who passes. |
 | 2 | **A core with no open question**: every section from § 2 to § 14, and § 17, without a part marked "to check", and no issue labelled as a question on them left open. | Met. 0.6 settled what the core left open, and 0.7 what browsers ask of it (§ 2.5) and the canonical form of numbers (§ 2.3); their Changes list each point. None of those sections is marked "to check", and the list below holds no question on them. It stays met while no issue labelled as a question on them is open. |
@@ -3241,7 +3248,7 @@ on the list until 0.6, are settled by 0.7.
 
 **Where each part stands.** Not a promise: the state of the text at this draft.
 
-| Part | State at 0.10 |
+| Part | State at 0.11 |
 |---|---|
 | § 2 to § 14, and § 17: the core | Settled: no part marked "to check" (criterion 2). |
 | § 5.4, § 9.4 and § 19: signed requests, encrypted backups, grants and peers | Settled in this text, and still to be reviewed by someone who did not write them (criterion 4). |
@@ -3338,6 +3345,9 @@ Not normative: the documents this text relies on, and for what. The requirements
 | RFC 9110, RFC 9111, RFC 9113 | HTTP's semantics, its caching, and HTTP/2 (§ 2, § 14). |
 | RFC 8446, RFC 9325, RFC 8996 | TLS 1.3, how to use TLS 1.2 and 1.3 well, and the retirement of TLS 1.0 and 1.1 (§ 2). |
 | RFC 8615 | The well-known URI `/.well-known/lantern` (§ 4.2). |
+| RFC 9114, RFC 6797 | HTTP/3 (§ 2), and `Strict-Transport-Security` (§ 2). |
+| RFC 9562 | UUIDs: the form of `uid` (§ 4.2). |
+| RFC 8246 | `immutable` in `Cache-Control` (§ 14). |
 | RFC 6585 | `429 Too Many Requests` (§ 12). |
 | RFC 8288, RFC 8594, RFC 9745 | `Link`, `Sunset` and `Deprecation` (§ 3.4). |
 | RFC 7932, RFC 8878 | The Brotli and Zstandard content codings (§ 2.1). |
@@ -3353,7 +3363,7 @@ Not normative: the documents this text relies on, and for what. The requirements
 
 ### E.3 Registered names
 
-The well-known URI suffix `lantern` (§ 4.2) and the `Lantern-*` request and response headers (§ 2, § 8, § 9) are Lantern's own. The text asks no registration of the headers; a registration of the suffix with IANA's well-known URI registry is requested separately, and this text will say so when it is made.
+None. The well-known URI suffix `lantern` (§ 4.2) and the `Lantern-*` request and response headers (§ 2, § 8, § 9) are Lantern's own, not entered in any IANA registry, and no registration is requested: a name that another party took would be found out by the handshake (§ 4.2), which every client reads first.
 
 ## Changes
 
@@ -3708,3 +3718,15 @@ The well-known URI suffix `lantern` (§ 4.2) and the `Lantern-*` request and res
     (§ 14).
   - Annex E (new, not normative): the documents relied on and for what, the
     related work (RFC 9449) and the names registered.
+- 0.11 (2026-11-05): what the RFCs ask of a server and a client, taken up; additions only.
+  Annex E no longer says that a registration of `lantern` is requested: none is.
+  - TLS 1.2 at least, on both sides (§ 2, `L-2-9`, `L-2-10`, RFC 8996); `Strict-Transport-Security`
+    for a server that browsers reach from the internet, as a recommendation
+    (§ 2, `L-2-11`, RFC 6797); HTTP/3 named next to HTTP/1.1 and HTTP/2 (§ 2).
+  - `uid` is a random UUID of version 4 or 7, in lower case, never one made from a
+    hardware address (§ 4.2, `L-4.2-9`, RFC 9562).
+  - What an address names by its SHA-256 is served with a long lifetime and
+    `immutable`, as a recommendation (§ 14, `L-14-5`, RFC 8246). The reference server
+    does so for its chunk indexes, as it did for its images.
+  - Annex E: RFC 9114, 6797, 9562 and 8246; E.3 says that nothing is registered.
+  - The suite checks the four rules a server shows (`conformance/checks_v11.py`).
