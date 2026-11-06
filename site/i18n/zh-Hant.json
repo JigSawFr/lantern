@@ -523,5 +523,7 @@
   "sdk_use_python": "把 Lantern 加進 Flask 或 FastAPI 應用程式：",
   "sdk_use_web": "Node、瀏覽器或 Hono：",
   "sdk_i_code": "我使用的語言",
-  "sdk_origin": "資料來自 lantern-sdk，提交 {c}。"
+  "sdk_origin": "資料來自 lantern-sdk，提交 {c}。",
+  "sdk_show_all": "顯示全部 {n} 行",
+  "sdk_show_less": "收合"
 }

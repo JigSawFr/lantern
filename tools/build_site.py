@@ -1455,6 +1455,27 @@ def sdk_cell(catalog: dict, kind: str) -> str:
     return f'{shown}<span class="sr">{catalog[key]}</span>'
 
 
+def sdk_parity_list(catalog: dict, data: dict, langs: list) -> str:
+    """The parity by language, for a narrow screen where the table of twelve columns does not fit: a fold a language,
+    its summary says how far it goes, its rows are the families."""
+    families = data.get("families", [])
+    out = []
+    for lang in langs:
+        got = sdk_counts(data, lang)
+        if got is None:
+            continue
+        rows = "".join(
+            f'<tr><th scope="row"><code>{html.escape(str(row.get("family", "")))}</code></th>'
+            + "".join(f'<td class="{"reached" if row.get("support", {}).get(lang, {}).get(side) == "yes" else "none"}">'
+                      f'{sdk_cell(catalog, row.get("support", {}).get(lang, {}).get(side, "no"))}</td>' for side in ("client", "server"))
+            + "</tr>" for row in families)
+        out.append(f'<details data-lang="{lang}"><summary><span>{SDK_NAMES[lang]}</span> <small>{catalog["sdk_client"]} {got[0]}/{got[2]} · '
+                   f'{catalog["sdk_server"]} {got[1]}/{got[2]}</small></summary><table><caption class="sr">{SDK_NAMES[lang]}</caption>'
+                   f'<thead><tr><th scope="col">{catalog["sdk_family"]}</th><th scope="col">{catalog["sdk_client"]}</th>'
+                   f'<th scope="col">{catalog["sdk_server"]}</th></tr></thead><tbody>{rows}</tbody></table></details>')
+    return f'<div class="parity-list">{"".join(out)}</div>'
+
+
 def sdk_parity(catalog: dict, data: dict) -> str:
     langs = [lang for lang in SDK_LANGS if any(lang in row.get("support", {}) for row in data.get("families", []))]
     heads = "".join(f'<th scope="col" colspan="2" data-lang="{lang}">{SDK_NAMES[lang]}</th>' for lang in langs)
@@ -1475,7 +1496,8 @@ def sdk_parity(catalog: dict, data: dict) -> str:
             total += f'<td data-lang="{lang}" class="sum {"reached" if got == len(families) else "none" if got == 0 else "some"}">{got}/{len(families)}</td>'
     return (f'<div class="table matrix" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_parity_title"], quote=True)}"><table><caption class="sr">{html.escape(catalog["sdk_parity_title"])}</caption>'
             f'<thead><tr><th scope="col" rowspan="2">{catalog["sdk_family"]}</th>{heads}</tr><tr>{sub}</tr></thead>'
-            f'<tbody>{"".join(rows)}</tbody><tfoot><tr><th scope="row">{catalog["sdk_total"]}</th>{total}</tr></tfoot></table></div>')
+            f'<tbody>{"".join(rows)}</tbody><tfoot><tr><th scope="row">{catalog["sdk_total"]}</th>{total}</tr></tfoot></table></div>'
+            + sdk_parity_list(catalog, data, langs))
 
 
 def sdk_levels(catalog: dict, data: dict, root: str) -> str:
@@ -1528,6 +1550,62 @@ def sdk_task(path: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+#: The keywords each language's examples are coloured with; the rest of a line is left as it is.
+SDK_KEYWORDS = {
+    "cpp": "auto bool break case catch class const constexpr continue co_await co_return else enum explicit false for if inline namespace new noexcept nullptr operator private public return static struct switch template this throw true try typename using virtual void while int char unsigned",
+    "c": "break case char const continue else enum extern false for if int return sizeof static struct switch true typedef union unsigned void while",
+    "python": "and as assert async await class def elif else except False finally for from if import in is lambda None not or pass raise return True try while with yield",
+    "typescript": "as async await break case catch class const continue default else export extends false finally for from function if import in instanceof interface let new null of return static switch this throw true try type typeof undefined var void while",
+    "go": "break case chan const continue default defer else false for func go if import interface map nil package range return select struct switch true type var",
+    "rust": "as async await break const continue crate else enum false fn for if impl in let loop match mod move mut pub ref return self Self static struct trait true type unsafe use where while",
+}
+_DQ = r'"(?:\\.|[^"\\\n])*"'
+_SQ = r"'(?:\\.|[^'\\\n])*'"
+_CHAR = r"'(?:\\.|[^'\\\n])'"
+_TICK = r"`[^`]*`"
+_TRIPLE = r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\''
+#: Per language: how a line comment starts and what a string looks like.
+SDK_SYNTAX = {
+    "cpp": (r"//[^\n]*", f"{_DQ}|{_CHAR}"), "c": (r"//[^\n]*", f"{_DQ}|{_CHAR}"),
+    "python": (r"#[^\n]*", f"{_TRIPLE}|{_DQ}|{_SQ}"), "typescript": (r"//[^\n]*", f"{_DQ}|{_SQ}|{_TICK}"),
+    "go": (r"//[^\n]*", f"{_DQ}|{_TICK}|{_CHAR}"), "rust": (r"//[^\n]*", _DQ),
+}
+
+
+def sdk_highlight(source: str, lang: str) -> str:
+    """The source of an example, escaped and with spans for its comments, strings, numbers and keywords: a small
+    tokenizer, not a parser (a miss only leaves a word uncoloured). Classes only, so the CSP stays as it is."""
+    comment, strings = SDK_SYNTAX.get(lang, (r"//[^\n]*", _DQ))
+    words = set(SDK_KEYWORDS.get(lang, "").split())
+    pattern = re.compile(rf"(?P<c>{comment}|/\*[\s\S]*?\*/)|(?P<s>{strings})|(?P<n>\b\d[\w.]*)|(?P<k>\b[A-Za-z_]\w*\b)")
+    out, last = [], 0
+    for m in pattern.finditer(source):
+        out.append(html.escape(source[last:m.start()]))
+        kind, text = m.lastgroup, m.group()
+        if kind == "k" and text not in words:
+            out.append(html.escape(text))
+        else:
+            out.append(f'<span class="tk-{kind}">{html.escape(text)}</span>')
+        last = m.end()
+    out.append(html.escape(source[last:]))
+    return "".join(out)
+
+
+SDK_FOLD = 30  # lines above which an example is shown cut, with "show all"
+
+
+def sdk_code(catalog: dict, ident: str, lang: str, source: str) -> str:
+    """An example's source, coloured; a long one is cut with a toggle (a checkbox, so that it works without script)."""
+    pre = f'<pre tabindex="0"><code class="language-{html.escape(lang, quote=True)}">{sdk_highlight(source, lang)}</code></pre>'
+    lines = source.count("\n") + 1
+    if lines <= SDK_FOLD:
+        return pre
+    more = catalog["sdk_show_all"].replace("{n}", str(lines))
+    return (f'<div class="fold"><input type="checkbox" id="{ident}-fold" class="fold-toggle">'
+            f'<div class="fold-body">{pre}</div>'
+            f'<label for="{ident}-fold"><span class="fold-more">{more}</span><span class="fold-less">{catalog["sdk_show_less"]}</span></label></div>')
+
+
 def sdk_examples(catalog: dict, data: dict) -> str:
     """One block per task, the examples of the languages as tabs: radio buttons and CSS, so that they work without
     script (the first tab shows; with the styles off, every one is listed)."""
@@ -1552,7 +1630,7 @@ def sdk_examples(catalog: dict, data: dict) -> str:
             inputs += (f'<input type="radio" name="ex-{task}" id="{ident}" data-lang="{html.escape(lang, quote=True)}"{" checked" if n == 0 else ""}>'
                        f'<label for="{ident}">{html.escape(label)}</label>')
             panels += (f'<div class="panel"><p class="note">{title} · <a href="{SDK_REPO}/blob/main/{path}">{path}</a></p>'
-                       f'<pre tabindex="0"><code class="language-{html.escape(lang, quote=True)}">{html.escape(str(example.get("source", "")))}</code></pre></div>')
+                       f'{sdk_code(catalog, ident, lang, str(example.get("source", "")))}</div>')
         out.append(f'<h3 id="ex-{task}-title">{catalog["sdk_task_" + task]}</h3><div class="tabs" role="radiogroup" aria-labelledby="ex-{task}-title">{inputs}<div class="panels">{panels}</div></div>')
     return "\n".join(out)
 

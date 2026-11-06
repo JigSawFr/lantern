@@ -823,3 +823,31 @@ main:has(.subnav) section[id] { scroll-margin-top: 64px; }
 @media (hover: hover) { .card.linked:hover { border-color: var(--ice); } }
 .card[id] { scroll-margin-top: 64px; }
 .origin { margin-top: 12px; }
+
+/* The SDK page's code: coloured, a long one cut with "show all"; and the parity by language on a narrow screen. */
+pre code .tk-c { color: #8a9bb8; font-style: italic; }
+pre code .tk-s { color: #9be3b0; }
+pre code .tk-n { color: #f2c27b; }
+pre code .tk-k { color: #7cc4ff; }
+.fold { display: grid; gap: 6px; }
+.fold-toggle { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.fold-body { position: relative; max-height: 30rem; overflow: hidden; }
+.fold-body::after { content: ""; position: absolute; inset: auto 0 0; height: 5rem; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--abyss)); border-radius: 0 0 12px 12px; }
+.fold-toggle:checked ~ .fold-body { max-height: none; }
+.fold-toggle:checked ~ .fold-body::after { display: none; }
+.fold label { display: inline-flex; align-items: center; justify-self: start; min-height: 36px; padding: 0 14px; border: 1px solid var(--night-line); border-radius: 99px; background: rgb(14 26 51 / 0.6); color: var(--snow); font-size: 0.9375rem; cursor: pointer; }
+.fold-toggle:focus-visible ~ label { outline: 2px solid var(--aurora); outline-offset: 2px; }
+.fold-less, .fold-toggle:checked ~ label .fold-more { display: none; }
+.fold-toggle:checked ~ label .fold-less { display: inline; }
+.parity-list { display: none; gap: 8px; }
+.parity-list details { border: 1px solid var(--night-line); border-radius: 12px; background: rgb(14 26 51 / 0.55); }
+.parity-list summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; min-height: 44px; padding: 10px 14px; cursor: pointer; font-weight: 600; }
+.parity-list summary small { font: 500 0.8125rem var(--mono); color: var(--mist); }
+.parity-list table { width: 100%; border-collapse: collapse; }
+.parity-list th, .parity-list td { padding: 6px 14px; text-align: left; border-top: 1px solid var(--night-line); }
+.parity-list td.reached { color: var(--aurora); }
+@media (max-width: 720px) {
+  .matrix { display: none; }
+  .parity-list { display: grid; }
+}
+@media print { .fold-body { max-height: none; } .fold-body::after, .fold label { display: none; } .parity-list { display: none; } .matrix { display: block; } }
