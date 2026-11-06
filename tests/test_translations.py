@@ -51,5 +51,17 @@ class Translations(unittest.TestCase):
             self.assertIn("{v}", catalog["tr_spec_behind"], p.stem)
 
 
+    def test_no_catalog_names_the_current_draft_itself(self):
+        """The current draft is "{draft}", filled from DRAFT by build_site.py: a number written in a catalog
+        would stay behind at the next draft. Only the "Since draft x.y" labels name one."""
+        for p in sorted((ROOT / "site" / "i18n").glob("*.json")):
+            catalog = json.loads(p.read_text(encoding="utf-8"))
+            for key, text in catalog.items():
+                if not key.startswith("since_") and isinstance(text, str):
+                    self.assertNotRegex(text, r"\b0\.\d+\b(?! ?[MKG]B)", f"{p.stem}: {key}")
+            for key in ("hero_eyebrow", "spec_eyebrow", "solid_lede", "description_home", "description_spec"):
+                self.assertIn("{draft}", catalog[key], f"{p.stem}: {key}")
+
+
 if __name__ == "__main__":
     unittest.main()
