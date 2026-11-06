@@ -1507,6 +1507,9 @@ def main() -> None:
     boreale.copy_assets(out)
     schemas = copy_schemas(out)
     catalogs = boreale.catalogs(SITE / "i18n")
+    # "{draft}" in a text is the current draft, so that no catalog keeps an older one.
+    catalogs = {code: {k: v.replace("{draft}", DRAFT) if isinstance(v, str) else v for k, v in texts.items()}
+                for code, texts in catalogs.items()}
     template = (SITE / "template.html").read_text(encoding="utf-8")
     spec = read_spec()
     AIDS.update(section_aids(SPEC.read_text(encoding="utf-8")))
