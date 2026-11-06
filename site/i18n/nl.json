@@ -516,5 +516,12 @@
   "sdk_nav_calls": "Aanroepen",
   "sdk_nav_examples": "Voorbeelden",
   "sdk_nav_trust": "Vertrouwen",
-  "sdk_nav_versions": "Versies"
+  "sdk_nav_versions": "Versies",
+  "sdk_use_title": "Welke past bij mij?",
+  "sdk_use_console": "Homebrew op een console:",
+  "sdk_use_mobile": "Een mobiele app (Swift, Kotlin):",
+  "sdk_use_python": "Lantern toevoegen aan een Flask- of FastAPI-app:",
+  "sdk_use_web": "Node, een browser of Hono:",
+  "sdk_i_code": "Ik programmeer in",
+  "sdk_origin": "Gegevens uit lantern-sdk bij commit {c}."
 }

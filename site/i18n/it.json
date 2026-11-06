@@ -516,5 +516,12 @@
   "sdk_nav_calls": "Chiamate",
   "sdk_nav_examples": "Esempi",
   "sdk_nav_trust": "Fiducia",
-  "sdk_nav_versions": "Versioni"
+  "sdk_nav_versions": "Versioni",
+  "sdk_use_title": "Quale fa per me?",
+  "sdk_use_console": "Homebrew su una console:",
+  "sdk_use_mobile": "Un'app mobile (Swift, Kotlin):",
+  "sdk_use_python": "Aggiungere Lantern a un'app Flask o FastAPI:",
+  "sdk_use_web": "Node, un browser o Hono:",
+  "sdk_i_code": "Programmo in",
+  "sdk_origin": "Dati da lantern-sdk al commit {c}."
 }

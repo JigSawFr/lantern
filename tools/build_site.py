@@ -1344,13 +1344,14 @@ def sdk_data() -> dict | None:
 def sdk_values(catalog: dict, root: str, home: str, sections: dict) -> dict:
     """The SDK page's blocks, from sdk.json; empty ones and a note when the data is not there."""
     data = sdk_data()
-    keys = ("sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions")
+    keys = ("sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions", "sdk_use", "sdk_origin")
     trust = sdk_trust(catalog, root)
     nav = sdk_nav(catalog)
     if data is None:
         return {**{k: "" for k in keys}, "sdk_legend": sdk_legend(catalog), "sdk_trust": trust, "sdk_nav": nav,
                 "sdk_nodata": f'<p class="note">{catalog["sdk_nodata"]}</p>'}
-    return {"sdk_nodata": "", "sdk_legend": sdk_legend(catalog), "sdk_trust": trust, "sdk_nav": nav, "sdk_head": sdk_head(catalog, data), "sdk_cards": sdk_cards(catalog, data),
+    return {"sdk_nodata": "", "sdk_legend": sdk_legend(catalog), "sdk_trust": trust, "sdk_nav": nav, "sdk_head": sdk_head(catalog, data), "sdk_use": sdk_use(catalog, data), "sdk_origin": sdk_origin(catalog),
+            "sdk_cards": sdk_cards(catalog, data),
             "sdk_parity": sdk_parity(catalog, data), "sdk_levels": sdk_levels(catalog, data, root),
             "sdk_calls": sdk_calls(catalog, data, root, home, sections), "sdk_examples": sdk_examples(catalog, data),
             "sdk_versions": sdk_versions(catalog, data)}
@@ -1391,6 +1392,36 @@ def sdk_head(catalog: dict, data: dict) -> str:
             f'<a href="{SDK_REPO}">GitHub</a></p>')
 
 
+#: Who each library is for: (the text's key, the language), the reader's own situation first.
+SDK_USES = (("console", "cpp"), ("mobile", "c"), ("python", "python"), ("web", "typescript"))
+
+
+def sdk_use(catalog: dict, data: dict) -> str:
+    """"Which one is for me": a line a situation, leading to the card of the language; and the picker that, with
+    script, sets the language the page follows (the buttons are hidden until sdk.js shows them)."""
+    ids = {lang.get("id") for lang in data.get("languages", [])}
+    items = "".join(f'<li>{catalog["sdk_use_" + key]} <a href="#sdk-{lang}">{SDK_NAMES[lang]}</a></li>'
+                    for key, lang in SDK_USES if lang in ids)
+    buttons = "".join(f'<button type="button" data-pick="{lang}" aria-pressed="false">{SDK_NAMES[lang]}</button>'
+                      for lang in SDK_LANGS if lang in ids)
+    label = html.escape(catalog["sdk_i_code"], quote=True)
+    return (f'<div class="picker" hidden role="group" aria-label="{label}"><span>{catalog["sdk_i_code"]}</span>{buttons}</div>\n'
+            f'    <h3>{catalog["sdk_use_title"]}</h3>\n    <ul class="uses">{items}</ul>')
+
+
+def sdk_origin(catalog: dict) -> str:
+    short = SDK_COMMIT[:7]
+    return f'<p class="note origin">{catalog["sdk_origin"].replace("{c}", f"<a href={chr(34)}{SDK_REPO}/commit/{SDK_COMMIT}{chr(34)}><code>{short}</code></a>")}</p>'
+
+
+def sdk_counts(data: dict, lang: str) -> tuple[int, int, int] | None:
+    families = data.get("families", [])
+    if not any(lang in row.get("support", {}) for row in families):
+        return None
+    got = [sum(1 for row in families if row.get("support", {}).get(lang, {}).get(side) == "yes") for side in ("client", "server")]
+    return got[0], got[1], len(families)
+
+
 def sdk_cards(catalog: dict, data: dict) -> str:
     cards = []
     for lang in data.get("languages", []):
@@ -1403,11 +1434,14 @@ def sdk_cards(catalog: dict, data: dict) -> str:
         install = lang.get("install")
         code = (f'<pre tabindex="0"><code>{html.escape(install)}</code></pre>' if install and (data.get("sdk") or {}).get("release") else "")
         readme = lang.get("readme")
-        link = (f'<p><a href="{SDK_REPO}/blob/main/{html.escape(readme, quote=True)}">{catalog["sdk_readme"]}</a></p>'
+        link = (f'<p class="more"><a href="{SDK_REPO}/blob/main/{html.escape(readme, quote=True)}">{catalog["sdk_readme"]}</a></p>'
                 if readme else "")
+        counts = sdk_counts(data, str(lang.get("id", "")))
+        parity = (f'<p class="parity"><span>{catalog["sdk_client"]} <strong>{counts[0]}/{counts[2]}</strong></span> '
+                  f'<span>{catalog["sdk_server"]} <strong>{counts[1]}/{counts[2]}</strong></span></p>' if counts else "")
         state = catalog["sdk_status_" + status] if "sdk_status_" + status in catalog else ""
-        cards.append(f'<li class="card" data-lang="{html.escape(str(lang.get("id", "")), quote=True)}"><h3>{name}</h3><p class="kind"><span class="pill pill-{html.escape(str(status), quote=True)}">{state}</span>'
-                     f' {catalog["sdk_role_" + lang.get("role", "both")]}</p><dl class="facts">{rows}</dl>{code}{link}</li>')
+        cards.append(f'<li class="card{" linked" if readme else ""}" id="sdk-{html.escape(str(lang.get("id", "")), quote=True)}" data-lang="{html.escape(str(lang.get("id", "")), quote=True)}"><h3>{name}</h3><p class="kind"><span class="pill pill-{html.escape(str(status), quote=True)}">{state}</span>'
+                     f' {catalog["sdk_role_" + lang.get("role", "both")]}</p>{parity}<dl class="facts">{rows}</dl>{code}{link}</li>')
     return '<ul class="cards cards-small">' + "".join(cards) + "</ul>"
 
 
@@ -1439,7 +1473,7 @@ def sdk_parity(catalog: dict, data: dict) -> str:
         for side in ("client", "server"):
             got = sum(1 for row in families if row.get("support", {}).get(lang, {}).get(side) == "yes")
             total += f'<td data-lang="{lang}" class="sum {"reached" if got == len(families) else "none" if got == 0 else "some"}">{got}/{len(families)}</td>'
-    return (f'<div class="table matrix" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_parity_title"], quote=True)}"><table>'
+    return (f'<div class="table matrix" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_parity_title"], quote=True)}"><table><caption class="sr">{html.escape(catalog["sdk_parity_title"])}</caption>'
             f'<thead><tr><th scope="col" rowspan="2">{catalog["sdk_family"]}</th>{heads}</tr><tr>{sub}</tr></thead>'
             f'<tbody>{"".join(rows)}</tbody><tfoot><tr><th scope="row">{catalog["sdk_total"]}</th>{total}</tr></tfoot></table></div>')
 
@@ -1476,7 +1510,7 @@ def sdk_calls(catalog: dict, data: dict, root: str, home: str, sections: dict) -
         rows.append(f'<tr><th scope="row">{catalog["sdk_g_" + gesture]} {link}</th>{cells}</tr>')
     later = [SDK_NAMES[lang["id"]] for lang in data.get("languages", []) if lang.get("id") in SDK_NAMES and lang["id"] not in langs]
     note = f'<p class="note">{catalog["sdk_calls_later"].replace("{langs}", ", ".join(later))}</p>' if later else ""
-    return (f'<div class="table calls" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_calls_title"], quote=True)}"><table>'
+    return (f'<div class="table calls" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_calls_title"], quote=True)}"><table><caption class="sr">{html.escape(catalog["sdk_calls_title"])}</caption>'
             f'<thead><tr><th scope="col">{catalog["sdk_gesture"]}</th>{heads}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>{note}')
 
 
@@ -1519,7 +1553,7 @@ def sdk_examples(catalog: dict, data: dict) -> str:
                        f'<label for="{ident}">{html.escape(label)}</label>')
             panels += (f'<div class="panel"><p class="note">{title} · <a href="{SDK_REPO}/blob/main/{path}">{path}</a></p>'
                        f'<pre tabindex="0"><code class="language-{html.escape(lang, quote=True)}">{html.escape(str(example.get("source", "")))}</code></pre></div>')
-        out.append(f'<h3>{catalog["sdk_task_" + task]}</h3><div class="tabs">{inputs}<div class="panels">{panels}</div></div>')
+        out.append(f'<h3 id="ex-{task}-title">{catalog["sdk_task_" + task]}</h3><div class="tabs" role="radiogroup" aria-labelledby="ex-{task}-title">{inputs}<div class="panels">{panels}</div></div>')
     return "\n".join(out)
 
 
@@ -1532,7 +1566,7 @@ def sdk_versions(catalog: dict, data: dict) -> str:
     row = "".join(f"<td>{html.escape(str(v))}</td>" for v in (sdk.get("version", ""), sdk.get("spec_draft", ""), capi,
                                                               sdk.get("release") or catalog["sdk_none_yet"]))
     return (f'<div class="table versions" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_versions_title"], quote=True)}">'
-            f'<table><thead><tr>{head}</tr></thead><tbody><tr>{row}</tr></tbody></table></div>')
+            f'<table><caption class="sr">{html.escape(catalog["sdk_versions_title"])}</caption><thead><tr>{head}</tr></thead><tbody><tr>{row}</tr></tbody></table></div>')
 
 
 def demo_cards(catalog: dict) -> str:
