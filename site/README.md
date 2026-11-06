@@ -39,6 +39,10 @@ SITE_AXE=axe.min.js python3 library/boreale-site/tools/site_layout.py build   # 
 
 `site/assets/social-preview.png` (1280 × 640, the image of a link shared on a network) is `site/social-preview.html` drawn by a browser: the lantern mark, the sentence and the home page's overview figure (`figures/overview.svg`). When the sentence or the figure changes, run `python3 tools/diagrams.py write`, open the page at 1280 × 640 (Playwright's `page.screenshot`) and replace the PNG.
 
+## The SDK page
+
+`/sdk/` (`site/sdk.html`, in every language): the libraries of [lantern-sdk](https://github.com/JigSawFr/lantern-sdk) side by side: a card per language (what it needs, its package, what it works with; the install line only once a release exists), the table of families by language (client and server, with the levels each checked server reaches in CI), the same gesture's call in each language, each linked to its source, the files of the libraries' `examples/` folders, and the SDK's version. **Nothing is written by hand**: the page reads `sdk.json`, which lantern-sdk's `tools/site_data.py` writes from its sources (schema 1, read by the `schema` rule: a newer one is absent and the page says its data is not there, an unknown field is skipped) at the commit `SDK_COMMIT` of `tools/build_site.py`, which a pull request raises. `SDK_JSON=<file>` reads a local file instead (a build next to a checkout of lantern-sdk), `SITE_OFFLINE=1` reads none. The texts are the catalogs' `sdk_*` keys; the names of calls, families and packages stay as the SDK writes them. `tests/test_sdk.py` runs on `tests/fixtures/sdk.json`.
+
 ## The quick start
 
 `site/start.html` (`/start/`): three `curl` commands against the demo library (its handshake, its Vita apps, one file hashed with `sha256sum`: `DEMO_FILE` of `tools/build_site.py`, which `tests/test_demo.py` checks against the demo), three against a made-up server (find it, pair, call it) and the first connection's figure with its stepper.

@@ -72,7 +72,7 @@ ENGLISH = CODES[0]
 # The file of the demo library the quick start downloads and hashes (its app's `sha256`, vita's first):
 # check_site.py's tests and the page's commands read it from here.
 DEMO_FILE = "fa75492f7b78cad7ca4044e8fb548ac67bfd7fbf05242ceecb29ebe492218a0d"
-PAGES = {"": "home", "spec/": "spec", "start/": "start", "check/": "check", "examples/": "examples", "translations/": "translations", "demo/": "demo"}
+PAGES = {"": "home", "spec/": "spec", "start/": "start", "check/": "check", "examples/": "examples", "translations/": "translations", "demo/": "demo", "sdk/": "sdk"}
 # The drafts of SPEC.md, each at spec/<draft>/: SPEC.md at the commit that
 # finished it, read from git at each build (git show <commit>:SPEC.md), so
 # that a published draft never changes; the site's workflow checks out the
@@ -433,6 +433,9 @@ def hero(page: str, catalog: dict, root: str, language: str, spec: dict, extra: 
     if page == "start" and "h1" not in extra:
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["start_eyebrow"]}</span>\n'
                 f'    <h1>{catalog["start_title"]}</h1>\n    <p class="lede">{catalog["start_lede"]}</p>\n  </div>')
+    if page == "sdk" and "h1" not in extra:
+        return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["sdk_eyebrow"]}</span>\n'
+                f'    <h1>{catalog["sdk_title"]}</h1>\n    <p class="lede">{catalog["sdk_lede"]}</p>\n  </div>')
     if page == "demo" and "h1" not in extra:
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["demo_eyebrow"]}</span>\n'
                 f'    <h1>{catalog["demo_title"]}</h1>\n    <p class="lede">{catalog["demo_lede"]}</p>\n  </div>')
@@ -987,11 +990,12 @@ def footer_translation(language: str, root: str) -> tuple:
 def page_header(language: str, catalog: dict, root: str, path: str, page: str, versions: dict) -> str:
     """The page's header (boreale-site's chrome): the site's links, "Try it" as the call to action, GitHub."""
     home = root + folder(language)
-    current = {"spec": "nav_spec", "demo": "nav_try"}.get(page)
+    current = {"spec": "nav_spec", "demo": "nav_try", "sdk": "nav_sdk"}.get(page)
     if path == "conformance/":
         current = "footer_conformance"
     return LANTERN.header(language, catalog, root, path, links=[
-        ("nav_how", f"{home}#how"), ("nav_spec", f"{home}spec/"), ("footer_conformance", f"{root}conformance/"),
+        ("nav_how", f"{home}#how"), ("nav_spec", f"{home}spec/"), ("nav_sdk", f"{home}sdk/"),
+        ("footer_conformance", f"{root}conformance/"),
     ], cta=("nav_try", f"{home}demo/"), github=REPO, current=current, label=catalog["nav_label"], latest=versions)
 
 
@@ -1003,7 +1007,7 @@ def page_footer(language: str, catalog: dict, root: str) -> str:
         (catalog["nav_project"], [(catalog["nav_spec"], f"{home}spec/"), (catalog["footer_conformance"], f"{root}conformance/"),
                                   (catalog["footer_errors"], f"{root}errors/"), (catalog["footer_drafts"], f"{root}spec/changes/"),
                                   translation]),
-        (catalog["footer_label"], [(catalog["footer_start"], f"{home}start/"), (catalog["footer_check"], f"{home}check/"), (catalog["footer_examples"], f"{home}examples/"), (catalog["footer_translations"], f"{home}translations/"), (catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
+        (catalog["footer_label"], [(catalog["footer_start"], f"{home}start/"), (catalog["footer_check"], f"{home}check/"), (catalog["footer_examples"], f"{home}examples/"), (catalog["nav_sdk"], f"{home}sdk/"), (catalog["footer_translations"], f"{home}translations/"), (catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
                                    ("GitHub", REPO), (catalog["footer_issues"], f"{REPO}/issues")]),
     ], about=[catalog["footer_license"]], fine=catalog["footer_trademarks"])
 
@@ -1303,6 +1307,165 @@ def demo_stats() -> dict:
     }
 
 
+# ---- The SDK's page: sdk.json, what lantern-sdk says about itself (its tools/site_data.py), read at each build.
+
+SDK_REPO = "https://github.com/JigSawFr/lantern-sdk"
+#: The commit of lantern-sdk whose sdk.json the page shows; raised by a pull request (a Dependabot-like bump by hand).
+SDK_COMMIT = "9fc3b4f817e7186eb5f6a33979e4dbebdbf6c0b7"
+SDK_SCHEMA = 1
+SDK_CALLS = ("handshake", "apps", "missing", "download", "pair", "await_pairing", "upload_save", "events", "serve",
+             "static_write", "static_read")
+SDK_LANGS = ("cpp", "c", "python", "typescript", "go")
+SDK_NAMES = {"cpp": "C++", "c": "C", "python": "Python", "typescript": "TypeScript", "go": "Go", "rust": "Rust"}
+
+
+def sdk_data() -> dict | None:
+    """sdk.json of lantern-sdk at SDK_COMMIT (or the file SDK_JSON names, for a local build); None when it cannot be
+    read (SITE_OFFLINE, no network) or states a newer `schema`, and the page then says its data is not there."""
+    local = os.environ.get("SDK_JSON")
+    try:
+        if local:
+            raw = Path(local).read_text(encoding="utf-8")
+        elif os.environ.get("SITE_OFFLINE") or SDK_COMMIT is None:
+            return None
+        else:
+            import urllib.request
+            url = f"https://raw.githubusercontent.com/JigSawFr/lantern-sdk/{SDK_COMMIT}/sdk.json"
+            with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310 (a fixed https address)
+                raw = response.read().decode("utf-8")
+        data = json.loads(raw)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("schema"), int) or data["schema"] > SDK_SCHEMA:
+        return None  # a newer schema is read as absent (the rule of versioned formats)
+    return data
+
+
+def sdk_values(catalog: dict, root: str, home: str, sections: dict) -> dict:
+    """The SDK page's blocks, from sdk.json; empty ones and a note when the data is not there."""
+    data = sdk_data()
+    keys = ("sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions")
+    if data is None:
+        return {**{k: "" for k in keys}, "sdk_nodata": f'<p class="note">{catalog["sdk_nodata"]}</p>'}
+    return {"sdk_nodata": "", "sdk_head": sdk_head(catalog, data), "sdk_cards": sdk_cards(catalog, data),
+            "sdk_parity": sdk_parity(catalog, data), "sdk_levels": sdk_levels(catalog, data),
+            "sdk_calls": sdk_calls(catalog, data, root, home, sections), "sdk_examples": sdk_examples(catalog, data),
+            "sdk_versions": sdk_versions(catalog, data)}
+
+
+def sdk_head(catalog: dict, data: dict) -> str:
+    sdk = data.get("sdk", {})
+    release = sdk.get("release")
+    state = catalog["sdk_released"].replace("{v}", str(release)) if release else catalog["sdk_unreleased"]
+    chips = [("sdk_k_version", sdk.get("version", "")), ("sdk_k_draft", sdk.get("spec_draft", "")),
+             ("sdk_k_capi", sdk.get("c_api_version", ""))]
+    items = "".join(f'<li>{catalog[k]} <strong>{html.escape(str(v))}</strong></li>' for k, v in chips if v != "")
+    return (f'<ul class="chips">{items}</ul>\n    <p class="note">{state} '
+            f'<a href="{html.escape(sdk.get("releases", SDK_REPO), quote=True)}">{catalog["sdk_releases"]}</a> · '
+            f'<a href="{SDK_REPO}">GitHub</a></p>')
+
+
+def sdk_cards(catalog: dict, data: dict) -> str:
+    cards = []
+    for lang in data.get("languages", []):
+        name = html.escape(str(lang.get("name", "")))
+        status = lang.get("status", "")
+        facts = [("sdk_k_requires", lang.get("requires")), ("sdk_k_package", lang.get("package")),
+                 ("sdk_k_adapters", ", ".join(lang.get("adapters", [])))]
+        rows = "".join(f"<div><dt>{catalog[k]}</dt><dd>{html.escape(str(v))}</dd></div>" for k, v in facts if v)
+        install = lang.get("install")
+        code = (f'<pre tabindex="0"><code>{html.escape(install)}</code></pre>' if install and (data.get("sdk") or {}).get("release")
+                else f'<p class="note">{catalog["sdk_install_later"]}</p>' if status != "planned" else "")
+        readme = lang.get("readme")
+        link = (f'<p><a href="{SDK_REPO}/blob/main/{html.escape(readme, quote=True)}">{catalog["sdk_readme"]}</a></p>'
+                if readme else "")
+        cards.append(f'<li class="card"><h3>{name}</h3><p>{catalog["sdk_status_" + status] if "sdk_status_" + status in catalog else ""}'
+                     f' · {catalog["sdk_role_" + lang.get("role", "both")]}</p><dl class="facts">{rows}</dl>{code}{link}</li>')
+    return '<ul class="cards cards-small">' + "".join(cards) + "</ul>"
+
+
+MARKS = {"yes": ("✓", "sdk_yes"), "partial": ("◐", "sdk_partial"), "no": ("–", "sdk_no")}
+
+
+def sdk_cell(catalog: dict, kind: str) -> str:
+    mark, key = MARKS.get(kind, ("–", "sdk_no"))
+    return f'<span aria-hidden="true">{mark}</span><span class="sr">{catalog[key]}</span>'
+
+
+def sdk_parity(catalog: dict, data: dict) -> str:
+    langs = [lang for lang in SDK_LANGS if any(lang in row.get("support", {}) for row in data.get("families", []))]
+    heads = "".join(f'<th scope="col" colspan="2">{SDK_NAMES[lang]}</th>' for lang in langs)
+    sub = "".join(f'<th scope="col">{catalog["sdk_client"]}</th><th scope="col">{catalog["sdk_server"]}</th>' for _ in langs)
+    rows = []
+    for row in data.get("families", []):
+        cells = ""
+        for lang in langs:
+            cell = row.get("support", {}).get(lang, {})
+            cells += (f'<td class="{"reached" if cell.get("client") == "yes" else "none"}">{sdk_cell(catalog, cell.get("client", "no"))}</td>'
+                      f'<td class="{"reached" if cell.get("server") == "yes" else "none"}">{sdk_cell(catalog, cell.get("server", "no"))}</td>')
+        rows.append(f'<tr><th scope="row"><code>{html.escape(str(row.get("family", "")))}</code></th>{cells}</tr>')
+    return (f'<div class="table matrix" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_parity_title"], quote=True)}"><table>'
+            f'<thead><tr><th scope="col" rowspan="2">{catalog["sdk_family"]}</th>{heads}</tr><tr>{sub}</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table></div>')
+
+
+def sdk_levels(catalog: dict, data: dict) -> str:
+    rows = "".join(f'<li><strong>{SDK_NAMES.get(lang, html.escape(lang))}</strong>: <code>{html.escape(level)}</code></li>'
+                   for lang, level in (data.get("levels") or {}).items())
+    return f'<ul class="plain">{rows}</ul>' if rows else ""
+
+
+def sdk_calls(catalog: dict, data: dict, root: str, home: str, sections: dict) -> str:
+    calls = {c.get("id"): c for c in data.get("calls", [])}
+    langs = [lang for lang in SDK_LANGS if any(lang in c.get("calls", {}) for c in calls.values())]
+    heads = "".join(f'<th scope="col">{SDK_NAMES[lang]}</th>' for lang in langs)
+    rows = []
+    for gesture in SDK_CALLS:
+        call = calls.get(gesture)
+        if call is None:
+            continue
+        cells = "".join(
+            (f'<td><a href="{SDK_REPO}/blob/main/{html.escape(call["where"][lang], quote=True)}"><code>{html.escape(call["calls"][lang])}</code></a></td>'
+             if call["calls"].get(lang) and lang in call.get("where", {}) else '<td class="none"><span aria-hidden="true">–</span>'
+             f'<span class="sr">{catalog["sdk_no"]}</span></td>') for lang in langs)
+        spec = str(call.get("spec", ""))
+        anchor = sections.get(spec)
+        mark = f'§&nbsp;{html.escape(spec)}'
+        link = f'<a href="{root}{home}spec/#{anchor}">{mark}</a>' if anchor else mark
+        rows.append(f'<tr><th scope="row">{catalog["sdk_g_" + gesture]} {link}</th>{cells}</tr>')
+    return (f'<div class="table calls" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_calls_title"], quote=True)}"><table>'
+            f'<thead><tr><th scope="col">{catalog["sdk_gesture"]}</th>{heads}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>')
+
+
+def sdk_examples(catalog: dict, data: dict) -> str:
+    by_language: dict = {}
+    for example in data.get("examples", []):
+        by_language.setdefault(example.get("language"), []).append(example)
+    out = []
+    for lang in SDK_LANGS:
+        group = by_language.get(lang)
+        if not group:
+            continue
+        items = []
+        for example in group:
+            path = html.escape(str(example.get("path", "")), quote=True)
+            items.append(f'<details class="fold"><summary>{html.escape(str(example.get("title", "")))}'
+                         f' <code>{html.escape(Path(str(example.get("path", ""))).name)}</code></summary>'
+                         f'<pre tabindex="0"><code>{html.escape(str(example.get("source", "")))}</code></pre>'
+                         f'<p class="note"><a href="{SDK_REPO}/blob/main/{path}">{path}</a></p></details>')
+        out.append(f'<h3>{SDK_NAMES[lang]}</h3>' + "".join(items))
+    return "\n".join(out)
+
+
+def sdk_versions(catalog: dict, data: dict) -> str:
+    sdk = data.get("sdk", {})
+    rows = [("sdk_k_version", sdk.get("version")), ("sdk_k_draft", sdk.get("spec_draft")),
+            ("sdk_k_capi", f'{sdk.get("c_api_version")} (ABI {sdk.get("c_abi_version")})' if sdk.get("c_api_version") else None),
+            ("sdk_k_release", sdk.get("release") or catalog["sdk_none_yet"])]
+    cells = "".join(f"<div><dt>{catalog[k]}</dt><dd>{html.escape(str(v))}</dd></div>" for k, v in rows if v is not None)
+    return f'<dl class="facts wide">{cells}</dl>'
+
+
 def demo_cards(catalog: dict) -> str:
     """The demo library's three kinds of content, a card each, with the counts of demo_stats()."""
     st = demo_stats()
@@ -1336,6 +1499,8 @@ def default_crumbs(page: str, path: str, catalog: dict) -> list:
         return [(catalog["footer_examples"], None)]
     if page == "translations" and path == "translations/":
         return [(catalog["footer_translations"], None)]
+    if page == "sdk" and path == "sdk/":
+        return [(catalog["nav_sdk"], None)]
     return []
 
 
@@ -1376,7 +1541,7 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         + (f'<script src="{root}assets/check.js" defer></script>' if page == "check" else "")
         + (f'<script src="{root}assets/rail.js" defer data-label="{html.escape(catalog["home_rail"], quote=True)}"></script>' if page == "home" else ""),
     })
-    if page in ("home", "demo", "start", "check", "examples", "translations") and not body:
+    if page in ("home", "demo", "start", "check", "examples", "translations", "sdk") and not body:
         body = (SITE / f"{page}.html").read_text(encoding="utf-8")
         values["demo_url"] = SITE_URL + "demo/"
         values["diagram_overview"] = diagrams.render("overview", catalog)
@@ -1388,6 +1553,8 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         values["translations_table"] = translations_table(catalog, root, values["home"])
         values["check_options"] = "".join(
             f'<option value="{n}"{" selected" if n == "handshake" else ""}>{n}</option>' for n in schema_names())
+        if page == "sdk":
+            values.update(sdk_values(catalog, root, values["home"], spec["sections"]))
         if page == "demo":
             values["demo_qr"] = qr.svg(SITE_URL + "demo/", catalog["demo_qr_alt"])
             values["demo_cards"] = demo_cards(catalog)
