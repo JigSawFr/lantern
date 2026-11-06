@@ -1,5 +1,6 @@
 """The SDK page (site/sdk.html, tools/build_site.py's sdk_*): sdk.json is read by the `schema` rule (a newer one is
 absent, an unknown field is skipped), the tables say what the file says, and every catalog has the page's texts."""
+import html
 import json
 import os
 import re
@@ -75,7 +76,7 @@ class Page(unittest.TestCase):
         self.assertNotIn("pip install", self.values["sdk_cards"])
 
     def test_the_parity_table_has_a_row_per_family_and_a_mark_for_each_cell(self):
-        table = self.values["sdk_parity"]
+        table = self.values["sdk_parity"].split('class="parity-list"')[0]
         self.assertEqual(table.count('<th scope="row">'), 4)  # three families and the totals
         self.assertIn("<tfoot>", table)
         self.assertIn('class="reached"', table)
@@ -112,7 +113,7 @@ class Texts(unittest.TestCase):
         used -= {"sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions", "sdk_trust", "sdk_nav", "sdk_use", "sdk_origin"}
         used |= {f"sdk_task_{t}" for t, _ in build_site.SDK_TASKS} | {"sdk_total", "sdk_calls_later", "sdk_nav_aria"} | {f"sdk_nav_{k}" for k in build_site.SDK_SECTIONS}
         used |= {f"sdk_trust_{k}{s}" for k in ("suite", "hostile", "vectors") for s in ("", "_t")} | {"sdk_trust_release_t", "sdk_trust_release_x"}
-        used |= {"sdk_use_title", "sdk_i_code", "sdk_origin"} | {f"sdk_use_{k}" for k, _ in build_site.SDK_USES}
+        used |= {"sdk_use_title", "sdk_i_code", "sdk_origin"} | {f"sdk_use_{k}" for k, _ in build_site.SDK_USES} | {"sdk_show_all", "sdk_show_less"}
         for p in sorted((ROOT / "site" / "i18n").glob("*.json")):
             texts = json.loads(p.read_text(encoding="utf-8"))
             for key in sorted(used):
@@ -175,6 +176,39 @@ class Choosing(unittest.TestCase):
         self.assertIn('<h3 id="ex-read-title">', self.values["sdk_examples"])
         for key in ("sdk_parity", "sdk_calls", "sdk_versions"):
             self.assertIn('<caption class="sr">', self.values[key])
+
+
+class Code(unittest.TestCase):
+    def test_colouring_changes_nothing_in_the_text(self):
+        data = read(FIXTURE)
+        for example in data["examples"]:
+            lang = example["language"]
+            coloured = build_site.sdk_highlight(example["source"], lang)
+            plain = html.unescape(re.sub(r"<[^>]+>", "", coloured))
+            self.assertEqual(plain, example["source"], example["path"])
+
+    def test_comments_strings_numbers_and_keywords_are_marked(self):
+        out = build_site.sdk_highlight('auto x = "a"; // c\nint n = 42;', "cpp")
+        for kind in ("c", "s", "n", "k"):
+            self.assertIn(f'class="tk-{kind}"', out)
+
+    def test_a_hash_is_a_comment_in_python_only(self):
+        self.assertIn('tk-c', build_site.sdk_highlight("x = 1  # c", "python"))
+        self.assertNotIn('tk-c', build_site.sdk_highlight("#include <a>", "cpp"))
+
+    def test_a_long_example_is_cut_with_a_toggle_and_a_short_one_is_not(self):
+        cat = catalog()
+        short = build_site.sdk_code(cat, "ex", "python", "x = 1\n" * 3)
+        long = build_site.sdk_code(cat, "ex", "python", "x = 1\n" * (build_site.SDK_FOLD + 5))
+        self.assertNotIn("fold", short)
+        self.assertIn('type="checkbox" id="ex-fold"', long)
+        self.assertIn("<pre", long)  # the whole source is there without styles or script
+
+    def test_the_parity_by_language_is_there_for_a_narrow_screen(self):
+        with mock.patch.dict(os.environ, {"SDK_JSON": str(FIXTURE)}):
+            parity = build_site.sdk_values(catalog(), "../", "", {})["sdk_parity"]
+        self.assertIn('class="parity-list"', parity)
+        self.assertIn('<details data-lang="python">', parity)
 
 
 if __name__ == "__main__":

@@ -523,5 +523,7 @@
   "sdk_use_python": "Ajouter Lantern à une application Flask ou FastAPI :",
   "sdk_use_web": "Node, un navigateur ou Hono :",
   "sdk_i_code": "Je code en",
-  "sdk_origin": "Données de lantern-sdk au commit {c}."
+  "sdk_origin": "Données de lantern-sdk au commit {c}.",
+  "sdk_show_all": "Tout afficher ({n} lignes)",
+  "sdk_show_less": "Réduire"
 }

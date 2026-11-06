@@ -523,5 +523,7 @@
   "sdk_use_python": "Flask나 FastAPI 앱에 Lantern 추가:",
   "sdk_use_web": "Node, 브라우저, Hono:",
   "sdk_i_code": "사용하는 언어",
-  "sdk_origin": "lantern-sdk 데이터, 커밋 {c}."
+  "sdk_origin": "lantern-sdk 데이터, 커밋 {c}.",
+  "sdk_show_all": "{n}줄 모두 보기",
+  "sdk_show_less": "접기"
 }

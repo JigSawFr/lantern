@@ -523,5 +523,7 @@
   "sdk_use_python": "FlaskまたはFastAPIのアプリにLanternを追加:",
   "sdk_use_web": "Node、ブラウザ、Hono:",
   "sdk_i_code": "使う言語",
-  "sdk_origin": "lantern-sdk のデータ（コミット {c}）。"
+  "sdk_origin": "lantern-sdk のデータ（コミット {c}）。",
+  "sdk_show_all": "{n} 行すべてを表示",
+  "sdk_show_less": "折りたたむ"
 }
