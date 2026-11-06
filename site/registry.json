@@ -9,9 +9,71 @@
       "licence": "MIT",
       "language": "Python (standard library)",
       "draft": "0.11",
-      "levels": ["core", "titles", "homebrew", "saves", "cheats", "requests", "admin", "events", "peers", "sync", "encrypted_saves", "deltas", "static"],
+      "levels": [
+        "core",
+        "titles",
+        "homebrew",
+        "saves",
+        "cheats",
+        "requests",
+        "admin",
+        "events",
+        "peers",
+        "sync",
+        "encrypted_saves",
+        "deltas",
+        "static"
+      ],
       "checked": "2026-11-05",
       "note": "The text's own reference: a folder of packages and homebrew, served by the protocol, and exported as a static library (--export). A reference, not a product."
+    },
+    {
+      "name": "Lantern SDK, Python server toolkit",
+      "kind": "server",
+      "url": "https://github.com/JigSawFr/lantern-sdk/tree/main/python",
+      "licence": "MIT",
+      "language": "Python (Flask, FastAPI, ASGI/WSGI adapters)",
+      "draft": "0.11",
+      "levels": [
+        "core",
+        "titles",
+        "homebrew",
+        "saves",
+        "cheats",
+        "requests",
+        "admin",
+        "events",
+        "peers",
+        "sync",
+        "encrypted_saves",
+        "deltas"
+      ],
+      "checked": "2026-11-06",
+      "note": "The server half of the Python SDK: a library to add Lantern to an existing application. The SDK's CI runs the conformance suite against it."
+    },
+    {
+      "name": "Lantern SDK, TypeScript server toolkit",
+      "kind": "server",
+      "url": "https://github.com/JigSawFr/lantern-sdk/tree/main/typescript",
+      "licence": "MIT",
+      "language": "TypeScript (node:http, Hono)",
+      "draft": "0.11",
+      "levels": [
+        "core",
+        "titles",
+        "homebrew",
+        "saves",
+        "cheats",
+        "requests",
+        "admin",
+        "events",
+        "peers",
+        "sync",
+        "encrypted_saves",
+        "deltas"
+      ],
+      "checked": "2026-11-06",
+      "note": "The server half of the TypeScript SDK: a library to add Lantern to a Node or web-standard application. The SDK's CI runs the conformance suite against it."
     }
   ]
 }
