@@ -753,3 +753,39 @@ pre mark { background: rgb(0 255 204 / 0.16); color: inherit; border-radius: 4px
 @media (max-width: 860px) {
   .matrix th[scope="row"], .calls th[scope="row"], .matrix th[rowspan], .calls thead th:first-child { box-shadow: 1px 0 0 var(--night-line), 6px 0 10px -4px rgb(0 0 0 / 0.5); }
 }
+
+/* The SDK page: examples as tabs (radio buttons, no script), a card's state, the parity table's totals, the trust tiles. */
+.tabs { margin-top: 12px; }
+.tabs > input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.tabs > label { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; margin: 0 4px 6px 0; border: 1px solid var(--night-line); border-radius: 99px;
+  background: rgb(14 26 51 / 0.6); color: var(--mist); font: 500 0.875rem var(--mono); cursor: pointer; }
+@media (hover: hover) { .tabs > label:hover { color: var(--snow); border-color: var(--dusk); } }
+.tabs > .panels > .panel { display: none; }
+.tabs > input:nth-of-type(1):checked ~ .panels > .panel:nth-child(1) { display: block; }
+.tabs > input:nth-of-type(2):checked ~ .panels > .panel:nth-child(2) { display: block; }
+.tabs > input:nth-of-type(3):checked ~ .panels > .panel:nth-child(3) { display: block; }
+.tabs > input:nth-of-type(4):checked ~ .panels > .panel:nth-child(4) { display: block; }
+.tabs > input:nth-of-type(5):checked ~ .panels > .panel:nth-child(5) { display: block; }
+.tabs > input:nth-of-type(6):checked ~ .panels > .panel:nth-child(6) { display: block; }
+.tabs > input:nth-of-type(7):checked ~ .panels > .panel:nth-child(7) { display: block; }
+.tabs > input:nth-of-type(8):checked ~ .panels > .panel:nth-child(8) { display: block; }
+.tabs > input:checked + label { color: var(--night); background: var(--aurora); border-color: var(--aurora); }
+.tabs > input:focus-visible + label { outline: 2px solid var(--aurora); outline-offset: 3px; }
+.tabs .panel .note { margin: 4px 0 10px; }
+.card .kind { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--mist); }
+.pill { display: inline-flex; align-items: center; min-height: 24px; padding: 0 10px; border-radius: 99px; font: 500 0.75rem var(--mono); letter-spacing: 0.04em;
+  text-transform: uppercase; border: 1px solid var(--night-line); color: var(--mist); }
+.pill-complete { color: var(--aurora); border-color: rgb(0 255 170 / 0.35); background: rgb(0 255 170 / 0.08); }
+.pill-building { color: #ffcb6b; border-color: rgb(255 203 107 / 0.35); background: rgb(255 203 107 / 0.08); }
+.card .facts dd code { font-size: 0.875rem; overflow-wrap: anywhere; }
+.card a[href*="/blob/"]::after { content: " →"; color: var(--aurora); }
+.matrix td.reached { opacity: 0.6; }
+.matrix td.none { color: var(--mist); }
+.matrix tfoot th, .matrix tfoot td { border-bottom: 0; border-top: 1px solid var(--dusk); font-weight: 600; }
+.matrix tfoot td.reached { opacity: 1; }
+.matrix tfoot td.some { color: var(--ice); }
+.trust.cards-small .card h3 { font-size: 1rem; }
+.trust.cards-small .card { gap: 6px; }
+.cards-small.trust { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+@media (min-width: 861px) { .cards-small.trust { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.trust.cards-small .card h3 a { min-height: 0; }

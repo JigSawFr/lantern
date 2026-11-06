@@ -73,11 +73,11 @@ class Page(unittest.TestCase):
 
     def test_nothing_is_installed_before_a_release(self):
         self.assertNotIn("pip install", self.values["sdk_cards"])
-        self.assertIn(catalog()["sdk_install_later"], self.values["sdk_cards"])
 
     def test_the_parity_table_has_a_row_per_family_and_a_mark_for_each_cell(self):
         table = self.values["sdk_parity"]
-        self.assertEqual(table.count('<th scope="row">'), 3)
+        self.assertEqual(table.count('<th scope="row">'), 4)  # three families and the totals
+        self.assertIn("<tfoot>", table)
         self.assertIn('class="reached"', table)
         self.assertIn('class="half"', table)  # C++ serves part of it
 
@@ -95,7 +95,8 @@ class Page(unittest.TestCase):
 
     def test_examples_show_their_source_escaped(self):
         examples = self.values["sdk_examples"]
-        self.assertIn("<details", examples)
+        self.assertIn('class="tabs"', examples)
+        self.assertIn('type="radio"', examples)
         self.assertNotIn("<script", examples)
 
     def test_versions(self):
@@ -108,7 +109,9 @@ class Texts(unittest.TestCase):
         used = set(re.findall(r"\{\{(sdk_[a-z_]+)\}\}", (ROOT / "site" / "sdk.html").read_text(encoding="utf-8")))
         used |= {f"sdk_g_{g}" for g in build_site.SDK_CALLS}
         used |= {"nav_sdk", "title_sdk", "description_sdk", "sdk_eyebrow", "sdk_title", "sdk_lede", "sdk_nodata"}
-        used -= {"sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions"}
+        used -= {"sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions", "sdk_trust"}
+        used |= {f"sdk_task_{t}" for t, _ in build_site.SDK_TASKS} | {"sdk_total", "sdk_calls_later"}
+        used |= {f"sdk_trust_{k}{s}" for k in ("suite", "hostile", "vectors") for s in ("", "_t")} | {"sdk_trust_release_t", "sdk_trust_release_x"}
         for p in sorted((ROOT / "site" / "i18n").glob("*.json")):
             texts = json.loads(p.read_text(encoding="utf-8"))
             for key in sorted(used):

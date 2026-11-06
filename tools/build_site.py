@@ -1345,10 +1345,11 @@ def sdk_values(catalog: dict, root: str, home: str, sections: dict) -> dict:
     """The SDK page's blocks, from sdk.json; empty ones and a note when the data is not there."""
     data = sdk_data()
     keys = ("sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions")
+    trust = sdk_trust(catalog, root)
     if data is None:
-        return {**{k: "" for k in keys}, "sdk_legend": sdk_legend(catalog),
+        return {**{k: "" for k in keys}, "sdk_legend": sdk_legend(catalog), "sdk_trust": trust,
                 "sdk_nodata": f'<p class="note">{catalog["sdk_nodata"]}</p>'}
-    return {"sdk_nodata": "", "sdk_legend": sdk_legend(catalog), "sdk_head": sdk_head(catalog, data), "sdk_cards": sdk_cards(catalog, data),
+    return {"sdk_nodata": "", "sdk_legend": sdk_legend(catalog), "sdk_trust": trust, "sdk_head": sdk_head(catalog, data), "sdk_cards": sdk_cards(catalog, data),
             "sdk_parity": sdk_parity(catalog, data), "sdk_levels": sdk_levels(catalog, data),
             "sdk_calls": sdk_calls(catalog, data, root, home, sections), "sdk_examples": sdk_examples(catalog, data),
             "sdk_versions": sdk_versions(catalog, data)}
@@ -1356,6 +1357,17 @@ def sdk_values(catalog: dict, root: str, home: str, sections: dict) -> dict:
 
 def sdk_legend(catalog: dict) -> str:
     return catalog["sdk_legend"].replace("◐", HALF)
+
+
+def sdk_trust(catalog: dict, root: str) -> str:
+    tiles = (("suite", f'{root}conformance/'), ("hostile", None), ("vectors", None), ("release", None))
+    out = []
+    for key, link in tiles:
+        text = catalog["sdk_trust_" + key + ("_x" if key == "release" else "")]
+        title = catalog["sdk_trust_" + key + "_t"]
+        head = f'<a href="{html.escape(link, quote=True)}">{title}</a>' if link else title
+        out.append(f'<li class="card"><h3>{head}</h3><p>{text}</p></li>')
+    return '<ul class="cards cards-small trust">' + "".join(out) + "</ul>"
 
 
 def sdk_head(catalog: dict, data: dict) -> str:
@@ -1378,14 +1390,15 @@ def sdk_cards(catalog: dict, data: dict) -> str:
         facts = [("sdk_k_requires", lang.get("requires")), ("sdk_k_package", lang.get("package")),
                  ("sdk_k_adapters", ", ".join(lang.get("adapters", [])))]
         rows = "".join(f"<div><dt>{catalog[k]}</dt><dd>{html.escape(str(v))}</dd></div>" for k, v in facts if v)
+        rows = rows.replace(f"<dd>{html.escape(str(lang.get('package') or ''))}</dd>", f"<dd><code>{html.escape(str(lang.get('package') or ''))}</code></dd>") if lang.get("package") else rows
         install = lang.get("install")
-        code = (f'<pre tabindex="0"><code>{html.escape(install)}</code></pre>' if install and (data.get("sdk") or {}).get("release")
-                else f'<p class="note">{catalog["sdk_install_later"]}</p>' if status != "planned" else "")
+        code = (f'<pre tabindex="0"><code>{html.escape(install)}</code></pre>' if install and (data.get("sdk") or {}).get("release") else "")
         readme = lang.get("readme")
         link = (f'<p><a href="{SDK_REPO}/blob/main/{html.escape(readme, quote=True)}">{catalog["sdk_readme"]}</a></p>'
                 if readme else "")
-        cards.append(f'<li class="card"><h3>{name}</h3><p>{catalog["sdk_status_" + status] if "sdk_status_" + status in catalog else ""}'
-                     f' · {catalog["sdk_role_" + lang.get("role", "both")]}</p><dl class="facts">{rows}</dl>{code}{link}</li>')
+        state = catalog["sdk_status_" + status] if "sdk_status_" + status in catalog else ""
+        cards.append(f'<li class="card"><h3>{name}</h3><p class="kind"><span class="pill pill-{html.escape(str(status), quote=True)}">{state}</span>'
+                     f' {catalog["sdk_role_" + lang.get("role", "both")]}</p><dl class="facts">{rows}</dl>{code}{link}</li>')
     return '<ul class="cards cards-small">' + "".join(cards) + "</ul>"
 
 
@@ -1411,9 +1424,15 @@ def sdk_parity(catalog: dict, data: dict) -> str:
             cells += (f'<td class="{"reached" if cell.get("client") == "yes" else "none"}">{sdk_cell(catalog, cell.get("client", "no"))}</td>'
                       f'<td class="{"reached" if cell.get("server") == "yes" else "none"}">{sdk_cell(catalog, cell.get("server", "no"))}</td>')
         rows.append(f'<tr><th scope="row"><code>{html.escape(str(row.get("family", "")))}</code></th>{cells}</tr>')
+    families = data.get("families", [])
+    total = ""
+    for lang in langs:
+        for side in ("client", "server"):
+            got = sum(1 for row in families if row.get("support", {}).get(lang, {}).get(side) == "yes")
+            total += f'<td class="sum {"reached" if got == len(families) else "none" if got == 0 else "some"}">{got}/{len(families)}</td>'
     return (f'<div class="table matrix" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_parity_title"], quote=True)}"><table>'
             f'<thead><tr><th scope="col" rowspan="2">{catalog["sdk_family"]}</th>{heads}</tr><tr>{sub}</tr></thead>'
-            f'<tbody>{"".join(rows)}</tbody></table></div>')
+            f'<tbody>{"".join(rows)}</tbody><tfoot><tr><th scope="row">{catalog["sdk_total"]}</th>{total}</tr></tfoot></table></div>')
 
 
 def sdk_levels(catalog: dict, data: dict) -> str:
@@ -1446,24 +1465,46 @@ def sdk_calls(catalog: dict, data: dict, root: str, home: str, sections: dict) -
             f'<thead><tr><th scope="col">{catalog["sdk_gesture"]}</th>{heads}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>{note}')
 
 
+#: The examples are gathered by the task they do, from their file names: (task, the start of the name), then the
+#: variant a name carries after it, shown beside the language ("Python (Flask)").
+SDK_TASKS = (("read", ("read",)), ("pair", ("pair",)), ("serve", ("serve", "demo")), ("static", ("static",)))
+SDK_VARIANTS = {"flask": "Flask", "fastapi": "FastAPI", "node": "node:http", "server": "server core"}
+
+
+def sdk_task(path: str) -> tuple[str | None, str | None]:
+    stem = re.split(r"[-_]", Path(path).stem, maxsplit=1)
+    for task, starts in SDK_TASKS:
+        if stem[0] in starts:
+            return task, (stem[1] if len(stem) > 1 else None)
+    return None, None
+
+
 def sdk_examples(catalog: dict, data: dict) -> str:
-    by_language: dict = {}
+    """One block per task, the examples of the languages as tabs: radio buttons and CSS, so that they work without
+    script (the first tab shows; with the styles off, every one is listed)."""
+    by_task: dict = {}
     for example in data.get("examples", []):
-        by_language.setdefault(example.get("language"), []).append(example)
+        task, variant = sdk_task(str(example.get("path", "")))
+        if task:
+            by_task.setdefault(task, []).append((example, variant))
     out = []
-    for lang in SDK_LANGS:
-        group = by_language.get(lang)
+    for task, _ in SDK_TASKS:
+        group = sorted(by_task.get(task, []), key=lambda e: (SDK_LANGS.index(e[0].get("language")) if e[0].get("language") in SDK_LANGS else 99,
+                                                              str(e[0].get("path"))))
         if not group:
             continue
-        items = []
-        for example in group:
+        inputs, panels = "", ""
+        for n, (example, variant) in enumerate(group):
+            lang = str(example.get("language"))
+            label = SDK_NAMES.get(lang, lang) + (f" ({SDK_VARIANTS[variant]})" if variant in SDK_VARIANTS else "")
+            ident = f"ex-{task}-{n}"
             path = html.escape(str(example.get("path", "")), quote=True)
             title = re.sub(r"`([^`]+)`", r"<code>\1</code>", html.escape(str(example.get("title", ""))))
-            items.append(f'<details class="fold"><summary>{title}'
-                         f' <code>{html.escape(Path(str(example.get("path", ""))).name)}</code></summary>'
-                         f'<pre tabindex="0"><code>{html.escape(str(example.get("source", "")))}</code></pre>'
-                         f'<p class="note"><a href="{SDK_REPO}/blob/main/{path}">{path}</a></p></details>')
-        out.append(f'<h3>{SDK_NAMES[lang]}</h3>' + "".join(items))
+            inputs += (f'<input type="radio" name="ex-{task}" id="{ident}"{" checked" if n == 0 else ""}>'
+                       f'<label for="{ident}">{html.escape(label)}</label>')
+            panels += (f'<div class="panel"><p class="note">{title} · <a href="{SDK_REPO}/blob/main/{path}">{path}</a></p>'
+                       f'<pre tabindex="0"><code class="language-{html.escape(lang, quote=True)}">{html.escape(str(example.get("source", "")))}</code></pre></div>')
+        out.append(f'<h3>{catalog["sdk_task_" + task]}</h3><div class="tabs">{inputs}<div class="panels">{panels}</div></div>')
     return "\n".join(out)
 
 
@@ -1547,7 +1588,7 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         # The specification's script: its contents, search and links (site/assets/spec.js).
         "spec_script": (f'<script src="{root}assets/spec.js" defer></script>' if page == "spec" else "")
                        + (f'<script src="{root}assets/figures.js" defer></script>' if page in ("spec", "start") else "")
-        + (f'<script src="{root}assets/code.js" defer data-copy="{html.escape(catalog["ui_copy"], quote=True)}" data-copied="{html.escape(catalog["ui_copied"], quote=True)}" data-failed="{html.escape(catalog["ui_copy_failed"], quote=True)}"></script>' if page in ("spec", "start", "examples") else "")
+        + (f'<script src="{root}assets/code.js" defer data-copy="{html.escape(catalog["ui_copy"], quote=True)}" data-copied="{html.escape(catalog["ui_copied"], quote=True)}" data-failed="{html.escape(catalog["ui_copy_failed"], quote=True)}"></script>' if page in ("spec", "start", "examples", "sdk") else "")
         + (f'<script src="{root}assets/check.js" defer></script>' if page == "check" else "")
         + (f'<script src="{root}assets/rail.js" defer data-label="{html.escape(catalog["home_rail"], quote=True)}"></script>' if page == "home" else ""),
     })
