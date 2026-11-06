@@ -72,7 +72,7 @@ ENGLISH = CODES[0]
 # The file of the demo library the quick start downloads and hashes (its app's `sha256`, vita's first):
 # check_site.py's tests and the page's commands read it from here.
 DEMO_FILE = "fa75492f7b78cad7ca4044e8fb548ac67bfd7fbf05242ceecb29ebe492218a0d"
-PAGES = {"": "home", "spec/": "spec", "start/": "start", "check/": "check", "examples/": "examples", "translations/": "translations", "demo/": "demo", "sdk/": "sdk"}
+PAGES = {"": "home", "spec/": "spec", "start/": "start", "check/": "check", "examples/": "examples", "translations/": "translations", "demo/": "demo", "sdk/": "sdk", "bridge/": "bridge"}
 # The drafts of SPEC.md, each at spec/<draft>/: SPEC.md at the commit that
 # finished it, read from git at each build (git show <commit>:SPEC.md), so
 # that a published draft never changes; the site's workflow checks out the
@@ -436,6 +436,9 @@ def hero(page: str, catalog: dict, root: str, language: str, spec: dict, extra: 
     if page == "sdk" and "h1" not in extra:
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["sdk_eyebrow"]}</span>\n'
                 f'    <h1>{catalog["sdk_title"]}</h1>\n    <p class="lede">{catalog["sdk_lede"]}</p>\n  </div>')
+    if page == "bridge" and "h1" not in extra:
+        return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["bridge_eyebrow"]}</span>\n'
+                f'    <h1>{catalog["bridge_title"]}</h1>\n    <p class="lede">{catalog["bridge_lede"]}</p>\n  </div>')
     if page == "demo" and "h1" not in extra:
         return (f'<div class="wrap hero small">\n    <span class="eyebrow">{catalog["demo_eyebrow"]}</span>\n'
                 f'    <h1>{catalog["demo_title"]}</h1>\n    <p class="lede">{catalog["demo_lede"]}</p>\n  </div>')
@@ -1007,7 +1010,7 @@ def page_footer(language: str, catalog: dict, root: str) -> str:
         (catalog["nav_project"], [(catalog["nav_spec"], f"{home}spec/"), (catalog["footer_conformance"], f"{root}conformance/"),
                                   (catalog["footer_errors"], f"{root}errors/"), (catalog["footer_drafts"], f"{root}spec/changes/"),
                                   translation]),
-        (catalog["footer_label"], [(catalog["footer_start"], f"{home}start/"), (catalog["footer_check"], f"{home}check/"), (catalog["footer_examples"], f"{home}examples/"), (catalog["nav_sdk"], f"{home}sdk/"), (catalog["footer_translations"], f"{home}translations/"), (catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
+        (catalog["footer_label"], [(catalog["footer_start"], f"{home}start/"), (catalog["footer_check"], f"{home}check/"), (catalog["footer_examples"], f"{home}examples/"), (catalog["nav_sdk"], f"{home}sdk/"), (catalog["nav_bridge"], f"{home}bridge/"), (catalog["footer_translations"], f"{home}translations/"), (catalog["footer_demo"], f"{home}demo/"), (catalog["footer_releases"], f"{root}releases/"),
                                    ("GitHub", REPO), (catalog["footer_issues"], f"{REPO}/issues")]),
     ], about=[catalog["footer_license"]], fine=catalog["footer_trademarks"])
 
@@ -1682,6 +1685,8 @@ def default_crumbs(page: str, path: str, catalog: dict) -> list:
         return [(catalog["footer_translations"], None)]
     if page == "sdk" and path == "sdk/":
         return [(catalog["nav_sdk"], None)]
+    if page == "bridge" and path == "bridge/":
+        return [(catalog["nav_bridge"], None)]
     return []
 
 
@@ -1718,12 +1723,12 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
         # The specification's script: its contents, search and links (site/assets/spec.js).
         "spec_script": (f'<script src="{root}assets/spec.js" defer></script>' if page == "spec" else "")
                        + (f'<script src="{root}assets/figures.js" defer></script>' if page in ("spec", "start") else "")
-        + (f'<script src="{root}assets/code.js" defer data-copy="{html.escape(catalog["ui_copy"], quote=True)}" data-copied="{html.escape(catalog["ui_copied"], quote=True)}" data-failed="{html.escape(catalog["ui_copy_failed"], quote=True)}"></script>' if page in ("spec", "start", "examples", "sdk") else "")
+        + (f'<script src="{root}assets/code.js" defer data-copy="{html.escape(catalog["ui_copy"], quote=True)}" data-copied="{html.escape(catalog["ui_copied"], quote=True)}" data-failed="{html.escape(catalog["ui_copy_failed"], quote=True)}"></script>' if page in ("spec", "start", "examples", "sdk", "bridge") else "")
         + (f'<script src="{root}assets/check.js" defer></script>' if page == "check" else "")
         + (f'<script src="{root}assets/sdk.js" defer></script>' if page == "sdk" else "")
         + (f'<script src="{root}assets/rail.js" defer data-label="{html.escape(catalog["home_rail"], quote=True)}"></script>' if page == "home" else ""),
     })
-    if page in ("home", "demo", "start", "check", "examples", "translations", "sdk") and not body:
+    if page in ("home", "demo", "start", "check", "examples", "translations", "sdk", "bridge") and not body:
         body = (SITE / f"{page}.html").read_text(encoding="utf-8")
         values["demo_url"] = SITE_URL + "demo/"
         values["diagram_overview"] = diagrams.render("overview", catalog)
