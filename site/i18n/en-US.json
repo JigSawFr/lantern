@@ -509,5 +509,12 @@
   "sdk_trust_vectors_t": "Shared vectors",
   "sdk_trust_vectors": "The same test vectors run in every language.",
   "sdk_trust_release_t": "Signed releases",
-  "sdk_trust_release_x": "Releases will be built from the tag by CI, reproducibly, with an SBOM and SLSA provenance."
+  "sdk_trust_release_x": "Releases will be built from the tag by CI, reproducibly, with an SBOM and SLSA provenance.",
+  "sdk_nav_aria": "On this page",
+  "sdk_nav_pick": "Languages",
+  "sdk_nav_parity": "Parity",
+  "sdk_nav_calls": "Calls",
+  "sdk_nav_examples": "Examples",
+  "sdk_nav_trust": "Trust",
+  "sdk_nav_versions": "Versions"
 }

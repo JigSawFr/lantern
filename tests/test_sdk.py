@@ -109,8 +109,8 @@ class Texts(unittest.TestCase):
         used = set(re.findall(r"\{\{(sdk_[a-z_]+)\}\}", (ROOT / "site" / "sdk.html").read_text(encoding="utf-8")))
         used |= {f"sdk_g_{g}" for g in build_site.SDK_CALLS}
         used |= {"nav_sdk", "title_sdk", "description_sdk", "sdk_eyebrow", "sdk_title", "sdk_lede", "sdk_nodata"}
-        used -= {"sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions", "sdk_trust"}
-        used |= {f"sdk_task_{t}" for t, _ in build_site.SDK_TASKS} | {"sdk_total", "sdk_calls_later"}
+        used -= {"sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions", "sdk_trust", "sdk_nav"}
+        used |= {f"sdk_task_{t}" for t, _ in build_site.SDK_TASKS} | {"sdk_total", "sdk_calls_later", "sdk_nav_aria"} | {f"sdk_nav_{k}" for k in build_site.SDK_SECTIONS}
         used |= {f"sdk_trust_{k}{s}" for k in ("suite", "hostile", "vectors") for s in ("", "_t")} | {"sdk_trust_release_t", "sdk_trust_release_x"}
         for p in sorted((ROOT / "site" / "i18n").glob("*.json")):
             texts = json.loads(p.read_text(encoding="utf-8"))
@@ -122,3 +122,29 @@ class Texts(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Navigation(unittest.TestCase):
+    def setUp(self):
+        with mock.patch.dict(os.environ, {"SDK_JSON": str(FIXTURE)}):
+            self.values = build_site.sdk_values(catalog(), "../", "", {})
+
+    def test_the_sub_navigation_leads_to_each_section(self):
+        nav = self.values["sdk_nav"]
+        for section in build_site.SDK_SECTIONS:
+            self.assertIn(f'href="#{section}"', nav)
+            self.assertIn(f'<section id="{section}">', (ROOT / "site" / "sdk.html").read_text(encoding="utf-8"))
+
+    def test_each_level_a_server_reaches_is_a_chip_leading_to_the_badges(self):
+        levels = self.values["sdk_levels"]
+        self.assertIn('<a href="../badge/">Core</a>', levels)
+        self.assertIn('<a href="../badge/">+titles</a>', levels)
+
+    def test_the_tables_and_cards_name_their_language_for_the_script(self):
+        self.assertIn('data-lang="python"', self.values["sdk_parity"])
+        self.assertIn('data-lang="python"', self.values["sdk_calls"])
+        self.assertIn('data-lang="python"', self.values["sdk_cards"])
+        self.assertIn('type="radio" name="ex-read" id="ex-read-0" data-lang=', self.values["sdk_examples"])
+
+    def test_the_versions_are_a_table(self):
+        self.assertIn("<table>", self.values["sdk_versions"])

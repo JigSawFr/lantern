@@ -509,5 +509,12 @@
   "sdk_trust_vectors_t": "Общие векторы",
   "sdk_trust_vectors": "Одни и те же тестовые векторы запускаются во всех языках.",
   "sdk_trust_release_t": "Подписанные релизы",
-  "sdk_trust_release_x": "Релизы будут собираться CI из тега воспроизводимо, с SBOM и происхождением SLSA."
+  "sdk_trust_release_x": "Релизы будут собираться CI из тега воспроизводимо, с SBOM и происхождением SLSA.",
+  "sdk_nav_aria": "На этой странице",
+  "sdk_nav_pick": "Языки",
+  "sdk_nav_parity": "Паритет",
+  "sdk_nav_calls": "Вызовы",
+  "sdk_nav_examples": "Примеры",
+  "sdk_nav_trust": "Доверие",
+  "sdk_nav_versions": "Версии"
 }

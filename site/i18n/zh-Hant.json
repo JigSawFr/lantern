@@ -509,5 +509,12 @@
   "sdk_trust_vectors_t": "共用測試向量",
   "sdk_trust_vectors": "同一組測試向量會在每種語言中執行。",
   "sdk_trust_release_t": "簽章發行",
-  "sdk_trust_release_x": "發行版本將由 CI 從標籤以可重現方式建置，並附上 SBOM 與 SLSA 來源證明。"
+  "sdk_trust_release_x": "發行版本將由 CI 從標籤以可重現方式建置，並附上 SBOM 與 SLSA 來源證明。",
+  "sdk_nav_aria": "本頁內容",
+  "sdk_nav_pick": "語言",
+  "sdk_nav_parity": "對等情況",
+  "sdk_nav_calls": "呼叫",
+  "sdk_nav_examples": "範例",
+  "sdk_nav_trust": "可信度",
+  "sdk_nav_versions": "版本"
 }
