@@ -516,5 +516,12 @@
   "sdk_nav_calls": "呼び出し",
   "sdk_nav_examples": "例",
   "sdk_nav_trust": "信頼性",
-  "sdk_nav_versions": "バージョン"
+  "sdk_nav_versions": "バージョン",
+  "sdk_use_title": "どれを選ぶか",
+  "sdk_use_console": "ゲーム機のホームブリュー:",
+  "sdk_use_mobile": "モバイルアプリ（Swift、Kotlin）:",
+  "sdk_use_python": "FlaskまたはFastAPIのアプリにLanternを追加:",
+  "sdk_use_web": "Node、ブラウザ、Hono:",
+  "sdk_i_code": "使う言語",
+  "sdk_origin": "lantern-sdk のデータ（コミット {c}）。"
 }

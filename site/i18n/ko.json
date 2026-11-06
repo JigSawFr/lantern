@@ -516,5 +516,12 @@
   "sdk_nav_calls": "호출",
   "sdk_nav_examples": "예제",
   "sdk_nav_trust": "신뢰",
-  "sdk_nav_versions": "버전"
+  "sdk_nav_versions": "버전",
+  "sdk_use_title": "어떤 것을 고를까요?",
+  "sdk_use_console": "콘솔 홈브류:",
+  "sdk_use_mobile": "모바일 앱(Swift, Kotlin):",
+  "sdk_use_python": "Flask나 FastAPI 앱에 Lantern 추가:",
+  "sdk_use_web": "Node, 브라우저, Hono:",
+  "sdk_i_code": "사용하는 언어",
+  "sdk_origin": "lantern-sdk 데이터, 커밋 {c}."
 }

@@ -109,19 +109,16 @@ class Texts(unittest.TestCase):
         used = set(re.findall(r"\{\{(sdk_[a-z_]+)\}\}", (ROOT / "site" / "sdk.html").read_text(encoding="utf-8")))
         used |= {f"sdk_g_{g}" for g in build_site.SDK_CALLS}
         used |= {"nav_sdk", "title_sdk", "description_sdk", "sdk_eyebrow", "sdk_title", "sdk_lede", "sdk_nodata"}
-        used -= {"sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions", "sdk_trust", "sdk_nav"}
+        used -= {"sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions", "sdk_trust", "sdk_nav", "sdk_use", "sdk_origin"}
         used |= {f"sdk_task_{t}" for t, _ in build_site.SDK_TASKS} | {"sdk_total", "sdk_calls_later", "sdk_nav_aria"} | {f"sdk_nav_{k}" for k in build_site.SDK_SECTIONS}
         used |= {f"sdk_trust_{k}{s}" for k in ("suite", "hostile", "vectors") for s in ("", "_t")} | {"sdk_trust_release_t", "sdk_trust_release_x"}
+        used |= {"sdk_use_title", "sdk_i_code", "sdk_origin"} | {f"sdk_use_{k}" for k, _ in build_site.SDK_USES}
         for p in sorted((ROOT / "site" / "i18n").glob("*.json")):
             texts = json.loads(p.read_text(encoding="utf-8"))
             for key in sorted(used):
                 self.assertTrue(texts.get(key), f"{p.stem}: {key}")
             self.assertIn("{v}", texts["sdk_released"], p.stem)
             self.assertNotIn("`", "".join(texts[k] for k in used if k in texts), p.stem)
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class Navigation(unittest.TestCase):
@@ -148,3 +145,37 @@ class Navigation(unittest.TestCase):
 
     def test_the_versions_are_a_table(self):
         self.assertIn("<table>", self.values["sdk_versions"])
+
+
+class Choosing(unittest.TestCase):
+    def setUp(self):
+        with mock.patch.dict(os.environ, {"SDK_JSON": str(FIXTURE)}):
+            self.values = build_site.sdk_values(catalog(), "../", "", {})
+
+    def test_each_situation_leads_to_the_card_of_its_language(self):
+        use = self.values["sdk_use"]
+        for _, lang in build_site.SDK_USES:
+            self.assertIn(f'href="#sdk-{lang}"', use)
+            self.assertIn(f'id="sdk-{lang}"', self.values["sdk_cards"])
+
+    def test_the_picker_is_hidden_until_the_script_shows_it(self):
+        self.assertIn('class="picker" hidden', self.values["sdk_use"])
+        self.assertIn('data-pick="python"', self.values["sdk_use"])
+
+    def test_a_card_says_how_far_the_language_goes_and_leads_to_its_readme(self):
+        cards = self.values["sdk_cards"]
+        self.assertIn('class="parity"', cards)
+        self.assertIn('class="card linked"', cards)
+
+    def test_the_data_say_where_they_come_from(self):
+        self.assertIn(f"commit/{build_site.SDK_COMMIT}", self.values["sdk_origin"])
+
+    def test_tabs_and_tables_are_named_for_a_screen_reader(self):
+        self.assertIn('role="radiogroup" aria-labelledby="ex-read-title"', self.values["sdk_examples"])
+        self.assertIn('<h3 id="ex-read-title">', self.values["sdk_examples"])
+        for key in ("sdk_parity", "sdk_calls", "sdk_versions"):
+            self.assertIn('<caption class="sr">', self.values[key])
+
+
+if __name__ == "__main__":
+    unittest.main()
