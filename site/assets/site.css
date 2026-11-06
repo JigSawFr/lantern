@@ -788,4 +788,3 @@ pre mark { background: rgb(0 255 204 / 0.16); color: inherit; border-radius: 4px
 .trust.cards-small .card { gap: 6px; }
 .cards-small.trust { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
 @media (min-width: 861px) { .cards-small.trust { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.trust.cards-small .card h3 a { min-height: 0; }
