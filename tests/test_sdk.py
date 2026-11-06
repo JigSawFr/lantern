@@ -79,7 +79,7 @@ class Page(unittest.TestCase):
         table = self.values["sdk_parity"]
         self.assertEqual(table.count('<th scope="row">'), 3)
         self.assertIn('class="reached"', table)
-        self.assertIn("◐", table)  # C++ serves part of it
+        self.assertIn('class="half"', table)  # C++ serves part of it
 
     def test_the_calls_link_to_the_sources_and_the_specification(self):
         calls = self.values["sdk_calls"]

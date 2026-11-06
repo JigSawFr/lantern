@@ -498,5 +498,6 @@
   "sdk_cta_link": "GitHub の lantern-sdk",
   "sdk_cta_demo": "デモライブラリを試す",
   "title_sdk": "SDK: クライアントとサーバーのライブラリ · Lantern",
-  "description_sdk": "C++、C、Python、TypeScript、Go で書かれた Lantern のクライアント／サーバーライブラリ。それぞれの機能、比較、各言語での同じ呼び出し、CI が実行するサンプル。"
+  "description_sdk": "C++、C、Python、TypeScript、Go で書かれた Lantern のクライアント／サーバーライブラリ。それぞれの機能、比較、各言語での同じ呼び出し、CI が実行するサンプル。",
+  "sdk_calls_later": "{langs} の呼び出しは、ライブラリが整い次第ここに載ります。"
 }

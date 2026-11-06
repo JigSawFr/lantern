@@ -498,5 +498,6 @@
   "sdk_cta_link": "GitHub 上的 lantern-sdk",
   "sdk_cta_demo": "试用演示库",
   "title_sdk": "SDK：客户端与服务器库 · Lantern",
-  "description_sdk": "Lantern 的 C++、C、Python、TypeScript 和 Go 客户端与服务器库：各自能做什么、如何比较、各语言中的同一个调用，以及由 CI 运行的示例。"
+  "description_sdk": "Lantern 的 C++、C、Python、TypeScript 和 Go 客户端与服务器库：各自能做什么、如何比较、各语言中的同一个调用，以及由 CI 运行的示例。",
+  "sdk_calls_later": "{langs} 的调用将在其库就绪后显示在这里。"
 }

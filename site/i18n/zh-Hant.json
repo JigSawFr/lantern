@@ -498,5 +498,6 @@
   "sdk_cta_link": "GitHub 上的 lantern-sdk",
   "sdk_cta_demo": "試用示範函式庫",
   "title_sdk": "SDK：用戶端與伺服器函式庫 · Lantern",
-  "description_sdk": "Lantern 的 C++、C、Python、TypeScript 和 Go 用戶端與伺服器函式庫：各自能做什麼、如何比較、各語言中的同一個呼叫，以及由 CI 執行的範例。"
+  "description_sdk": "Lantern 的 C++、C、Python、TypeScript 和 Go 用戶端與伺服器函式庫：各自能做什麼、如何比較、各語言中的同一個呼叫，以及由 CI 執行的範例。",
+  "sdk_calls_later": "{langs} 的呼叫將在其函式庫就緒後顯示於此。"
 }
