@@ -1348,7 +1348,7 @@ def sdk_values(catalog: dict, root: str, home: str, sections: dict) -> dict:
     trust = sdk_trust(catalog, root)
     nav = sdk_nav(catalog)
     if data is None:
-        return {**{k: "" for k in keys}, "sdk_legend": sdk_legend(catalog), "sdk_trust": trust, "sdk_nav": nav, "sdk_nav": nav,
+        return {**{k: "" for k in keys}, "sdk_legend": sdk_legend(catalog), "sdk_trust": trust, "sdk_nav": nav,
                 "sdk_nodata": f'<p class="note">{catalog["sdk_nodata"]}</p>'}
     return {"sdk_nodata": "", "sdk_legend": sdk_legend(catalog), "sdk_trust": trust, "sdk_nav": nav, "sdk_head": sdk_head(catalog, data), "sdk_cards": sdk_cards(catalog, data),
             "sdk_parity": sdk_parity(catalog, data), "sdk_levels": sdk_levels(catalog, data, root),
