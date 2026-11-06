@@ -498,5 +498,6 @@
   "sdk_cta_link": "lantern-sdk on GitHub",
   "sdk_cta_demo": "Try the demo library",
   "title_sdk": "SDK: client and server libraries · Lantern",
-  "description_sdk": "Lantern's client and server libraries in C++, C, Python, TypeScript and Go: what each one does, how they compare, the same call in every language, and examples that CI runs."
+  "description_sdk": "Lantern's client and server libraries in C++, C, Python, TypeScript and Go: what each one does, how they compare, the same call in every language, and examples that CI runs.",
+  "sdk_calls_later": "The calls of {langs} appear here as their libraries get there."
 }

@@ -1315,7 +1315,7 @@ SDK_COMMIT = "9fc3b4f817e7186eb5f6a33979e4dbebdbf6c0b7"
 SDK_SCHEMA = 1
 SDK_CALLS = ("handshake", "apps", "missing", "download", "pair", "await_pairing", "upload_save", "events", "serve",
              "static_write", "static_read")
-SDK_LANGS = ("cpp", "c", "python", "typescript", "go")
+SDK_LANGS = ("cpp", "c", "python", "typescript", "go", "rust")
 SDK_NAMES = {"cpp": "C++", "c": "C", "python": "Python", "typescript": "TypeScript", "go": "Go", "rust": "Rust"}
 
 
@@ -1346,11 +1346,16 @@ def sdk_values(catalog: dict, root: str, home: str, sections: dict) -> dict:
     data = sdk_data()
     keys = ("sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions")
     if data is None:
-        return {**{k: "" for k in keys}, "sdk_nodata": f'<p class="note">{catalog["sdk_nodata"]}</p>'}
-    return {"sdk_nodata": "", "sdk_head": sdk_head(catalog, data), "sdk_cards": sdk_cards(catalog, data),
+        return {**{k: "" for k in keys}, "sdk_legend": sdk_legend(catalog),
+                "sdk_nodata": f'<p class="note">{catalog["sdk_nodata"]}</p>'}
+    return {"sdk_nodata": "", "sdk_legend": sdk_legend(catalog), "sdk_head": sdk_head(catalog, data), "sdk_cards": sdk_cards(catalog, data),
             "sdk_parity": sdk_parity(catalog, data), "sdk_levels": sdk_levels(catalog, data),
             "sdk_calls": sdk_calls(catalog, data, root, home, sections), "sdk_examples": sdk_examples(catalog, data),
             "sdk_versions": sdk_versions(catalog, data)}
+
+
+def sdk_legend(catalog: dict) -> str:
+    return catalog["sdk_legend"].replace("◐", HALF)
 
 
 def sdk_head(catalog: dict, data: dict) -> str:
@@ -1384,12 +1389,14 @@ def sdk_cards(catalog: dict, data: dict) -> str:
     return '<ul class="cards cards-small">' + "".join(cards) + "</ul>"
 
 
-MARKS = {"yes": ("✓", "sdk_yes"), "partial": ("◐", "sdk_partial"), "no": ("–", "sdk_no")}
+HALF = '<span class="half" aria-hidden="true"></span>'  # "part of it": drawn, a glyph of that shape is missing from most fonts
+MARKS = {"yes": ("✓", "sdk_yes"), "partial": (HALF, "sdk_partial"), "no": ("–", "sdk_no")}
 
 
 def sdk_cell(catalog: dict, kind: str) -> str:
     mark, key = MARKS.get(kind, ("–", "sdk_no"))
-    return f'<span aria-hidden="true">{mark}</span><span class="sr">{catalog[key]}</span>'
+    shown = mark if mark == HALF else f'<span aria-hidden="true">{mark}</span>'
+    return f'{shown}<span class="sr">{catalog[key]}</span>'
 
 
 def sdk_parity(catalog: dict, data: dict) -> str:
@@ -1433,8 +1440,10 @@ def sdk_calls(catalog: dict, data: dict, root: str, home: str, sections: dict) -
         mark = f'§&nbsp;{html.escape(spec)}'
         link = f'<a href="{root}{home}spec/#{anchor}">{mark}</a>' if anchor else mark
         rows.append(f'<tr><th scope="row">{catalog["sdk_g_" + gesture]} {link}</th>{cells}</tr>')
+    later = [SDK_NAMES[lang["id"]] for lang in data.get("languages", []) if lang.get("id") in SDK_NAMES and lang["id"] not in langs]
+    note = f'<p class="note">{catalog["sdk_calls_later"].replace("{langs}", ", ".join(later))}</p>' if later else ""
     return (f'<div class="table calls" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_calls_title"], quote=True)}"><table>'
-            f'<thead><tr><th scope="col">{catalog["sdk_gesture"]}</th>{heads}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>')
+            f'<thead><tr><th scope="col">{catalog["sdk_gesture"]}</th>{heads}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>{note}')
 
 
 def sdk_examples(catalog: dict, data: dict) -> str:
@@ -1449,7 +1458,8 @@ def sdk_examples(catalog: dict, data: dict) -> str:
         items = []
         for example in group:
             path = html.escape(str(example.get("path", "")), quote=True)
-            items.append(f'<details class="fold"><summary>{html.escape(str(example.get("title", "")))}'
+            title = re.sub(r"`([^`]+)`", r"<code>\1</code>", html.escape(str(example.get("title", ""))))
+            items.append(f'<details class="fold"><summary>{title}'
                          f' <code>{html.escape(Path(str(example.get("path", ""))).name)}</code></summary>'
                          f'<pre tabindex="0"><code>{html.escape(str(example.get("source", "")))}</code></pre>'
                          f'<p class="note"><a href="{SDK_REPO}/blob/main/{path}">{path}</a></p></details>')

@@ -738,3 +738,18 @@ pre mark { background: rgb(0 255 204 / 0.16); color: inherit; border-radius: 4px
 .changes .sections-diff.kind-renamed li > a:first-child, .changes .sections-diff.kind-renumbered li > a:first-child { box-shadow: inset 3px 0 0 #ffd479; padding-left: 10px; }
 @media (max-width: 600px) { .changes .timeline { padding-left: 18px; } .changes .draft { padding: 14px 14px 8px; } .changes .draft::before { left: -28px; } }
 @media print { .changes .since-pick, .changes .since-help, .changes .since { display: none; } .changes .fold:not([open]) > :not(summary) { display: block; } }
+
+/* The SDK page (site/sdk.html): spacing between its blocks, the drawn "part of it" mark, tables that keep their first column. */
+#pick .cards { margin-top: 24px; }
+#pick .note { margin-top: 18px; }
+#parity .note, #examples .note { margin-bottom: 0; }
+#parity h3, #examples h3 { margin: 2.25rem 0 0.5rem; color: var(--snow); font: 600 1.125rem/1.4 var(--display); letter-spacing: -0.01em; }
+#examples h3:first-of-type { margin-top: 0.5rem; }
+.half { display: inline-block; width: 0.8em; height: 0.8em; border-radius: 50%; vertical-align: -0.06em; box-sizing: border-box;
+  border: 1.5px solid currentColor; background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
+.matrix td .half { color: var(--ice); }
+.matrix th[scope="row"], .calls th[scope="row"] { position: sticky; left: 0; z-index: 1; background: var(--night); }
+.matrix th[scope="col"][rowspan], .calls thead th:first-child { position: sticky; left: 0; z-index: 2; background: var(--night); }
+@media (max-width: 860px) {
+  .matrix th[scope="row"], .calls th[scope="row"], .matrix th[rowspan], .calls thead th:first-child { box-shadow: 1px 0 0 var(--night-line), 6px 0 10px -4px rgb(0 0 0 / 0.5); }
+}

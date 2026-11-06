@@ -498,5 +498,6 @@
   "sdk_cta_link": "GitHub의 lantern-sdk",
   "sdk_cta_demo": "데모 라이브러리 써 보기",
   "title_sdk": "SDK: 클라이언트·서버 라이브러리 · Lantern",
-  "description_sdk": "C++, C, Python, TypeScript, Go로 만든 Lantern의 클라이언트·서버 라이브러리: 각각이 하는 일, 비교, 언어별 같은 호출, CI가 실행하는 예제."
+  "description_sdk": "C++, C, Python, TypeScript, Go로 만든 Lantern의 클라이언트·서버 라이브러리: 각각이 하는 일, 비교, 언어별 같은 호출, CI가 실행하는 예제.",
+  "sdk_calls_later": "{langs}의 호출은 라이브러리가 준비되는 대로 여기에 나타납니다."
 }
