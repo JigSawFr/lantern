@@ -366,6 +366,7 @@ main, .spec-layout > * { min-width: 0; }
 /* An error type's facts. */
 .facts { margin: 0; display: grid; gap: 10px; }
 .facts div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.facts.wide div { grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr); }
 .facts dt { font: 500 0.8125rem var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--mist); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 .errors main > section { padding-top: 0; }
