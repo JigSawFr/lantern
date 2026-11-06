@@ -509,5 +509,12 @@
   "sdk_trust_vectors_t": "Gedeelde vectoren",
   "sdk_trust_vectors": "Dezelfde testvectoren draaien in elke taal.",
   "sdk_trust_release_t": "Ondertekende releases",
-  "sdk_trust_release_x": "Releases worden door CI reproduceerbaar uit de tag gebouwd, met een SBOM en SLSA-herkomst."
+  "sdk_trust_release_x": "Releases worden door CI reproduceerbaar uit de tag gebouwd, met een SBOM en SLSA-herkomst.",
+  "sdk_nav_aria": "Op deze pagina",
+  "sdk_nav_pick": "Talen",
+  "sdk_nav_parity": "Pariteit",
+  "sdk_nav_calls": "Aanroepen",
+  "sdk_nav_examples": "Voorbeelden",
+  "sdk_nav_trust": "Vertrouwen",
+  "sdk_nav_versions": "Versies"
 }

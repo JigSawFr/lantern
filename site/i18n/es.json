@@ -509,5 +509,12 @@
   "sdk_trust_vectors_t": "Vectores compartidos",
   "sdk_trust_vectors": "Los mismos vectores de prueba se ejecutan en cada lenguaje.",
   "sdk_trust_release_t": "Versiones firmadas",
-  "sdk_trust_release_x": "Las versiones se construirán desde la etiqueta con la CI, de forma reproducible, con un SBOM y procedencia SLSA."
+  "sdk_trust_release_x": "Las versiones se construirán desde la etiqueta con la CI, de forma reproducible, con un SBOM y procedencia SLSA.",
+  "sdk_nav_aria": "En esta página",
+  "sdk_nav_pick": "Lenguajes",
+  "sdk_nav_parity": "Paridad",
+  "sdk_nav_calls": "Llamadas",
+  "sdk_nav_examples": "Ejemplos",
+  "sdk_nav_trust": "Confianza",
+  "sdk_nav_versions": "Versiones"
 }

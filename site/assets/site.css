@@ -777,7 +777,7 @@ pre mark { background: rgb(0 255 204 / 0.16); color: inherit; border-radius: 4px
   text-transform: uppercase; border: 1px solid var(--night-line); color: var(--mist); }
 .pill-complete { color: var(--aurora); border-color: rgb(0 255 170 / 0.35); background: rgb(0 255 170 / 0.08); }
 .pill-building { color: #ffcb6b; border-color: rgb(255 203 107 / 0.35); background: rgb(255 203 107 / 0.08); }
-.card .facts dd code { font-size: 0.875rem; overflow-wrap: anywhere; }
+.card .facts dd code { font-size: 0.875rem; overflow-wrap: break-word; }
 .card a[href*="/blob/"]::after { content: " →"; color: var(--aurora); }
 .matrix td.reached { opacity: 0.6; }
 .matrix td.none { color: var(--mist); }
@@ -788,3 +788,19 @@ pre mark { background: rgb(0 255 204 / 0.16); color: inherit; border-radius: 4px
 .trust.cards-small .card { gap: 6px; }
 .cards-small.trust { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
 @media (min-width: 861px) { .cards-small.trust { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* The SDK page: its sub-navigation, the language the reader follows, the levels as badges, the versions table. */
+.subnav { position: sticky; top: 0; z-index: 25; margin: 0 -1px; padding: 8px 0; background: var(--night); border-bottom: 1px solid var(--night-line); }
+.subnav ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.subnav a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 99px; color: var(--mist); text-decoration: none; font-size: 0.9375rem; white-space: nowrap; }
+@media (hover: hover) { .subnav a:hover { color: var(--snow); background: rgb(14 26 51 / 0.9); } }
+.subnav a:focus-visible { outline: 2px solid var(--aurora); outline-offset: -2px; }
+main:has(.subnav) section[id] { scroll-margin-top: 64px; }
+[data-pick="cpp"] [data-lang="cpp"]:is(td, th), [data-pick="c"] [data-lang="c"]:is(td, th), [data-pick="python"] [data-lang="python"]:is(td, th),
+[data-pick="typescript"] [data-lang="typescript"]:is(td, th), [data-pick="go"] [data-lang="go"]:is(td, th), [data-pick="rust"] [data-lang="rust"]:is(td, th) { background: rgb(51 187 255 / 0.07); }
+[data-pick="cpp"] .card[data-lang="cpp"], [data-pick="c"] .card[data-lang="c"], [data-pick="python"] .card[data-lang="python"],
+[data-pick="typescript"] .card[data-lang="typescript"], [data-pick="go"] .card[data-lang="go"], [data-pick="rust"] .card[data-lang="rust"] { border-color: var(--ice); }
+.levels { list-style: none; padding: 0; display: grid; gap: 14px; }
+.levels > li { display: grid; gap: 8px; }
+.levels .chips { margin-top: 0; }
+.versions td:first-child { font-family: var(--mono); color: var(--snow); }

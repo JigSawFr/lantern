@@ -509,5 +509,12 @@
   "sdk_trust_vectors_t": "공유 테스트 벡터",
   "sdk_trust_vectors": "같은 테스트 벡터가 모든 언어에서 실행됩니다.",
   "sdk_trust_release_t": "서명된 릴리스",
-  "sdk_trust_release_x": "릴리스는 CI가 태그에서 재현 가능하게 빌드하며 SBOM과 SLSA 출처 증명이 붙습니다."
+  "sdk_trust_release_x": "릴리스는 CI가 태그에서 재현 가능하게 빌드하며 SBOM과 SLSA 출처 증명이 붙습니다.",
+  "sdk_nav_aria": "이 페이지",
+  "sdk_nav_pick": "언어",
+  "sdk_nav_parity": "동등성",
+  "sdk_nav_calls": "호출",
+  "sdk_nav_examples": "예제",
+  "sdk_nav_trust": "신뢰",
+  "sdk_nav_versions": "버전"
 }

@@ -1346,17 +1346,26 @@ def sdk_values(catalog: dict, root: str, home: str, sections: dict) -> dict:
     data = sdk_data()
     keys = ("sdk_head", "sdk_cards", "sdk_parity", "sdk_levels", "sdk_calls", "sdk_examples", "sdk_versions")
     trust = sdk_trust(catalog, root)
+    nav = sdk_nav(catalog)
     if data is None:
-        return {**{k: "" for k in keys}, "sdk_legend": sdk_legend(catalog), "sdk_trust": trust,
+        return {**{k: "" for k in keys}, "sdk_legend": sdk_legend(catalog), "sdk_trust": trust, "sdk_nav": nav, "sdk_nav": nav,
                 "sdk_nodata": f'<p class="note">{catalog["sdk_nodata"]}</p>'}
-    return {"sdk_nodata": "", "sdk_legend": sdk_legend(catalog), "sdk_trust": trust, "sdk_head": sdk_head(catalog, data), "sdk_cards": sdk_cards(catalog, data),
-            "sdk_parity": sdk_parity(catalog, data), "sdk_levels": sdk_levels(catalog, data),
+    return {"sdk_nodata": "", "sdk_legend": sdk_legend(catalog), "sdk_trust": trust, "sdk_nav": nav, "sdk_head": sdk_head(catalog, data), "sdk_cards": sdk_cards(catalog, data),
+            "sdk_parity": sdk_parity(catalog, data), "sdk_levels": sdk_levels(catalog, data, root),
             "sdk_calls": sdk_calls(catalog, data, root, home, sections), "sdk_examples": sdk_examples(catalog, data),
             "sdk_versions": sdk_versions(catalog, data)}
 
 
 def sdk_legend(catalog: dict) -> str:
     return catalog["sdk_legend"].replace("◐", HALF)
+
+
+SDK_SECTIONS = ("pick", "parity", "calls", "examples", "trust", "versions")
+
+
+def sdk_nav(catalog: dict) -> str:
+    links = "".join(f'<li><a href="#{k}">{catalog["sdk_nav_" + k]}</a></li>' for k in SDK_SECTIONS)
+    return f'<nav class="subnav" aria-label="{html.escape(catalog["sdk_nav_aria"], quote=True)}"><ul>{links}</ul></nav>'
 
 
 def sdk_trust(catalog: dict, root: str) -> str:
@@ -1390,14 +1399,14 @@ def sdk_cards(catalog: dict, data: dict) -> str:
         facts = [("sdk_k_requires", lang.get("requires")), ("sdk_k_package", lang.get("package")),
                  ("sdk_k_adapters", ", ".join(lang.get("adapters", [])))]
         rows = "".join(f"<div><dt>{catalog[k]}</dt><dd>{html.escape(str(v))}</dd></div>" for k, v in facts if v)
-        rows = rows.replace(f"<dd>{html.escape(str(lang.get('package') or ''))}</dd>", f"<dd><code>{html.escape(str(lang.get('package') or ''))}</code></dd>") if lang.get("package") else rows
+        rows = rows.replace(f"<dd>{html.escape(str(lang.get('package') or ''))}</dd>", f"<dd><code>{html.escape(str(lang.get('package') or '')).replace('/', '/<wbr>')}</code></dd>") if lang.get("package") else rows
         install = lang.get("install")
         code = (f'<pre tabindex="0"><code>{html.escape(install)}</code></pre>' if install and (data.get("sdk") or {}).get("release") else "")
         readme = lang.get("readme")
         link = (f'<p><a href="{SDK_REPO}/blob/main/{html.escape(readme, quote=True)}">{catalog["sdk_readme"]}</a></p>'
                 if readme else "")
         state = catalog["sdk_status_" + status] if "sdk_status_" + status in catalog else ""
-        cards.append(f'<li class="card"><h3>{name}</h3><p class="kind"><span class="pill pill-{html.escape(str(status), quote=True)}">{state}</span>'
+        cards.append(f'<li class="card" data-lang="{html.escape(str(lang.get("id", "")), quote=True)}"><h3>{name}</h3><p class="kind"><span class="pill pill-{html.escape(str(status), quote=True)}">{state}</span>'
                      f' {catalog["sdk_role_" + lang.get("role", "both")]}</p><dl class="facts">{rows}</dl>{code}{link}</li>')
     return '<ul class="cards cards-small">' + "".join(cards) + "</ul>"
 
@@ -1414,45 +1423,51 @@ def sdk_cell(catalog: dict, kind: str) -> str:
 
 def sdk_parity(catalog: dict, data: dict) -> str:
     langs = [lang for lang in SDK_LANGS if any(lang in row.get("support", {}) for row in data.get("families", []))]
-    heads = "".join(f'<th scope="col" colspan="2">{SDK_NAMES[lang]}</th>' for lang in langs)
-    sub = "".join(f'<th scope="col">{catalog["sdk_client"]}</th><th scope="col">{catalog["sdk_server"]}</th>' for _ in langs)
+    heads = "".join(f'<th scope="col" colspan="2" data-lang="{lang}">{SDK_NAMES[lang]}</th>' for lang in langs)
+    sub = "".join(f'<th scope="col" data-lang="{lang}">{catalog["sdk_client"]}</th><th scope="col" data-lang="{lang}">{catalog["sdk_server"]}</th>' for lang in langs)
     rows = []
     for row in data.get("families", []):
         cells = ""
         for lang in langs:
             cell = row.get("support", {}).get(lang, {})
-            cells += (f'<td class="{"reached" if cell.get("client") == "yes" else "none"}">{sdk_cell(catalog, cell.get("client", "no"))}</td>'
-                      f'<td class="{"reached" if cell.get("server") == "yes" else "none"}">{sdk_cell(catalog, cell.get("server", "no"))}</td>')
+            cells += (f'<td data-lang="{lang}" class="{"reached" if cell.get("client") == "yes" else "none"}">{sdk_cell(catalog, cell.get("client", "no"))}</td>'
+                      f'<td data-lang="{lang}" class="{"reached" if cell.get("server") == "yes" else "none"}">{sdk_cell(catalog, cell.get("server", "no"))}</td>')
         rows.append(f'<tr><th scope="row"><code>{html.escape(str(row.get("family", "")))}</code></th>{cells}</tr>')
     families = data.get("families", [])
     total = ""
     for lang in langs:
         for side in ("client", "server"):
             got = sum(1 for row in families if row.get("support", {}).get(lang, {}).get(side) == "yes")
-            total += f'<td class="sum {"reached" if got == len(families) else "none" if got == 0 else "some"}">{got}/{len(families)}</td>'
+            total += f'<td data-lang="{lang}" class="sum {"reached" if got == len(families) else "none" if got == 0 else "some"}">{got}/{len(families)}</td>'
     return (f'<div class="table matrix" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_parity_title"], quote=True)}"><table>'
             f'<thead><tr><th scope="col" rowspan="2">{catalog["sdk_family"]}</th>{heads}</tr><tr>{sub}</tr></thead>'
             f'<tbody>{"".join(rows)}</tbody><tfoot><tr><th scope="row">{catalog["sdk_total"]}</th>{total}</tr></tfoot></table></div>')
 
 
-def sdk_levels(catalog: dict, data: dict) -> str:
-    rows = "".join(f'<li><strong>{SDK_NAMES.get(lang, html.escape(lang))}</strong>: <code>{html.escape(level)}</code></li>'
-                   for lang, level in (data.get("levels") or {}).items())
-    return f'<ul class="plain">{rows}</ul>' if rows else ""
+def sdk_levels(catalog: dict, data: dict, root: str) -> str:
+    """The levels each checked server reaches in CI (the string is "Lantern Core +titles …"), a chip a level, each
+    leading to its badge's page; /badge/ has the badges themselves, which are too heavy to repeat here."""
+    known = dict(LEVELS)
+    rows = []
+    for lang, level in (data.get("levels") or {}).items():
+        reached = [("core" if token == "Core" else token.lstrip("+")) for token in str(level).replace("Lantern ", "", 1).split()]
+        chips = "".join(f'<li><a href="{root}badge/">{html.escape(known[k])}</a></li>' for k in reached if k in known)
+        rows.append(f'<li><strong>{SDK_NAMES.get(lang, html.escape(lang))}</strong><ul class="chips">{chips}</ul></li>')
+    return f'<ul class="plain levels">{"".join(rows)}</ul>' if rows else ""
 
 
 def sdk_calls(catalog: dict, data: dict, root: str, home: str, sections: dict) -> str:
     calls = {c.get("id"): c for c in data.get("calls", [])}
     langs = [lang for lang in SDK_LANGS if any(lang in c.get("calls", {}) for c in calls.values())]
-    heads = "".join(f'<th scope="col">{SDK_NAMES[lang]}</th>' for lang in langs)
+    heads = "".join(f'<th scope="col" data-lang="{lang}">{SDK_NAMES[lang]}</th>' for lang in langs)
     rows = []
     for gesture in SDK_CALLS:
         call = calls.get(gesture)
         if call is None:
             continue
         cells = "".join(
-            (f'<td><a href="{SDK_REPO}/blob/main/{html.escape(call["where"][lang], quote=True)}"><code>{html.escape(call["calls"][lang])}</code></a></td>'
-             if call["calls"].get(lang) and lang in call.get("where", {}) else '<td class="none"><span aria-hidden="true">–</span>'
+            (f'<td data-lang="{lang}"><a href="{SDK_REPO}/blob/main/{html.escape(call["where"][lang], quote=True)}"><code>{html.escape(call["calls"][lang])}</code></a></td>'
+             if call["calls"].get(lang) and lang in call.get("where", {}) else f'<td data-lang="{lang}" class="none"><span aria-hidden="true">–</span>'
              f'<span class="sr">{catalog["sdk_no"]}</span></td>') for lang in langs)
         spec = str(call.get("spec", ""))
         anchor = sections.get(spec)
@@ -1500,7 +1515,7 @@ def sdk_examples(catalog: dict, data: dict) -> str:
             ident = f"ex-{task}-{n}"
             path = html.escape(str(example.get("path", "")), quote=True)
             title = re.sub(r"`([^`]+)`", r"<code>\1</code>", html.escape(str(example.get("title", ""))))
-            inputs += (f'<input type="radio" name="ex-{task}" id="{ident}"{" checked" if n == 0 else ""}>'
+            inputs += (f'<input type="radio" name="ex-{task}" id="{ident}" data-lang="{html.escape(lang, quote=True)}"{" checked" if n == 0 else ""}>'
                        f'<label for="{ident}">{html.escape(label)}</label>')
             panels += (f'<div class="panel"><p class="note">{title} · <a href="{SDK_REPO}/blob/main/{path}">{path}</a></p>'
                        f'<pre tabindex="0"><code class="language-{html.escape(lang, quote=True)}">{html.escape(str(example.get("source", "")))}</code></pre></div>')
@@ -1509,12 +1524,15 @@ def sdk_examples(catalog: dict, data: dict) -> str:
 
 
 def sdk_versions(catalog: dict, data: dict) -> str:
+    """The version of the SDK, the draft it follows and the C API it exposes, a row a release (the one in the
+    source until there is a release: sdk.json has no list of past ones yet)."""
     sdk = data.get("sdk", {})
-    rows = [("sdk_k_version", sdk.get("version")), ("sdk_k_draft", sdk.get("spec_draft")),
-            ("sdk_k_capi", f'{sdk.get("c_api_version")} (ABI {sdk.get("c_abi_version")})' if sdk.get("c_api_version") else None),
-            ("sdk_k_release", sdk.get("release") or catalog["sdk_none_yet"])]
-    cells = "".join(f"<div><dt>{catalog[k]}</dt><dd>{html.escape(str(v))}</dd></div>" for k, v in rows if v is not None)
-    return f'<dl class="facts wide">{cells}</dl>'
+    capi = f'{sdk.get("c_api_version")} (ABI {sdk.get("c_abi_version")})' if sdk.get("c_api_version") else ""
+    head = "".join(f'<th scope="col">{catalog[k]}</th>' for k in ("sdk_k_version", "sdk_k_draft", "sdk_k_capi", "sdk_k_release"))
+    row = "".join(f"<td>{html.escape(str(v))}</td>" for v in (sdk.get("version", ""), sdk.get("spec_draft", ""), capi,
+                                                              sdk.get("release") or catalog["sdk_none_yet"]))
+    return (f'<div class="table versions" tabindex="0" role="region" aria-label="{html.escape(catalog["sdk_versions_title"], quote=True)}">'
+            f'<table><thead><tr>{head}</tr></thead><tbody><tr>{row}</tr></tbody></table></div>')
 
 
 def demo_cards(catalog: dict) -> str:
@@ -1590,6 +1608,7 @@ def page_html(template: str, language: str, catalog: dict, path: str, page: str,
                        + (f'<script src="{root}assets/figures.js" defer></script>' if page in ("spec", "start") else "")
         + (f'<script src="{root}assets/code.js" defer data-copy="{html.escape(catalog["ui_copy"], quote=True)}" data-copied="{html.escape(catalog["ui_copied"], quote=True)}" data-failed="{html.escape(catalog["ui_copy_failed"], quote=True)}"></script>' if page in ("spec", "start", "examples", "sdk") else "")
         + (f'<script src="{root}assets/check.js" defer></script>' if page == "check" else "")
+        + (f'<script src="{root}assets/sdk.js" defer></script>' if page == "sdk" else "")
         + (f'<script src="{root}assets/rail.js" defer data-label="{html.escape(catalog["home_rail"], quote=True)}"></script>' if page == "home" else ""),
     })
     if page in ("home", "demo", "start", "check", "examples", "translations", "sdk") and not body:

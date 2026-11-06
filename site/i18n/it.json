@@ -509,5 +509,12 @@
   "sdk_trust_vectors_t": "Vettori condivisi",
   "sdk_trust_vectors": "Gli stessi vettori di prova girano in ogni linguaggio.",
   "sdk_trust_release_t": "Release firmate",
-  "sdk_trust_release_x": "Le release saranno costruite dal tag dalla CI, in modo riproducibile, con SBOM e provenienza SLSA."
+  "sdk_trust_release_x": "Le release saranno costruite dal tag dalla CI, in modo riproducibile, con SBOM e provenienza SLSA.",
+  "sdk_nav_aria": "In questa pagina",
+  "sdk_nav_pick": "Linguaggi",
+  "sdk_nav_parity": "Parità",
+  "sdk_nav_calls": "Chiamate",
+  "sdk_nav_examples": "Esempi",
+  "sdk_nav_trust": "Fiducia",
+  "sdk_nav_versions": "Versioni"
 }

@@ -509,5 +509,12 @@
   "sdk_trust_vectors_t": "共通のテストベクトル",
   "sdk_trust_vectors": "同じテストベクトルがすべての言語で実行されます。",
   "sdk_trust_release_t": "署名付きリリース",
-  "sdk_trust_release_x": "リリースは、CI がタグから再現可能にビルドし、SBOM と SLSA の来歴を付けます。"
+  "sdk_trust_release_x": "リリースは、CI がタグから再現可能にビルドし、SBOM と SLSA の来歴を付けます。",
+  "sdk_nav_aria": "このページ",
+  "sdk_nav_pick": "言語",
+  "sdk_nav_parity": "対応状況",
+  "sdk_nav_calls": "呼び出し",
+  "sdk_nav_examples": "例",
+  "sdk_nav_trust": "信頼性",
+  "sdk_nav_versions": "バージョン"
 }
