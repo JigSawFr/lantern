@@ -41,11 +41,10 @@ SITE_AXE=axe.min.js python3 library/boreale-site/tools/site_layout.py build   # 
 
 ## The SDK page
 
-`/sdk/` (`site/sdk.html`, in every language): the libraries of [lantern-sdk](https://github.com/JigSawFr/lantern-sdk) side by side: a card per language (what it needs, its package, what it works with; the install line only once a release exists), the table of families by language (client and server, with the levels each checked server reaches in CI), the same gesture's call in each language, each linked to its source, the files of the libraries' `examples/` folders, and the SDK's version. **Nothing is written by hand**: the page reads `sdk.json`, which lantern-sdk's `tools/site_data.py` writes from its sources (schema 1, read by the `schema` rule: a newer one is absent and the page says its data is not there, an unknown field is skipped) at the commit `SDK_COMMIT` of `tools/build_site.py`, which a pull request raises. `SDK_JSON=<file>` reads a local file instead (a build next to a checkout of lantern-sdk), `SITE_OFFLINE=1` reads none. The texts are the catalogs' `sdk_*` keys; the names of calls, families and packages stay as the SDK writes them. `tests/test_sdk.py` runs on `tests/fixtures/sdk.json`.
+`/sdk/` and `/bridge/` (`site/moved.html`, in every language): the SDK and the Bridge have their own sites, [sdk.lantern.boreale.dev](https://sdk.lantern.boreale.dev/) (built from [lantern-sdk](https://github.com/JigSawFr/lantern-sdk)) and [bridge.lantern.boreale.dev](https://bridge.lantern.boreale.dev/) (built from [lantern-bridge](https://github.com/JigSawFr/lantern-bridge)). Here each is a title, one sentence (`moved_sdk`, `moved_bridge`) and a button to the site; the header's and the footer's links lead there directly. These two pages go away, with a redirect, once both sites are live.
 
 ## The Bridge page
 
-`/bridge/` (`site/bridge.html`, in every language): [lantern-bridge](https://github.com/JigSawFr/lantern-bridge), the gateway that presents an Ownfoil or AeroFoil server, a Tinfoil shop or plain folders as a Lantern server: what it will read (four cards), how it works (hashes, pairing and tokens, its web interface), how to run it from a checkout (`/.well-known/lantern` of `127.0.0.1`), what makes it distrustful. Written by hand, no data file: the bridge has no release, so the page says so (`bridge_status`) and names no draft (`tests/test_translations.py` forbids it); the texts are `bridge_*` of the catalogs, checked by `tests/test_bridge.py`. The footer's "Bridge" leads to it.
 
 ## The quick start
 
